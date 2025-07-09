@@ -99,6 +99,9 @@ importers:
       '@ai-tutor/types':
         specifier: workspace:*
         version: link:../types
+      '@ai-tutor/utils':
+        specifier: workspace:*
+        version: link:../utils
       axios:
         specifier: ^1.6.0
         version: 1.10.0
@@ -202,6 +205,9 @@ importers:
         specifier: ^2.0.0
         version: 2.6.0
     devDependencies:
+      '@types/node':
+        specifier: ^24.0.10
+        version: 24.0.10
       typescript:
         specifier: ^5.0.0
         version: 5.8.3

@@ -13,7 +13,7 @@ import {
   Volume2,
   Server,
 } from "lucide-react";
-import { healthApi, HealthStatus } from "@ai-tutor/api-client";
+import { healthApi } from "@ai-tutor/api-client";
 import { useQuery } from "@tanstack/react-query";
 
 const StatusIcon: React.FC<{ status: string }> = ({ status }) => {

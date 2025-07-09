@@ -5,6 +5,7 @@
   "types": "index.ts",
   "dependencies": {
     "@ai-tutor/types": "workspace:*",
+    "@ai-tutor/utils": "workspace:*",
     "axios": "^1.6.0"
   },
   "devDependencies": {

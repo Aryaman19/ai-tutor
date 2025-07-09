@@ -1,20 +1,17 @@
 import axios from "axios";
+import { getApiBaseUrl, isDevelopment } from "@ai-tutor/utils";
 
-const API_BASE_URL =
-  typeof window !== "undefined"
-    ? import.meta?.env?.VITE_API_URL || "http://localhost:8000"
-    : process.env.API_URL || "http://localhost:8000";
-
+// Create API client with environment-aware base URL
 export const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: getApiBaseUrl(),
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// Add request/response interceptors for logging
-if (typeof window !== "undefined" && import.meta?.env?.DEV) {
+// Add development-only interceptors
+if (isDevelopment()) {
   apiClient.interceptors.request.use((config) => {
     console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
     return config;

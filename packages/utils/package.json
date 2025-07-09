@@ -9,6 +9,7 @@
     "tailwind-merge": "^2.0.0"
   },
   "devDependencies": {
+    "@types/node": "^24.0.10",
     "typescript": "^5.0.0"
   }
 }
