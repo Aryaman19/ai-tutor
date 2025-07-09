@@ -1,0 +1,13 @@
+{
+  "name": "@ai-tutor/api-client",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "types": "index.ts",
+  "dependencies": {
+    "@ai-tutor/types": "workspace:*",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

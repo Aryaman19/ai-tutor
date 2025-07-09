@@ -1,0 +1,23 @@
+{
+  "name": "ai-tutor-gemma3n",
+  "version": "1.0.0",
+  "description": "AI Tutor powered by Gemma 3n for educational content generation",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "clean": "turbo run clean",
+    "docker:build": "docker build -f docker/Dockerfile -t ai-tutor .",
+    "docker:run": "docker run -p 3000:3000 -p 8000:8000 ai-tutor",
+    "setup": "pnpm install && pnpm build",
+    "migrate": "bash migrate-to-monorepo.sh"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "turbo": "^1.10.0",
+    "typescript": "^5.0.0"
+  }
+}
