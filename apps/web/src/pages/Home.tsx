@@ -54,7 +54,8 @@ const Home: React.FC = () => {
   ];
 
   return (
-    <div className="h-full flex flex-col items-center justify-center p-6 bg-gradient-to-br from-primary/5 via-background to-secondary/5">
+    <div className="h-full overflow-y-auto">
+      <div className="min-h-full flex flex-col items-center justify-center p-6 bg-gradient-to-br from-primary/5 via-background to-secondary/5">
       <div className="max-w-2xl w-full space-y-8">
         {/* Header */}
         <div className="text-center space-y-4">
@@ -175,6 +176,7 @@ const Home: React.FC = () => {
             </p>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

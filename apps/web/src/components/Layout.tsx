@@ -39,7 +39,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   });
 
   return (
-    <div className="flex bg-background font-body">
+    <div className="flex h-screen bg-background font-body overflow-hidden">
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
@@ -51,7 +51,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Sidebar */}
       <div
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r shadow-lg transform transition-transform duration-300 ease-in-out",
+          "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r shadow-lg transform transition-transform duration-300 ease-in-out flex flex-col",
           forceHideSidebar ? "lg:-translate-x-full" : "lg:translate-x-0 lg:static lg:inset-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
@@ -75,7 +75,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
 
         {/* Sidebar Content */}
-        <div className="flex flex-col p-4">
+        <div className="flex flex-col flex-1 min-h-0 p-4">
           <Link to="/">
             <Button className="w-full mb-6 font-medium" variant="default">
               <PlusIcon className="h-4 w-4 mr-2" />
@@ -84,12 +84,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </Link>
 
           {/* Lesson History */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0">
             <h3 className="text-caption text-muted-foreground mb-3">
               Recent Lessons
             </h3>
-            <ScrollArea className="h-[calc(100vh-16rem)]">
-              <div className="space-y-2">
+            <ScrollArea className="h-full">
+              <div className="space-y-2 pr-2">
                 {isLoading ? (
                   <div className="text-body-small text-muted-foreground">
                     Loading lessons...
@@ -128,7 +128,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
 
           {/* Settings Link */}
-          <div className="mt-4 pt-4 border-t">
+          <div className="mt-4 pt-4 border-t flex-shrink-0">
             <Link
               to="/settings"
               className={cn(
@@ -147,10 +147,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Mobile Header */}
         <div className={cn(
-          "flex items-center h-16 px-4 bg-card border-b",
+          "flex items-center h-16 px-4 bg-card border-b flex-shrink-0",
           isSettingsPage ? "" : "lg:hidden"
         )}>
           <div className="flex items-center space-x-2">
@@ -179,7 +179,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
 
         {/* Page Content */}
-        <main className="flex-1 bg-background h-full">{children}</main>
+        <main className="flex-1 bg-background overflow-hidden">{children}</main>
       </div>
     </div>
   );

@@ -29,7 +29,7 @@ function App() {
     <ThemeProvider defaultTheme="system" storageKey="ai-tutor-theme">
       <QueryClientProvider client={queryClient}>
         <Router>
-          <div className="min-h-screen bg-background transition-colors">
+          <div className="h-screen bg-background transition-colors overflow-hidden">
             <Routes>
               {/* System Status - Full page, no layout */}
               <Route path="/status" element={<SystemStatus />} />

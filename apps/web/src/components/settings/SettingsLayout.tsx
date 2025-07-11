@@ -39,16 +39,16 @@ const SettingsLayoutComponent: React.FC<SettingsLayoutProps> = ({
   ];
 
   return (
-    <div className="flex h-full bg-background">
+    <div className="flex h-full bg-background overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 border-r bg-card">
-        <div className="p-6">
-          <div className="flex items-center space-x-2 mb-6">
+      <div className="w-64 border-r bg-card flex-shrink-0">
+        <div className="p-6 h-full flex flex-col">
+          <div className="flex items-center space-x-2 mb-6 flex-shrink-0">
             <SettingsIcon className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold">Settings</h1>
           </div>
           
-          <nav className="space-y-2">
+          <nav className="space-y-2 flex-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
@@ -72,9 +72,9 @@ const SettingsLayoutComponent: React.FC<SettingsLayoutProps> = ({
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Header */}
-        <div className="border-b bg-card px-6 py-4">
+        <div className="border-b bg-card px-6 py-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">
               {tabs.find(tab => tab.id === activeTab)?.label}
@@ -103,8 +103,10 @@ const SettingsLayoutComponent: React.FC<SettingsLayoutProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-hidden">
-          <ScrollArea className="h-full p-6">
-            {children}
+          <ScrollArea className="h-full">
+            <div className="p-6">
+              {children}
+            </div>
           </ScrollArea>
         </div>
       </div>

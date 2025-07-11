@@ -78,7 +78,8 @@ const Lesson: React.FC = () => {
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 p-6 bg-background">
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-6 bg-background">
           {viewMode === "video" && (
             <div className="space-y-6">
               {/* Video Player Placeholder */}
@@ -188,6 +189,7 @@ const Lesson: React.FC = () => {
               </CardContent>
             </Card>
           )}
+          </div>
         </div>
       </div>
 
