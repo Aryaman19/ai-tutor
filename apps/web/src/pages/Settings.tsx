@@ -2,50 +2,47 @@ import React, { useState } from "react";
 import { 
   useSettings, 
   useAvailableModels, 
-  useSupportedLanguages, 
-  useBrowserVoices 
+  useBrowserVoices,
+  useTheme 
 } from "@ai-tutor/hooks";
 import { 
   Card, 
   Button, 
   Input, 
-  Select, 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Slider, 
   ScrollArea 
 } from "@ai-tutor/ui";
 import { 
   SettingsIcon, 
-  UserIcon, 
   MicIcon, 
   VolumeIcon, 
   BrainIcon, 
-  GlobeIcon, 
   PaletteIcon, 
-  BookIcon, 
-  BellIcon,
   SaveIcon,
   RotateCcwIcon,
+  ServerIcon
 } from "lucide-react";
 import { cn } from "@ai-tutor/utils";
+import { HealthChecker } from "@/components/HealthChecker";
 import type { 
   UserSettings, 
   LLMSettings, 
   TTSSettings, 
   STTSettings, 
-  LanguageSettings, 
-  AppearanceSettings, 
-  LessonSettings, 
-  NotificationSettings, 
-  UserProfile 
+  AppearanceSettings
 } from "@ai-tutor/types";
 
 const Settings: React.FC = () => {
   const { settings, updateSettings, resetSettings, isLoading, isUpdating } = useSettings();
   const { data: availableModels } = useAvailableModels();
-  const { data: supportedLanguages } = useSupportedLanguages();
   const { data: browserVoices } = useBrowserVoices();
 
-  const [activeTab, setActiveTab] = useState<string>("profile");
+  const [activeTab, setActiveTab] = useState<string>("llm");
   const [formData, setFormData] = useState<Partial<UserSettings>>({});
 
   React.useEffect(() => {
@@ -77,14 +74,11 @@ const Settings: React.FC = () => {
   };
 
   const tabs = [
-    { id: "profile", label: "Profile", icon: UserIcon },
-    { id: "llm", label: "AI Models", icon: BrainIcon },
-    { id: "tts", label: "Text-to-Speech", icon: VolumeIcon },
-    { id: "stt", label: "Speech-to-Text", icon: MicIcon },
-    { id: "language", label: "Languages", icon: GlobeIcon },
+    { id: "llm", label: "Models", icon: BrainIcon },
+    { id: "tts", label: "Voice", icon: VolumeIcon },
+    { id: "stt", label: "Transcriber", icon: MicIcon },
     { id: "appearance", label: "Appearance", icon: PaletteIcon },
-    { id: "lessons", label: "Learning", icon: BookIcon },
-    { id: "notifications", label: "Notifications", icon: BellIcon },
+    { id: "system", label: "System Status", icon: ServerIcon },
   ];
 
   if (isLoading) {
@@ -162,16 +156,10 @@ const Settings: React.FC = () => {
         </div>
 
         {/* Content */}
-        <ScrollArea className="flex-1 p-6">
-          {activeTab === "profile" && (
-            <ProfileSettings
-              data={formData.profile}
-              onChange={(data) => updateFormData("profile", data)}
-            />
-          )}
-
+        <div className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full p-6">
           {activeTab === "llm" && (
-            <LLMSettings
+            <ModelsSettings
               data={formData.llm}
               availableModels={availableModels}
               onChange={(data) => updateFormData("llm", data)}
@@ -179,7 +167,7 @@ const Settings: React.FC = () => {
           )}
 
           {activeTab === "tts" && (
-            <TTSSettings
+            <VoiceSettings
               data={formData.tts}
               browserVoices={browserVoices}
               onChange={(data) => updateFormData("tts", data)}
@@ -187,18 +175,9 @@ const Settings: React.FC = () => {
           )}
 
           {activeTab === "stt" && (
-            <STTSettings
+            <TranscriberSettings
               data={formData.stt}
-              supportedLanguages={supportedLanguages}
               onChange={(data) => updateFormData("stt", data)}
-            />
-          )}
-
-          {activeTab === "language" && (
-            <LanguageSettings
-              data={formData.language}
-              supportedLanguages={supportedLanguages}
-              onChange={(data) => updateFormData("language", data)}
             />
           )}
 
@@ -209,154 +188,74 @@ const Settings: React.FC = () => {
             />
           )}
 
-          {activeTab === "lessons" && (
-            <LessonSettings
-              data={formData.lessons}
-              onChange={(data) => updateFormData("lessons", data)}
-            />
+          {activeTab === "system" && (
+            <SystemStatusSettings />
           )}
-
-          {activeTab === "notifications" && (
-            <NotificationSettings
-              data={formData.notifications}
-              onChange={(data) => updateFormData("notifications", data)}
-            />
-          )}
-        </ScrollArea>
+          </ScrollArea>
+        </div>
       </div>
     </div>
   );
 };
 
-// Profile Settings Component
-const ProfileSettings: React.FC<{
-  data?: UserProfile;
-  onChange: (data: Partial<UserProfile>) => void;
-}> = ({ data, onChange }) => {
-  return (
-    <div className="space-y-6">
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Personal Information</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Full Name</label>
-            <Input
-              value={data?.name || ""}
-              onChange={(e) => onChange({ name: e.target.value })}
-              placeholder="Enter your full name"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Email</label>
-            <Input
-              type="email"
-              value={data?.email || ""}
-              onChange={(e) => onChange({ email: e.target.value })}
-              placeholder="Enter your email"
-            />
-          </div>
-        </div>
-        <div className="mt-4">
-          <label className="block text-sm font-medium mb-2">Bio</label>
-          <Input
-            value={data?.bio || ""}
-            onChange={(e) => onChange({ bio: e.target.value })}
-            placeholder="Tell us about yourself"
-          />
-        </div>
-      </Card>
-
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Learning Goals</h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          What would you like to achieve with your learning?
-        </p>
-        <div className="space-y-2">
-          {(data?.learningGoals || []).map((goal, index) => (
-            <div key={index} className="flex items-center space-x-2">
-              <Input
-                value={goal}
-                onChange={(e) => {
-                  const newGoals = [...(data?.learningGoals || [])];
-                  newGoals[index] = e.target.value;
-                  onChange({ learningGoals: newGoals });
-                }}
-                placeholder="Enter a learning goal"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const newGoals = (data?.learningGoals || []).filter((_, i) => i !== index);
-                  onChange({ learningGoals: newGoals });
-                }}
-              >
-                Remove
-              </Button>
-            </div>
-          ))}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              const newGoals = [...(data?.learningGoals || []), ""];
-              onChange({ learningGoals: newGoals });
-            }}
-          >
-            Add Goal
-          </Button>
-        </div>
-      </Card>
-    </div>
-  );
-};
-
-// LLM Settings Component
-const LLMSettings: React.FC<{
+// Models Settings Component
+const ModelsSettings: React.FC<{
   data?: LLMSettings;
   availableModels?: any;
   onChange: (data: Partial<LLMSettings>) => void;
 }> = ({ data, availableModels, onChange }) => {
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  
+  const ollamaModels = availableModels?.ollama || [
+    "gemma2:3b",
+    "llama3:8b", 
+    "mistral:7b",
+    "codellama:7b",
+    "phi3:3.8b"
+  ];
+
   return (
     <div className="space-y-6">
       <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">AI Model Configuration</h3>
+        <h3 className="text-lg font-semibold mb-4">Models Configuration</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-2">Provider</label>
-            <Select
-              value={data?.provider || "ollama"}
-              onValueChange={(value) => onChange({ provider: value })}
-            >
-              <option value="ollama">Ollama (Local)</option>
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
+            <Select value="ollama" onValueChange={() => {}} disabled>
+              <SelectTrigger>
+                <SelectValue placeholder="Select provider" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ollama">Ollama (Local)</SelectItem>
+              </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Currently only Ollama is supported
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-2">Model</label>
             <Select
               value={data?.model || "gemma2:3b"}
               onValueChange={(value) => onChange({ model: value })}
+              disabled={isLoadingModels}
             >
-              {availableModels?.ollama?.map((model: string) => (
-                <option key={model} value={model}>{model}</option>
-              ))}
+              <SelectTrigger>
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              <SelectContent>
+                {ollamaModels.map((model: string) => (
+                  <SelectItem key={model} value={model}>{model}</SelectItem>
+                ))}
+              </SelectContent>
             </Select>
+            {isLoadingModels && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Loading available models...
+              </p>
+            )}
           </div>
         </div>
-        
-        {data?.provider !== "ollama" && (
-          <div className="mt-4">
-            <label className="block text-sm font-medium mb-2">API Key</label>
-            <Input
-              type="password"
-              value={data?.apiKey || ""}
-              onChange={(e) => onChange({ apiKey: e.target.value })}
-              placeholder="Enter your API key"
-            />
-          </div>
-        )}
       </Card>
 
       <Card className="p-6">
@@ -374,6 +273,9 @@ const LLMSettings: React.FC<{
               step={0.1}
               className="w-full"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Higher values make output more random, lower values more focused
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-2">
@@ -387,6 +289,9 @@ const LLMSettings: React.FC<{
               step={1}
               className="w-full"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Maximum number of tokens to generate in response
+            </p>
           </div>
         </div>
       </Card>
@@ -394,40 +299,108 @@ const LLMSettings: React.FC<{
   );
 };
 
-// TTS Settings Component
-const TTSSettings: React.FC<{
+// Voice Settings Component
+const VoiceSettings: React.FC<{
   data?: TTSSettings;
   browserVoices?: string[];
   onChange: (data: Partial<TTSSettings>) => void;
 }> = ({ data, browserVoices, onChange }) => {
+  const [selectedProvider, setSelectedProvider] = useState(data?.provider || "browser");
+  const [availableVoices, setAvailableVoices] = useState<string[]>([]);
+  const [isLoadingVoices, setIsLoadingVoices] = useState(false);
+
+  const providers = [
+    { value: "browser", label: "Browser (Built-in)" },
+    { value: "elevenlabs", label: "ElevenLabs" },
+    { value: "openai", label: "OpenAI" },
+  ];
+
+  const elevenLabsVoices = ["Rachel", "Domi", "Bella", "Antoni", "Elli", "Josh"];
+  const openAIVoices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"];
+
+  React.useEffect(() => {
+    const loadVoices = async () => {
+      setIsLoadingVoices(true);
+      
+      if (selectedProvider === "browser") {
+        // Use browser voices
+        const voices = browserVoices || ["Default"];
+        setAvailableVoices(voices);
+      } else if (selectedProvider === "elevenlabs") {
+        setAvailableVoices(elevenLabsVoices);
+      } else if (selectedProvider === "openai") {
+        setAvailableVoices(openAIVoices);
+      }
+      
+      setIsLoadingVoices(false);
+    };
+
+    loadVoices();
+  }, [selectedProvider, browserVoices]);
+
+  const handleProviderChange = (provider: string) => {
+    setSelectedProvider(provider);
+    onChange({ provider, voice: "" }); // Reset voice when provider changes
+  };
+
   return (
     <div className="space-y-6">
       <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Text-to-Speech Configuration</h3>
+        <h3 className="text-lg font-semibold mb-4">Voice Configuration</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-2">Provider</label>
             <Select
-              value={data?.provider || "browser"}
-              onValueChange={(value) => onChange({ provider: value })}
+              value={selectedProvider}
+              onValueChange={handleProviderChange}
             >
-              <option value="browser">Browser (Built-in)</option>
-              <option value="elevenlabs">ElevenLabs</option>
-              <option value="openai">OpenAI</option>
+              <SelectTrigger>
+                <SelectValue placeholder="Select provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {providers.map((provider) => (
+                  <SelectItem key={provider.value} value={provider.value}>
+                    {provider.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
           <div>
             <label className="block text-sm font-medium mb-2">Voice</label>
             <Select
-              value={data?.voice || "default"}
+              value={data?.voice || ""}
               onValueChange={(value) => onChange({ voice: value })}
+              disabled={isLoadingVoices || availableVoices.length === 0}
             >
-              {browserVoices?.map((voice) => (
-                <option key={voice} value={voice}>{voice}</option>
-              ))}
+              <SelectTrigger>
+                <SelectValue placeholder="Select voice" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableVoices.map((voice) => (
+                  <SelectItem key={voice} value={voice}>{voice}</SelectItem>
+                ))}
+              </SelectContent>
             </Select>
+            {isLoadingVoices && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Loading voices...
+              </p>
+            )}
           </div>
         </div>
+        
+        {selectedProvider !== "browser" && (
+          <div className="mt-4">
+            <label className="block text-sm font-medium mb-2">API Key</label>
+            <Input
+              type="password"
+              value={data?.apiKey || ""}
+              onChange={(e) => onChange({ apiKey: e.target.value })}
+              placeholder={`Enter your ${selectedProvider} API key`}
+            />
+          </div>
+        )}
         
         <div className="mt-4 space-y-4">
           <div>
@@ -442,6 +415,9 @@ const TTSSettings: React.FC<{
               step={0.25}
               className="w-full"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Adjust speaking speed
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-2">
@@ -455,6 +431,9 @@ const TTSSettings: React.FC<{
               step={0.1}
               className="w-full"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Adjust volume level
+            </p>
           </div>
         </div>
       </Card>
@@ -462,40 +441,130 @@ const TTSSettings: React.FC<{
   );
 };
 
-// STT Settings Component
-const STTSettings: React.FC<{
+// Transcriber Settings Component
+const TranscriberSettings: React.FC<{
   data?: STTSettings;
-  supportedLanguages?: string[];
   onChange: (data: Partial<STTSettings>) => void;
-}> = ({ data, supportedLanguages, onChange }) => {
+}> = ({ data, onChange }) => {
+  const [selectedProvider, setSelectedProvider] = useState(data?.provider || "browser");
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+
+  const providers = [
+    { value: "browser", label: "Browser (Built-in)" },
+    { value: "whisper", label: "Whisper" },
+    { value: "deepgram", label: "Deepgram" },
+  ];
+
+  const whisperModels = ["whisper-1", "whisper-large-v2", "whisper-large-v3"];
+  const deepgramModels = ["nova-2", "nova", "enhanced", "base"];
+  
+  const browserLanguages = ["en-US", "es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR"];
+  const whisperLanguages = ["en", "es", "fr", "de", "it", "pt", "zh", "ja", "ko", "ru", "ar"];
+  const deepgramLanguages = ["en", "es", "fr", "de", "it", "pt", "zh", "ja", "ko"];
+
+  React.useEffect(() => {
+    const loadModelsAndLanguages = async () => {
+      setIsLoadingModels(true);
+      
+      if (selectedProvider === "browser") {
+        setAvailableModels(["Browser STT"]);
+        setAvailableLanguages(browserLanguages);
+      } else if (selectedProvider === "whisper") {
+        setAvailableModels(whisperModels);
+        setAvailableLanguages(whisperLanguages);
+      } else if (selectedProvider === "deepgram") {
+        setAvailableModels(deepgramModels);
+        setAvailableLanguages(deepgramLanguages);
+      }
+      
+      setIsLoadingModels(false);
+    };
+
+    loadModelsAndLanguages();
+  }, [selectedProvider]);
+
+  const handleProviderChange = (provider: string) => {
+    setSelectedProvider(provider);
+    onChange({ provider, language: "" }); // Reset language when provider changes
+  };
+
   return (
     <div className="space-y-6">
       <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Speech-to-Text Configuration</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <h3 className="text-lg font-semibold mb-4">Transcriber Configuration</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium mb-2">Provider</label>
             <Select
-              value={data?.provider || "browser"}
-              onValueChange={(value) => onChange({ provider: value })}
+              value={selectedProvider}
+              onValueChange={handleProviderChange}
             >
-              <option value="browser">Browser (Built-in)</option>
-              <option value="whisper">Whisper</option>
-              <option value="deepgram">Deepgram</option>
+              <SelectTrigger>
+                <SelectValue placeholder="Select provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {providers.map((provider) => (
+                  <SelectItem key={provider.value} value={provider.value}>
+                    {provider.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Model</label>
+            <Select
+              value={data?.provider === selectedProvider ? (data as any)?.model || "" : ""}
+              onValueChange={(value) => onChange({ model: value } as any)}
+              disabled={isLoadingModels || availableModels.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableModels.map((model) => (
+                  <SelectItem key={model} value={model}>{model}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isLoadingModels && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Loading models...
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium mb-2">Language</label>
             <Select
-              value={data?.language || "en-US"}
+              value={data?.language || ""}
               onValueChange={(value) => onChange({ language: value })}
+              disabled={availableLanguages.length === 0}
             >
-              {supportedLanguages?.map((lang) => (
-                <option key={lang} value={lang}>{lang}</option>
-              ))}
+              <SelectTrigger>
+                <SelectValue placeholder="Select language" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableLanguages.map((lang) => (
+                  <SelectItem key={lang} value={lang}>{lang}</SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
         </div>
+        
+        {selectedProvider !== "browser" && (
+          <div className="mt-4">
+            <label className="block text-sm font-medium mb-2">API Key</label>
+            <Input
+              type="password"
+              value={data?.apiKey || ""}
+              onChange={(e) => onChange({ apiKey: e.target.value })}
+              placeholder={`Enter your ${selectedProvider} API key`}
+            />
+          </div>
+        )}
         
         <div className="mt-4 space-y-4">
           <div className="flex items-center space-x-2">
@@ -528,119 +597,73 @@ const STTSettings: React.FC<{
   );
 };
 
-// Language Settings Component
-const LanguageSettings: React.FC<{
-  data?: LanguageSettings;
-  supportedLanguages?: string[];
-  onChange: (data: Partial<LanguageSettings>) => void;
-}> = ({ data, supportedLanguages, onChange }) => {
-  return (
-    <div className="space-y-6">
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Language Preferences</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Primary Language</label>
-            <Select
-              value={data?.primary || "en"}
-              onValueChange={(value) => onChange({ primary: value })}
-            >
-              {supportedLanguages?.map((lang) => (
-                <option key={lang} value={lang}>{lang}</option>
-              ))}
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Secondary Language</label>
-            <Select
-              value={data?.secondary || ""}
-              onValueChange={(value) => onChange({ secondary: value })}
-            >
-              <option value="">None</option>
-              {supportedLanguages?.map((lang) => (
-                <option key={lang} value={lang}>{lang}</option>
-              ))}
-            </Select>
-          </div>
-        </div>
-        
-        <div className="mt-4">
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="autoDetect"
-              checked={data?.autoDetect || true}
-              onChange={(e) => onChange({ autoDetect: e.target.checked })}
-              className="rounded"
-            />
-            <label htmlFor="autoDetect" className="text-sm font-medium">
-              Auto-detect Language
-            </label>
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-};
-
 // Appearance Settings Component
 const AppearanceSettings: React.FC<{
   data?: AppearanceSettings;
   onChange: (data: Partial<AppearanceSettings>) => void;
 }> = ({ data, onChange }) => {
+  const { theme, setTheme, colorScheme, setColorScheme } = useTheme();
+  
+  const themeOptions = [
+    { value: "light", label: "Light", description: "Clean and bright interface" },
+    { value: "dark", label: "Dark", description: "Easy on the eyes" },
+    { value: "system", label: "System", description: "Matches your device settings" },
+  ];
+
+  const colorOptions = [
+    { value: "green", label: "Green", description: "Fresh and natural", color: "bg-green-500" },
+    { value: "blue", label: "Blue", description: "Calm and professional", color: "bg-blue-500" },
+    { value: "purple", label: "Purple", description: "Creative and modern", color: "bg-purple-500" },
+    { value: "orange", label: "Orange", description: "Warm and energetic", color: "bg-orange-500" },
+  ];
+
   return (
     <div className="space-y-6">
       <Card className="p-6">
         <h3 className="text-lg font-semibold mb-4">Appearance & Display</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        
+        <div className="space-y-6">
           <div>
             <label className="block text-sm font-medium mb-2">Theme</label>
-            <Select
-              value={data?.theme || "system"}
-              onValueChange={(value) => onChange({ theme: value })}
-            >
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-              <option value="system">System</option>
+            <Select value={theme} onValueChange={setTheme}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select theme" />
+              </SelectTrigger>
+              <SelectContent>
+                {themeOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <div className="flex items-center space-x-2">
+                      <span>{option.label}</span>
+                      <span className="text-xs text-muted-foreground">
+                        - {option.description}
+                      </span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
+          
           <div>
-            <label className="block text-sm font-medium mb-2">Font Size</label>
-            <Select
-              value={data?.fontSize || "medium"}
-              onValueChange={(value) => onChange({ fontSize: value })}
-            >
-              <option value="small">Small</option>
-              <option value="medium">Medium</option>
-              <option value="large">Large</option>
+            <label className="block text-sm font-medium mb-2">Color Scheme</label>
+            <Select value={colorScheme} onValueChange={setColorScheme}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select color scheme" />
+              </SelectTrigger>
+              <SelectContent>
+                {colorOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    <div className="flex items-center space-x-2">
+                      <div className={cn("w-4 h-4 rounded-full", option.color)}></div>
+                      <span>{option.label}</span>
+                      <span className="text-xs text-muted-foreground">
+                        - {option.description}
+                      </span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
-          </div>
-        </div>
-        
-        <div className="mt-4 space-y-4">
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="compactMode"
-              checked={data?.compactMode || false}
-              onChange={(e) => onChange({ compactMode: e.target.checked })}
-              className="rounded"
-            />
-            <label htmlFor="compactMode" className="text-sm font-medium">
-              Compact Mode
-            </label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="animations"
-              checked={data?.animations !== false}
-              onChange={(e) => onChange({ animations: e.target.checked })}
-              className="rounded"
-            />
-            <label htmlFor="animations" className="text-sm font-medium">
-              Enable Animations
-            </label>
           </div>
         </div>
       </Card>
@@ -648,133 +671,19 @@ const AppearanceSettings: React.FC<{
   );
 };
 
-// Lesson Settings Component
-const LessonSettings: React.FC<{
-  data?: LessonSettings;
-  onChange: (data: Partial<LessonSettings>) => void;
-}> = ({ data, onChange }) => {
+// System Status Settings Component
+const SystemStatusSettings: React.FC = () => {
   return (
     <div className="space-y-6">
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Learning Preferences</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Default Difficulty</label>
-            <Select
-              value={data?.defaultDifficulty || "intermediate"}
-              onValueChange={(value) => onChange({ defaultDifficulty: value })}
-            >
-              <option value="beginner">Beginner</option>
-              <option value="intermediate">Intermediate</option>
-              <option value="advanced">Advanced</option>
-            </Select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              Session Duration: {data?.sessionDuration || 30} minutes
-            </label>
-            <Slider
-              value={[data?.sessionDuration || 30]}
-              onValueChange={(value) => onChange({ sessionDuration: value[0] })}
-              max={180}
-              min={5}
-              step={5}
-              className="w-full"
-            />
-          </div>
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold mb-2">System Health Monitor</h3>
+          <p className="text-sm text-muted-foreground mb-6">
+            Monitor the health and status of all AI Tutor services and connections.
+          </p>
         </div>
-        
-        <div className="mt-4 space-y-4">
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="breakReminders"
-              checked={data?.breakReminders !== false}
-              onChange={(e) => onChange({ breakReminders: e.target.checked })}
-              className="rounded"
-            />
-            <label htmlFor="breakReminders" className="text-sm font-medium">
-              Break Reminders
-            </label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="progressTracking"
-              checked={data?.progressTracking !== false}
-              onChange={(e) => onChange({ progressTracking: e.target.checked })}
-              className="rounded"
-            />
-            <label htmlFor="progressTracking" className="text-sm font-medium">
-              Progress Tracking
-            </label>
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-};
-
-// Notification Settings Component
-const NotificationSettings: React.FC<{
-  data?: NotificationSettings;
-  onChange: (data: Partial<NotificationSettings>) => void;
-}> = ({ data, onChange }) => {
-  return (
-    <div className="space-y-6">
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Notification Preferences</h3>
-        <div className="space-y-4">
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="emailNotifications"
-              checked={data?.emailNotifications !== false}
-              onChange={(e) => onChange({ emailNotifications: e.target.checked })}
-              className="rounded"
-            />
-            <label htmlFor="emailNotifications" className="text-sm font-medium">
-              Email Notifications
-            </label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="pushNotifications"
-              checked={data?.pushNotifications !== false}
-              onChange={(e) => onChange({ pushNotifications: e.target.checked })}
-              className="rounded"
-            />
-            <label htmlFor="pushNotifications" className="text-sm font-medium">
-              Push Notifications
-            </label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="lessonReminders"
-              checked={data?.lessonReminders !== false}
-              onChange={(e) => onChange({ lessonReminders: e.target.checked })}
-              className="rounded"
-            />
-            <label htmlFor="lessonReminders" className="text-sm font-medium">
-              Lesson Reminders
-            </label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="progressUpdates"
-              checked={data?.progressUpdates !== false}
-              onChange={(e) => onChange({ progressUpdates: e.target.checked })}
-              className="rounded"
-            />
-            <label htmlFor="progressUpdates" className="text-sm font-medium">
-              Progress Updates
-            </label>
-          </div>
-        </div>
-      </Card>
+        <HealthChecker />
+      </div>
     </div>
   );
 };

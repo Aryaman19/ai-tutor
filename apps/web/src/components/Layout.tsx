@@ -1,11 +1,11 @@
 // src/components/Layout.tsx
 import React, { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { PlusIcon, BookOpenIcon, MenuIcon, XIcon, SettingsIcon } from "lucide-react";
+import { PlusIcon, BookOpenIcon, MenuIcon, SettingsIcon, ArrowLeftIcon } from "lucide-react";
 import { Button } from "@ai-tutor/ui";
 import { ScrollArea } from "@ai-tutor/ui";
-import { SimpleThemeToggle, AdvancedThemeToggle } from "@ai-tutor/ui";
+import { SimpleThemeToggle } from "@ai-tutor/ui";
 import { cn } from "@ai-tutor/utils";
 import { lessonsApi } from "@ai-tutor/api-client";
 import { ASSET_IMAGES } from "@/assets/asset";
@@ -17,6 +17,20 @@ interface LayoutProps {
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  
+  // Auto-hide sidebar on settings page for desktop
+  const isSettingsPage = location.pathname === '/settings';
+  const [forceHideSidebar, setForceHideSidebar] = useState(isSettingsPage);
+  
+  React.useEffect(() => {
+    if (isSettingsPage) {
+      setForceHideSidebar(true);
+      setSidebarOpen(false);
+    } else {
+      setForceHideSidebar(false);
+    }
+  }, [isSettingsPage]);
 
   const { data: lessons = [], isLoading } = useQuery({
     queryKey: ["lessons"],
@@ -38,28 +52,25 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <div
         className={cn(
           "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r shadow-lg transform transition-transform duration-300 ease-in-out",
-          "lg:translate-x-0 lg:static lg:inset-0",
+          forceHideSidebar ? "lg:-translate-x-full" : "lg:translate-x-0 lg:static lg:inset-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         {/* Sidebar Header */}
         <div className="flex items-center justify-between h-16 px-4 border-b">
           <div className="flex items-center space-x-2">
-            <img src={ASSET_IMAGES.logoIcon} alt="logo" className="h-8 w-8" />
-            <h1 className="text-xl font-bold font-heading text-foreground">
-              Xonera
-            </h1>
-          </div>
-          <div className="flex items-center space-x-2">
-            <AdvancedThemeToggle />
             <Button
               variant="ghost"
               size="sm"
               className="lg:hidden"
               onClick={() => setSidebarOpen(false)}
             >
-              <XIcon className="h-5 w-5" />
+              <MenuIcon className="h-4 w-4" />
             </Button>
+            <img src={ASSET_IMAGES.logoIcon} alt="logo" className="h-8 w-8" />
+            <h1 className="text-xl font-bold font-heading text-foreground">
+              Xonera
+            </h1>
           </div>
         </div>
 
@@ -138,21 +149,33 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile Header */}
-        <div className="lg:hidden flex items-center justify-between h-16 px-4 bg-card border-b">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <MenuIcon className="h-5 w-5" />
-          </Button>
+        <div className={cn(
+          "flex items-center h-16 px-4 bg-card border-b",
+          isSettingsPage ? "" : "lg:hidden"
+        )}>
           <div className="flex items-center space-x-2">
-            <img src={ASSET_IMAGES.logoIcon} alt="logo" className="h-6 w-6" />
-            <span className="font-semibold font-heading text-foreground">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (isSettingsPage) {
+                  navigate('/');
+                } else {
+                  setSidebarOpen(true);
+                }
+              }}
+            >
+              {isSettingsPage ? (
+                <ArrowLeftIcon className="h-5 w-5" />
+              ) : (
+                <MenuIcon className="h-5 w-5" />
+              )}
+            </Button>
+            <img src={ASSET_IMAGES.logoIcon} alt="logo" className="h-8 w-8" />
+            <h1 className="text-xl font-bold font-heading text-foreground">
               Xonera
-            </span>
+            </h1>
           </div>
-          <AdvancedThemeToggle />
         </div>
 
         {/* Page Content */}
