@@ -12,6 +12,7 @@ import { ThemeProvider } from "@ai-tutor/hooks";
 import Layout from "./components/Layout";
 import Home from "./pages/Home";
 import Lesson from "./pages/Lesson";
+import Settings from "./pages/Settings";
 import { SystemStatus } from "./pages/SystemStatus";
 
 const queryClient = new QueryClient();
@@ -37,6 +38,7 @@ function App() {
               <Route path="/" element={<AppLayout />}>
                 <Route index element={<Home />} />
                 <Route path="lesson/:id" element={<Lesson />} />
+                <Route path="settings" element={<Settings />} />
               </Route>
             </Routes>
             <Toaster />

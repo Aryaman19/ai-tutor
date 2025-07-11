@@ -79,6 +79,12 @@ try:
 except ImportError:
     logger.warning("Health router not found - will use basic endpoints only")
 
+try:
+    from routers.settings import router as settings_router
+    app.include_router(settings_router, prefix="/api/settings", tags=["settings"])
+except ImportError:
+    logger.warning("Settings router not found - settings endpoints will not be available")
+
 
 if __name__ == "__main__":
     uvicorn.run(

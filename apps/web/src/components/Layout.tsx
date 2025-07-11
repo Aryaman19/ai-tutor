@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { PlusIcon, BookOpenIcon, MenuIcon, XIcon } from "lucide-react";
+import { PlusIcon, BookOpenIcon, MenuIcon, XIcon, SettingsIcon } from "lucide-react";
 import { Button } from "@ai-tutor/ui";
 import { ScrollArea } from "@ai-tutor/ui";
 import { SimpleThemeToggle, AdvancedThemeToggle } from "@ai-tutor/ui";
@@ -77,7 +77,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <h3 className="text-caption text-muted-foreground mb-3">
               Recent Lessons
             </h3>
-            <ScrollArea className="h-[calc(100vh-12rem)]">
+            <ScrollArea className="h-[calc(100vh-16rem)]">
               <div className="space-y-2">
                 {isLoading ? (
                   <div className="text-body-small text-muted-foreground">
@@ -114,6 +114,23 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 )}
               </div>
             </ScrollArea>
+          </div>
+
+          {/* Settings Link */}
+          <div className="mt-4 pt-4 border-t">
+            <Link
+              to="/settings"
+              className={cn(
+                "flex items-center space-x-2 p-3 rounded-lg transition-colors font-body",
+                "hover:bg-accent border border-transparent",
+                location.pathname === "/settings"
+                  ? "bg-primary/10 border-primary/20 text-primary"
+                  : "text-foreground hover:text-accent-foreground"
+              )}
+            >
+              <SettingsIcon className="h-4 w-4 flex-shrink-0" />
+              <span className="font-medium text-sm">Settings</span>
+            </Link>
           </div>
         </div>
       </div>
