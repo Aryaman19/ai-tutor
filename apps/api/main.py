@@ -52,9 +52,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 # Basic routes for testing
 
 

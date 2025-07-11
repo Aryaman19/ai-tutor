@@ -1,7 +1,7 @@
 {
   "name": "@ai-tutor/tailwind-config",
   "version": "1.0.0",
-  "main": "tailwind.config.ts",
+  "main": "index.ts",
   "devDependencies": {
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.32",
