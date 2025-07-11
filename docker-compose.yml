@@ -27,14 +27,8 @@ services:
     ports:
       - "3000:3000" # Frontend
       - "8000:8000" # Backend API
-    environment:
-      - MONGODB_URL=mongodb://mongodb:27017
-      - OLLAMA_HOST=host.docker.internal:11434
-      - ENVIRONMENT=docker
-      - DEBUG=true
-    volumes:
-      - ai_tutor_audio:/app/static/audio # Only audio cache
-      - ai_tutor_uploads:/app/static/uploads # Only uploads
+    env_file:
+      - ./apps/api/.env.docker
     depends_on:
       mongodb:
         condition: service_healthy
@@ -50,10 +44,6 @@ services:
 
 volumes:
   mongodb_data:
-    driver: local
-  ai_tutor_audio:
-    driver: local
-  ai_tutor_uploads:
     driver: local
 
 networks:

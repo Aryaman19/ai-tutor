@@ -11,18 +11,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "@ai-tutor/ui": path.resolve(__dirname, "../../packages/ui"),
-      "@ai-tutor/tailwind-config": path.resolve(
-        __dirname,
-        "../../packages/config/tailwind"
-      ),
-      "@ai-tutor/hooks": path.resolve(__dirname, "../../packages/hooks"),
-      "@ai-tutor/utils": path.resolve(__dirname, "../../packages/utils"),
-      "@ai-tutor/api-client": path.resolve(
-        __dirname,
-        "../../packages/api-client"
-      ),
-      "@ai-tutor/types": path.resolve(__dirname, "../../packages/types"),
     },
   },
   server: {

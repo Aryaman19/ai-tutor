@@ -46,7 +46,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -82,17 +82,6 @@ try:
 except ImportError:
     logger.warning("Health router not found - will use basic endpoints only")
 
-try:
-    from routers.lessons import router as lessons_router
-    app.include_router(lessons_router, prefix="/api/lesson", tags=["lessons"])
-except ImportError:
-    logger.warning("Lessons router not found")
-
-try:
-    from routers.doubts import router as doubts_router
-    app.include_router(doubts_router, prefix="/api/doubt", tags=["doubts"])
-except ImportError:
-    logger.warning("Doubts router not found")
 
 if __name__ == "__main__":
     uvicorn.run(
