@@ -3,6 +3,24 @@
 @tailwind utilities;
 
 @layer base {
+  /* Set theme-aware initial background to prevent flash */
+  html {
+    color-scheme: light;
+    background-color: hsl(0 0% 100%);
+  }
+  
+  html.dark {
+    color-scheme: dark;
+    background-color: hsl(222.2 84% 4.9%);
+  }
+  
+  @media (prefers-color-scheme: dark) {
+    html:not(.light) {
+      color-scheme: dark;
+      background-color: hsl(222.2 84% 4.9%);
+    }
+  }
+
   :root {
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;

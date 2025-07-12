@@ -147,6 +147,10 @@ python main.py
 cd apps/web
 pnpm install
 pnpm dev
+
+# Run mongodb database locally
+brew services start mongodb/brew/mongodb-community
+brew services stop mongodb/brew/mongodb-community
 ```
 
 ## 📊 System Health Check

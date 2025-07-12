@@ -50,32 +50,43 @@ export function ThemeProvider({
   // Apply theme mode (light/dark/system)
   useEffect(() => {
     const root = window.document.documentElement;
-
-    root.classList.remove("light", "dark");
-
+    
+    // Determine what theme should be applied
+    let targetTheme: string;
     if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
+      targetTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
         ? "dark"
         : "light";
-
-      root.classList.add(systemTheme);
-      return;
+    } else {
+      targetTheme = theme;
     }
-
-    root.classList.add(theme);
+    
+    // Only update if the current theme is different
+    const currentTheme = root.classList.contains("dark") ? "dark" : "light";
+    
+    if (currentTheme !== targetTheme) {
+      root.classList.remove("light", "dark");
+      root.classList.add(targetTheme);
+    }
   }, [theme]);
 
   // Apply color scheme
   useEffect(() => {
     const root = window.document.documentElement;
+    
+    // Check current color scheme
+    const currentColorScheme = root.getAttribute("data-theme");
+    const targetColorScheme = colorScheme !== "green" ? colorScheme : null;
+    
+    // Only update if different
+    if (currentColorScheme !== targetColorScheme) {
+      // Remove all color scheme data attributes
+      root.removeAttribute("data-theme");
 
-    // Remove all color scheme data attributes
-    root.removeAttribute("data-theme");
-
-    // Apply new color scheme if not default
-    if (colorScheme !== "green") {
-      root.setAttribute("data-theme", colorScheme);
+      // Apply new color scheme if not default
+      if (targetColorScheme) {
+        root.setAttribute("data-theme", targetColorScheme);
+      }
     }
   }, [colorScheme]);
 

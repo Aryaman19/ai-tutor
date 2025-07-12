@@ -12,6 +12,37 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Xonera</title>
+    <script>
+      // Prevent white flash by applying theme immediately
+      (function() {
+        try {
+          const themeStorageKey = 'ai-tutor-theme';
+          const colorStorageKey = 'ai-tutor-color-scheme';
+          const savedTheme = localStorage.getItem(themeStorageKey);
+          const savedColorScheme = localStorage.getItem(colorStorageKey);
+          
+          const root = document.documentElement;
+          
+          // Apply theme mode (light/dark/system)
+          let effectiveTheme = savedTheme || 'system';
+          
+          if (effectiveTheme === 'system') {
+            effectiveTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          
+          root.classList.add(effectiveTheme);
+          
+          // Apply color scheme
+          if (savedColorScheme && savedColorScheme !== 'green') {
+            root.setAttribute('data-theme', savedColorScheme);
+          }
+        } catch (e) {
+          // Fallback to system preference if localStorage fails
+          const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.classList.add(systemDark ? 'dark' : 'light');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
