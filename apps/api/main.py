@@ -85,6 +85,12 @@ try:
 except ImportError:
     logger.warning("Settings router not found - settings endpoints will not be available")
 
+try:
+    from routers.lesson import router as lesson_router
+    app.include_router(lesson_router, prefix="/api", tags=["lessons"])
+except ImportError:
+    logger.warning("Lesson router not found - lesson endpoints will not be available")
+
 
 if __name__ == "__main__":
     uvicorn.run(

@@ -35,7 +35,8 @@ async def connect_to_mongo():
 
         # Initialize Beanie
         from models import UserSettings
-        await init_beanie(database=db.database, document_models=[UserSettings])
+        from models.lesson import Lesson
+        await init_beanie(database=db.database, document_models=[UserSettings, Lesson])
 
         logger.info("Beanie initialized successfully")
         return True

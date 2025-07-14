@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   PlayIcon,
   BookOpenIcon,
@@ -16,25 +17,27 @@ import {
   CardContent,
 } from "@ai-tutor/ui";
 import { ASSET_IMAGES } from "@/assets/asset";
+import { lessonsApi } from "@ai-tutor/api-client";
 
 const Home: React.FC = () => {
   const [topic, setTopic] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const createLessonMutation = useMutation({
+    mutationFn: (topic: string) => lessonsApi.createLesson(topic),
+    onSuccess: (lesson) => {
+      queryClient.invalidateQueries({ queryKey: ["lessons"] });
+      navigate(`/lesson/${lesson.id}`);
+    },
+    onError: (error) => {
+      console.error("Error creating lesson:", error);
+    },
+  });
 
   const handleGenerateELI5 = async () => {
     if (!topic.trim()) return;
-
-    setIsGenerating(true);
-
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      navigate("/lesson/demo-lesson");
-    } catch (error) {
-      console.error("Error generating lesson:", error);
-    } finally {
-      setIsGenerating(false);
-    }
+    createLessonMutation.mutate(topic.trim());
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -79,14 +82,14 @@ const Home: React.FC = () => {
                     onKeyPress={handleKeyPress}
                     placeholder="e.g., How does photosynthesis work? Explain quantum physics in simple terms..."
                     className="w-full text-base bg-background border-2 border-border rounded-xl px-4 py-3 h-32 resize-none overflow-y-auto focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-200 placeholder:text-muted-foreground"
-                    disabled={isGenerating}
+                    disabled={createLessonMutation.isPending}
                   />
                   <Button
                     onClick={handleGenerateELI5}
-                    disabled={!topic.trim() || isGenerating}
+                    disabled={!topic.trim() || createLessonMutation.isPending}
                     className="w-full h-14 text-base font-semibold bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 border-0 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                   >
-                    {isGenerating ? (
+                    {createLessonMutation.isPending ? (
                       <div className="flex items-center space-x-3">
                         <div className="animate-spin h-5 w-5 border-2 border-primary-foreground border-t-transparent rounded-full" />
                         <span>Creating your lesson...</span>
@@ -101,7 +104,7 @@ const Home: React.FC = () => {
                 </div>
               </div>
 
-              {isGenerating && (
+              {createLessonMutation.isPending && (
                 <div className="flex items-center justify-center space-x-3 p-4 bg-primary/10 rounded-lg border border-primary/20">
                   <div className="flex space-x-1">
                     <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '0ms'}}></div>
@@ -109,6 +112,12 @@ const Home: React.FC = () => {
                     <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '300ms'}}></div>
                   </div>
                   <span className="text-primary font-medium">Creating your personalized lesson...</span>
+                </div>
+              )}
+              
+              {createLessonMutation.isError && (
+                <div className="flex items-center justify-center space-x-3 p-4 bg-destructive/10 rounded-lg border border-destructive/20">
+                  <span className="text-destructive font-medium">Failed to create lesson. Please try again.</span>
                 </div>
               )}
             </div>
@@ -126,7 +135,7 @@ const Home: React.FC = () => {
                 key={index}
                 onClick={() => setTopic(example)}
                 className="p-4 text-left bg-card/60 backdrop-blur-sm rounded-xl border-2 border-border/50 hover:border-primary/30 hover:bg-card/80 transition-all duration-200 group transform hover:-translate-y-1 hover:shadow-lg"
-                disabled={isGenerating}
+                disabled={createLessonMutation.isPending}
               >
                 <div className="flex items-center justify-between">
                   <span className="text-base text-foreground group-hover:text-primary font-medium transition-colors">
