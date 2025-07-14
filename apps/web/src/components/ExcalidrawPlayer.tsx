@@ -7,6 +7,7 @@ import { Card, CardContent } from "@ai-tutor/ui";
 import { cn } from "@ai-tutor/utils";
 import type { ExcalidrawElement, LessonStep } from "../utils/excalidraw";
 import { regenerateElementIndices } from "../utils/excalidraw";
+import { generateSampleLesson } from "../utils/testData";
 
 interface ExcalidrawPlayerProps {
   steps: LessonStep[];
@@ -14,6 +15,7 @@ interface ExcalidrawPlayerProps {
   autoPlay?: boolean;
   speechRate?: number;
   speechVolume?: number;
+  testMode?: boolean;
 }
 
 const ExcalidrawPlayer: React.FC<ExcalidrawPlayerProps> = ({
@@ -21,7 +23,8 @@ const ExcalidrawPlayer: React.FC<ExcalidrawPlayerProps> = ({
   className,
   autoPlay = false,
   speechRate = 1,
-  speechVolume = 1
+  speechVolume = 1,
+  testMode = false
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -35,6 +38,27 @@ const ExcalidrawPlayer: React.FC<ExcalidrawPlayerProps> = ({
   const pendingUpdateRef = useRef<{elements: ExcalidrawElement[], currentElements: ExcalidrawElement[]} | null>(null);
   const retryCountRef = useRef(0);
   const maxRetries = 3;
+
+  // Use test data if test mode is enabled
+  const actualSteps = testMode ? generateSampleLesson() : steps;
+
+  // Reset when steps or test mode changes
+  useEffect(() => {
+    console.log('[ExcalidrawPlayer] Resetting due to steps/testMode change');
+    setCurrentStepIndex(0);
+    setAccumulatedElements([]);
+    setIsPlaying(false);
+    speechSynthesis.cancel();
+    setIsSpeaking(false);
+  }, [testMode, steps]);
+
+  // Force reset currentStepIndex if it's out of bounds
+  useEffect(() => {
+    if (currentStepIndex >= actualSteps.length && actualSteps.length > 0) {
+      console.log('[ExcalidrawPlayer] Current step index out of bounds, resetting to 0');
+      setCurrentStepIndex(0);
+    }
+  }, [currentStepIndex, actualSteps.length]);
 
   // Initialize speech synthesis
   useEffect(() => {
@@ -53,13 +77,6 @@ const ExcalidrawPlayer: React.FC<ExcalidrawPlayerProps> = ({
       };
     }
   }, []);
-
-  // Auto-play on mount if enabled
-  useEffect(() => {
-    if (autoPlay && steps.length > 0) {
-      setIsPlaying(true);
-    }
-  }, [autoPlay, steps]);
 
   // Sophisticated debounced scene update (from POC)
   const updateExcalidrawScene = useCallback((elements: ExcalidrawElement[], currentElements: ExcalidrawElement[] = [], delay = 150) => {
@@ -160,26 +177,65 @@ const ExcalidrawPlayer: React.FC<ExcalidrawPlayerProps> = ({
     }, delay);
   }, [excalidrawAPI]);
 
+  // Auto-play on mount if enabled
+  useEffect(() => {
+    if (autoPlay && actualSteps.length > 0) {
+      setIsPlaying(true);
+    }
+  }, [autoPlay, actualSteps]);
+
+  // Initialize first step when API is ready
+  useEffect(() => {
+    if (excalidrawAPI && actualSteps.length > 0 && currentStepIndex === 0) {
+      console.log('[ExcalidrawPlayer] Initializing first step');
+      const firstStep = actualSteps[0];
+      if (firstStep.elements && firstStep.elements.length > 0) {
+        const initialElements = firstStep.elements as ExcalidrawElement[];
+        setAccumulatedElements(initialElements);
+        updateExcalidrawScene(initialElements, initialElements, 100);
+      }
+    }
+  }, [excalidrawAPI, actualSteps, currentStepIndex, updateExcalidrawScene]);
+
   // Update accumulated elements when step changes
   useEffect(() => {
-    if (steps.length === 0) return;
+    if (actualSteps.length === 0) return;
 
-    const currentStep = steps[currentStepIndex];
+    const currentStep = actualSteps[currentStepIndex];
     if (!currentStep) return;
 
+    console.log(`[ExcalidrawPlayer] Processing step ${currentStepIndex}:`, {
+      title: currentStep.title,
+      hasElements: !!currentStep.elements,
+      elementsCount: currentStep.elements?.length || 0,
+      elements: currentStep.elements
+    });
+
     // Add current step elements to accumulated elements
-    let newElements = [...accumulatedElements];
+    let newElements: ExcalidrawElement[] = [];
     let currentStepElements: ExcalidrawElement[] = [];
     
     if (currentStep.elements && currentStep.elements.length > 0) {
       currentStepElements = currentStep.elements as ExcalidrawElement[];
-      newElements = [...newElements, ...currentStepElements];
+      
+      // For step 0, start fresh. For other steps, accumulate
+      if (currentStepIndex === 0) {
+        newElements = [...currentStepElements];
+      } else {
+        newElements = [...accumulatedElements, ...currentStepElements];
+      }
+      
       setAccumulatedElements(newElements);
+      
+      console.log(`[ExcalidrawPlayer] Step ${currentStepIndex}: Added ${currentStepElements.length} elements. Total: ${newElements.length}`);
+    } else {
+      console.log(`[ExcalidrawPlayer] No elements found in step ${currentStepIndex}`);
+      newElements = [...accumulatedElements];
     }
 
     // Use the new signature with current step elements for scrolling
     updateExcalidrawScene(newElements, currentStepElements);
-  }, [currentStepIndex, steps, updateExcalidrawScene]);
+  }, [currentStepIndex, actualSteps, updateExcalidrawScene, accumulatedElements]);
 
   // Speech synthesis
   const speak = useCallback((text: string) => {
@@ -228,12 +284,12 @@ const ExcalidrawPlayer: React.FC<ExcalidrawPlayerProps> = ({
 
   // Play current step
   const playCurrentStep = useCallback(async () => {
-    if (currentStepIndex >= steps.length) {
+    if (currentStepIndex >= actualSteps.length) {
       setIsPlaying(false);
       return;
     }
 
-    const currentStep = steps[currentStepIndex];
+    const currentStep = actualSteps[currentStepIndex];
     if (!currentStep) return;
 
     // Speak the narration (fallback to explanation or content for backward compatibility)
@@ -243,14 +299,14 @@ const ExcalidrawPlayer: React.FC<ExcalidrawPlayerProps> = ({
     }
 
     // Auto-advance to next step if playing
-    if (isPlaying && currentStepIndex < steps.length - 1) {
+    if (isPlaying && currentStepIndex < actualSteps.length - 1) {
       setTimeout(() => {
         setCurrentStepIndex(prev => prev + 1);
       }, 1000); // Brief pause between steps
-    } else if (currentStepIndex >= steps.length - 1) {
+    } else if (currentStepIndex >= actualSteps.length - 1) {
       setIsPlaying(false);
     }
-  }, [currentStepIndex, steps, isPlaying, speak]);
+  }, [currentStepIndex, actualSteps, isPlaying, speak]);
 
   // Handle play/pause
   const handlePlayPause = () => {
@@ -306,7 +362,8 @@ const ExcalidrawPlayer: React.FC<ExcalidrawPlayerProps> = ({
     };
   }, []);
 
-  if (steps.length === 0) {
+  if (actualSteps.length === 0) {
+    console.log('[ExcalidrawPlayer] No steps provided');
     return (
       <Card className="w-full h-96">
         <CardContent className="flex items-center justify-center h-full">
@@ -316,8 +373,18 @@ const ExcalidrawPlayer: React.FC<ExcalidrawPlayerProps> = ({
     );
   }
 
-  const currentStep = steps[currentStepIndex];
-  const progress = ((currentStepIndex + 1) / steps.length) * 100;
+  const currentStep = actualSteps[currentStepIndex];
+  const progress = ((currentStepIndex + 1) / actualSteps.length) * 100;
+
+  console.log('[ExcalidrawPlayer] Initialized with steps:', {
+    stepsCount: actualSteps.length,
+    currentStepIndex,
+    stepsWithElements: actualSteps.filter(step => step.elements && step.elements.length > 0).length,
+    testMode,
+    firstStepElements: actualSteps[0]?.elements?.length || 0,
+    currentStep: currentStep?.title,
+    currentStepElements: currentStep?.elements?.length || 0
+  });
 
   return (
     <div className={cn("w-full", className)}>
@@ -355,7 +422,12 @@ const ExcalidrawPlayer: React.FC<ExcalidrawPlayerProps> = ({
             </div>
             
             <div className="text-sm text-muted-foreground">
-              Step {currentStepIndex + 1} of {steps.length}
+              Step {currentStepIndex + 1} of {actualSteps.length}
+              {testMode && (
+                <span className="ml-2 px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">
+                  TEST MODE
+                </span>
+              )}
               {isSpeaking && (
                 <span className="ml-2 text-primary animate-pulse">
                   Speaking...
@@ -388,7 +460,7 @@ const ExcalidrawPlayer: React.FC<ExcalidrawPlayerProps> = ({
 
       {/* Excalidraw Canvas */}
       <Card className="overflow-hidden">
-        <div className="h-96 w-full">
+        <div style={{ height: "600px", width: "100%" }}>
           <Excalidraw
             excalidrawAPI={(api) => setExcalidrawAPI(api)}
             initialData={{

@@ -250,6 +250,7 @@ const Lesson: React.FC = () => {
                     autoPlay={false}
                     speechRate={1}
                     speechVolume={0.8}
+                    testMode={true}
                   />
                 </div>
               ) : lesson?.steps && lesson.steps.length > 0 ? (
