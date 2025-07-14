@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PlusIcon, BookOpenIcon, MenuIcon, SettingsIcon, ArrowLeftIcon, Edit3Icon, Trash2Icon, CheckIcon, XIcon, MoreHorizontalIcon } from "lucide-react";
+import { PlusIcon, MenuIcon, SettingsIcon, ArrowLeftIcon, Trash2Icon } from "lucide-react";
 import { Button, ConfirmationModal } from "@ai-tutor/ui";
 import { ScrollArea } from "@ai-tutor/ui";
 import { SimpleThemeToggle } from "@ai-tutor/ui";
@@ -17,8 +17,6 @@ interface LayoutProps {
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [lessonToDelete, setLessonToDelete] = useState<Lesson | null>(null);
   const location = useLocation();
@@ -44,18 +42,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     refetchOnWindowFocus: false,
   });
 
-  const updateLessonMutation = useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: Partial<Lesson> }) =>
-      lessonsApi.updateLesson(id, updates),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lessons"] });
-      setEditingLessonId(null);
-      setEditingTitle("");
-    },
-    onError: (error) => {
-      console.error("Error updating lesson:", error);
-    },
-  });
 
   const deleteLessonMutation = useMutation({
     mutationFn: (id: string) => lessonsApi.deleteLesson(id),
@@ -77,24 +63,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     },
   });
 
-  const handleEditStart = (lesson: Lesson) => {
-    setEditingLessonId(lesson.id!);
-    setEditingTitle(lesson.title || lesson.topic);
-  };
-
-  const handleEditSave = (lessonId: string) => {
-    if (editingTitle.trim()) {
-      updateLessonMutation.mutate({
-        id: lessonId,
-        updates: { title: editingTitle.trim() },
-      });
-    }
-  };
-
-  const handleEditCancel = () => {
-    setEditingLessonId(null);
-    setEditingTitle("");
-  };
 
   const handleDeleteStart = (lesson: Lesson) => {
     setLessonToDelete(lesson);
@@ -107,13 +75,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent, lessonId: string) => {
-    if (e.key === "Enter") {
-      handleEditSave(lessonId);
-    } else if (e.key === "Escape") {
-      handleEditCancel();
-    }
-  };
 
   return (
     <div className="flex h-screen bg-background font-body overflow-hidden">
@@ -184,64 +145,33 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                       )}
                     >
                       <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center flex-1 min-w-0">
-                          <Link
-                            to={`/lesson/${lesson.id}`}
-                            className="flex items-center space-x-3 flex-1 min-w-0 group-hover:text-foreground"
-                          >
-                            <BookOpenIcon className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                            <div className="flex-1 min-w-0">
-                              {editingLessonId === lesson.id ? (
-                                <div className="flex items-center space-x-2">
-                                  <input
-                                    type="text"
-                                    value={editingTitle}
-                                    onChange={(e) => setEditingTitle(e.target.value)}
-                                    onKeyDown={(e) => handleKeyPress(e, lesson.id!)}
-                                    onBlur={() => handleEditSave(lesson.id!)}
-                                    className="flex-1 text-sm font-medium bg-transparent border-none outline-none focus:ring-0 p-0 text-foreground"
-                                    autoFocus
-                                    onClick={(e) => e.preventDefault()}
-                                  />
-                                </div>
-                              ) : (
-                                <span className="truncate font-medium text-sm block">
-                                  {lesson.title || lesson.topic}
-                                </span>
-                              )}
-                              <div className="text-xs text-muted-foreground mt-1 font-body">
-                                {new Date(lesson.created_at).toLocaleDateString()}
-                              </div>
+                        <Link
+                          to={`/lesson/${lesson.id}`}
+                          className="flex-1 min-w-0 group-hover:text-foreground"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <span className="truncate font-medium text-xs block leading-tight">
+                              {lesson.title || lesson.topic}
+                            </span>
+                            <div className="text-xs text-muted-foreground mt-1 font-body">
+                              {new Date(lesson.created_at).toLocaleDateString()}
                             </div>
-                          </Link>
-                        </div>
-                        
-                        {editingLessonId !== lesson.id && (
-                          <div className="flex items-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent rounded-md"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleEditStart(lesson);
-                              }}
-                            >
-                              <Edit3Icon className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent rounded-md"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleDeleteStart(lesson);
-                              }}
-                            >
-                              <Trash2Icon className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                            </Button>
                           </div>
-                        )}
+                        </Link>
+                        
+                        <div className="flex items-center ml-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent rounded-md"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleDeleteStart(lesson);
+                            }}
+                          >
+                            <Trash2Icon className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))
