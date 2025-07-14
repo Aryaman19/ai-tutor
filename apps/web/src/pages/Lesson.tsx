@@ -8,6 +8,7 @@ import {
   FileQuestion,
   Loader2Icon,
   AlertCircleIcon,
+  WandIcon,
 } from "lucide-react";
 import { Button } from "@ai-tutor/ui";
 import { Card, CardHeader, CardTitle, CardContent } from "@ai-tutor/ui";
@@ -15,6 +16,7 @@ import { cn } from "@ai-tutor/utils";
 import { lessonsApi } from "@ai-tutor/api-client";
 import type { Lesson as LessonType } from "@ai-tutor/types";
 import { EditableTitle } from "../components/EditableTitle";
+import ExcalidrawPlayer from "../components/ExcalidrawPlayer";
 
 type ViewMode = "video" | "notes" | "mindmap" | "quiz";
 
@@ -47,6 +49,20 @@ const Lesson: React.FC = () => {
     },
   });
 
+  // Generate lesson script mutation
+  const generateScriptMutation = useMutation({
+    mutationFn: (lessonId: string) => 
+      fetch(`/api/lesson/${lessonId}/generate-script`, { method: 'POST' })
+        .then(res => {
+          if (!res.ok) throw new Error('Failed to generate script');
+          return res.json();
+        }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["lesson", id] });
+      queryClient.invalidateQueries({ queryKey: ["lessons"] });
+    },
+  });
+
   // Update lesson title mutation
   const updateTitleMutation = useMutation({
     mutationFn: ({ lessonId, title }: { lessonId: string; title: string }) => 
@@ -65,6 +81,8 @@ const Lesson: React.FC = () => {
   }, [lesson, generateContentMutation]);
 
   const isGeneratingContent = generateContentMutation.isPending || (lesson && lesson.steps.length === 0);
+  const isGeneratingScript = generateScriptMutation.isPending;
+  const hasNarrationContent = lesson?.steps?.some(step => step.narration);
 
   // Check if lesson was deleted or not found
   const isLessonNotFound = (lessonError as any)?.response?.status === 404;
@@ -81,6 +99,12 @@ const Lesson: React.FC = () => {
   const handleTitleSave = (newTitle: string) => {
     if (id && newTitle.trim()) {
       updateTitleMutation.mutate({ lessonId: id, title: newTitle });
+    }
+  };
+
+  const handleGenerateScript = () => {
+    if (id) {
+      generateScriptMutation.mutate(id);
     }
   };
 
@@ -198,16 +222,81 @@ const Lesson: React.FC = () => {
                     </div>
                   </CardContent>
                 </Card>
+              ) : isGeneratingScript ? (
+                <Card className="border-border">
+                  <CardContent className="p-8">
+                    <div className="flex flex-col items-center justify-center space-y-6 text-center">
+                      <div className="flex items-center space-x-3">
+                        <Loader2Icon className="h-8 w-8 animate-spin text-primary" />
+                        <span className="text-xl font-semibold">Generating interactive script...</span>
+                      </div>
+                      <div className="max-w-md">
+                        <p className="text-muted-foreground mb-4">
+                          Creating an interactive visual lesson with narration and drawings for "{lesson?.topic}".
+                        </p>
+                        <div className="flex justify-center space-x-2">
+                          <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '0ms'}}></div>
+                          <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '150ms'}}></div>
+                          <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '300ms'}}></div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : hasNarrationContent && lesson?.steps ? (
+                <div className="space-y-4">
+                  <ExcalidrawPlayer 
+                    steps={lesson.steps}
+                    autoPlay={false}
+                    speechRate={1}
+                    speechVolume={0.8}
+                  />
+                </div>
+              ) : lesson?.steps && lesson.steps.length > 0 ? (
+                <div className="space-y-4">
+                  <Card className="border-border">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold">Lesson Content</h3>
+                        <Button 
+                          onClick={handleGenerateScript}
+                          disabled={generateScriptMutation.isPending}
+                          size="sm"
+                          variant="outline"
+                        >
+                          <WandIcon className="h-4 w-4 mr-2" />
+                          Generate Interactive Script
+                        </Button>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        This lesson has basic content. Generate an interactive script with narration and visual elements for a better learning experience.
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-border">
+                    <CardContent className="p-6">
+                      <div className="space-y-6">
+                        {lesson.steps.map((step, index) => (
+                          <div key={index} className="border-l-4 border-primary pl-6 py-4">
+                            <h3 className="font-semibold text-lg mb-3">{step.title}</h3>
+                            <div className="text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                              {step.explanation || step.content || "No content available"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               ) : (
                 <Card className="border-border">
-                  <CardContent className="p-6">
-                    <div className="space-y-6">
-                      {lesson?.steps.map((step, index) => (
-                        <div key={index} className="border-l-4 border-primary pl-6 py-4">
-                          <h3 className="font-semibold text-lg mb-3">{step.title}</h3>
-                          <div className="text-muted-foreground whitespace-pre-wrap leading-relaxed">{step.explanation}</div>
-                        </div>
-                      ))}
+                  <CardContent className="p-8">
+                    <div className="flex flex-col items-center justify-center space-y-6 text-center">
+                      <div>
+                        <p className="text-muted-foreground mb-4">
+                          No lesson content available yet.
+                        </p>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -232,7 +321,9 @@ const Lesson: React.FC = () => {
                       {lesson?.steps?.map((step, index) => (
                         <div key={index} className="border-b pb-4 last:border-b-0">
                           <h4 className="font-semibold mb-3 text-lg">Step {step.step_number}: {step.title}</h4>
-                          <p className="text-muted-foreground leading-relaxed">{step.explanation}</p>
+                          <p className="text-muted-foreground leading-relaxed">
+                            {step.explanation || step.content || "No content available"}
+                          </p>
                         </div>
                       ))}
                     </div>

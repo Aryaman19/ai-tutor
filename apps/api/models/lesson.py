@@ -9,9 +9,17 @@ class CanvasStep(BaseModel):
     """Canvas step model for lesson visualization"""
     step_number: int
     title: str
-    content: str
+    explanation: Optional[str] = None  # New field for explanation text
+    content: Optional[str] = None  # Legacy field for backward compatibility
+    narration: Optional[str] = None  # Script content for narration
     canvas_data: Optional[dict] = None
     visual_elements: Optional[List[dict]] = None
+    elements: Optional[List[dict]] = None  # Excalidraw elements
+    duration: Optional[float] = None  # Estimated duration in seconds
+    
+    def get_explanation(self) -> str:
+        """Get explanation text, falling back to content for backward compatibility"""
+        return self.explanation or self.content or ""
 
 
 class Doubt(BaseModel):

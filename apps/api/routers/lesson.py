@@ -240,3 +240,98 @@ async def delete_lesson(lesson_id: str):
             status_code=500,
             detail="Failed to delete lesson"
         )
+
+
+@router.post("/lesson/{lesson_id}/generate-script", response_model=LessonResponse)
+async def generate_lesson_script(lesson_id: str):
+    """Generate visual script content for an existing lesson with narration and visual elements"""
+    try:
+        if not ObjectId.is_valid(lesson_id):
+            raise HTTPException(status_code=400, detail="Invalid lesson ID")
+        
+        lesson = await Lesson.get(ObjectId(lesson_id))
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+        
+        # Generate visual script using Ollama
+        steps = await ollama_service.generate_visual_script(
+            topic=lesson.topic,
+            difficulty_level=lesson.difficulty_level
+        )
+        
+        if not steps:
+            raise HTTPException(
+                status_code=503, 
+                detail="Failed to generate lesson script. AI service may be unavailable."
+            )
+        
+        # Update lesson with generated script content
+        await lesson.update({"$set": {
+            "steps": steps,
+            "updated_at": datetime.utcnow()
+        }})
+        
+        # Refresh lesson from database
+        lesson = await Lesson.get(ObjectId(lesson_id))
+        
+        return LessonResponse(
+            id=str(lesson.id),
+            topic=lesson.topic,
+            title=lesson.title,
+            difficulty_level=lesson.difficulty_level,
+            steps=lesson.steps,
+            doubts=lesson.doubts or [],
+            created_at=lesson.created_at,
+            updated_at=lesson.updated_at
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating lesson script: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate lesson script"
+        )
+
+
+@router.get("/lesson/{lesson_id}/script")
+async def get_lesson_script(lesson_id: str):
+    """Get the compiled script for the entire lesson"""
+    try:
+        if not ObjectId.is_valid(lesson_id):
+            raise HTTPException(status_code=400, detail="Invalid lesson ID")
+        
+        lesson = await Lesson.get(ObjectId(lesson_id))
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+        
+        # Compile the script from lesson steps
+        script = {
+            "lesson_id": str(lesson.id),
+            "topic": lesson.topic,
+            "title": lesson.title,
+            "total_duration": sum(step.duration or 0 for step in lesson.steps),
+            "steps": [
+                {
+                    "step_number": step.step_number,
+                    "title": step.title,
+                    "narration": step.narration or step.explanation,
+                    "visual_elements": step.visual_elements or [],
+                    "duration": step.duration,
+                    "elements": step.elements or []
+                }
+                for step in lesson.steps
+            ]
+        }
+        
+        return script
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting lesson script: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get lesson script"
+        )
