@@ -136,6 +136,9 @@ importers:
       '@ai-tutor/types':
         specifier: workspace:*
         version: link:../types
+      '@ai-tutor/utils':
+        specifier: workspace:*
+        version: link:../utils
       '@tanstack/react-query':
         specifier: ^5.0.0
         version: 5.81.5(react@18.3.1)

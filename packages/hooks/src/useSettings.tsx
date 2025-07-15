@@ -6,6 +6,9 @@ import type {
   AvailableModels 
 } from "@ai-tutor/types";
 import { toast } from "sonner";
+import { createServiceLogger } from "@ai-tutor/utils";
+
+const logger = createServiceLogger('useSettings');
 
 export const useSettings = (userId: string = "default") => {
   const queryClient = useQueryClient();
@@ -35,7 +38,7 @@ export const useSettings = (userId: string = "default") => {
       toast.success("Settings updated successfully");
     },
     onError: (error: Error) => {
-      console.error("Failed to update settings:", error);
+      logger.error("Failed to update settings:", error);
       toast.error("Failed to update settings");
     },
   });
@@ -49,7 +52,7 @@ export const useSettings = (userId: string = "default") => {
       toast.success("Settings updated successfully");
     },
     onError: (error: Error) => {
-      console.error("Failed to update settings section:", error);
+      logger.error("Failed to update settings section:", error);
       toast.error("Failed to update settings");
     },
   });
@@ -62,7 +65,7 @@ export const useSettings = (userId: string = "default") => {
       toast.success("Settings reset to default");
     },
     onError: (error: Error) => {
-      console.error("Failed to reset settings:", error);
+      logger.error("Failed to reset settings:", error);
       toast.error("Failed to reset settings");
     },
   });
@@ -75,7 +78,7 @@ export const useSettings = (userId: string = "default") => {
       toast.success("Settings deleted successfully");
     },
     onError: (error: Error) => {
-      console.error("Failed to delete settings:", error);
+      logger.error("Failed to delete settings:", error);
       toast.error("Failed to delete settings");
     },
   });

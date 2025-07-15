@@ -58,9 +58,6 @@ The `lessonAdapter.ts` utility provides:
 - `fetchApiLesson(lessonId)`: Fetches lesson from API and returns POC format
 - `fetchApiLessonScript(lessonId)`: Fetches lesson script from API and returns POC format
 
-### Testing Utilities
-- `createMockApiSteps()`: Creates mock API-format data for testing
-- `createMockSlide()`: Creates a single mock slide
 
 ## Usage Examples
 
@@ -76,11 +73,6 @@ const slides = normalizeToPlayerFormat(rawData);
 const slides = await fetchApiLesson("lesson-id-123");
 ```
 
-### Testing API Compatibility
-```typescript
-const mockSteps = createMockApiSteps();
-const slides = normalizeToPlayerFormat(mockSteps);
-```
 
 ## ExcalidrawPlayer Integration
 
@@ -88,13 +80,11 @@ The ExcalidrawPlayer now:
 
 1. **Auto-detects lesson format** using `normalizeToPlayerFormat()`
 2. **Supports API lessons** via `api:lessonId` naming convention
-3. **Includes test mode** with "Test API Format" option
 4. **Maintains backward compatibility** with existing local lessons
 
 ### Lesson Selection
 - Local lessons: Use existing lesson names
 - API lessons: Use format `api:lessonId`
-- Test mode: Use "Test API Format"
 
 ## Key Differences Between Formats
 
@@ -111,14 +101,14 @@ The ExcalidrawPlayer now:
 
 1. **API Visual Elements**: The API returns `visual_elements` as text descriptions, not actual Excalidraw elements
 2. **Missing Drawing Generation**: Need to implement conversion from text descriptions to Excalidraw elements
-3. **Limited API Testing**: Currently uses mock data for API format testing
+3. **Limited API Testing**: API integration requires actual backend connectivity
 
 ## Future Enhancements
 
 1. **Visual Element Parser**: Convert API text descriptions to Excalidraw elements
 2. **AI-Powered Drawing**: Use AI to generate Excalidraw elements from descriptions
 3. **Real API Integration**: Connect to actual lesson API endpoints
-4. **Enhanced Test Suite**: More comprehensive format testing
+4. **Enhanced Validation**: More comprehensive format validation
 
 ## Migration Path
 
@@ -129,6 +119,6 @@ To fully support API lessons with visual elements:
 3. Add AI-powered drawing generation
 4. Update lesson generation to create Excalidraw-compatible elements
 
-## Testing
+## Validation
 
-Use the "Test API Format" option in the lesson selector to test API format compatibility with mock data.
+Use the `validateLessonData()` function to validate lesson format compatibility.

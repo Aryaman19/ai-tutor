@@ -6,6 +6,7 @@
   "dependencies": {
     "@ai-tutor/types": "workspace:*",
     "@ai-tutor/api-client": "workspace:*",
+    "@ai-tutor/utils": "workspace:*",
     "@tanstack/react-query": "^5.0.0",
     "sonner": "^1.2.0",
     "react": "^18.2.0"

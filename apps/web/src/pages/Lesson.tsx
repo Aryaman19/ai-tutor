@@ -12,13 +12,15 @@ import {
 } from "lucide-react";
 import { Button } from "@ai-tutor/ui";
 import { Card, CardHeader, CardTitle, CardContent } from "@ai-tutor/ui";
-import { cn } from "@ai-tutor/utils";
+import { cn, createComponentLogger } from "@ai-tutor/utils";
 import { lessonsApi } from "@ai-tutor/api-client";
 import type { Lesson as LessonType } from "@ai-tutor/types";
 import { EditableTitle } from "../components/EditableTitle";
-import ExcalidrawPlayerFlexible from "../components/ExcalidrawPlayerFlexible";
+import ExcalidrawPlayer from "../components/ExcalidrawPlayer";
 
 type ViewMode = "video" | "notes" | "mindmap" | "quiz";
+
+const logger = createComponentLogger('Lesson');
 
 const Lesson: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -252,17 +254,16 @@ const Lesson: React.FC = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-6">
-                      <ExcalidrawPlayerFlexible 
+                      <ExcalidrawPlayer 
+                        mode="flexible"
                         steps={lesson.steps}
                         autoPlay={false}
                         speechRate={1}
                         speechVolume={0.8}
-                        testMode={false}
                         onStepChange={(stepIndex) => {
-                          console.log(`Step changed to: ${stepIndex + 1}`);
                         }}
                         onComplete={() => {
-                          console.log('Lesson completed!');
+                          logger.info('Lesson completed!');
                         }}
                       />
                     </CardContent>

@@ -1,8 +1,11 @@
 import type { CanvasStep } from '@ai-tutor/types';
+import { getStepExplanation, migrateStepContent } from '@ai-tutor/types';
 import type { ExcalidrawElement } from './excalidraw';
+import { createUtilLogger } from '@ai-tutor/utils';
 
 // POC format interface
 export interface LessonSlide {
+  title?: string;
   narration: string;
   elements: ExcalidrawElement[];
 }
@@ -14,10 +17,16 @@ export type LessonData = LessonSlide[] | CanvasStep[];
  * Transforms API CanvasStep format to ExcalidrawPlayer format
  */
 export function transformApiToPlayerFormat(steps: CanvasStep[]): LessonSlide[] {
-  return steps.map(step => ({
-    narration: step.narration || step.explanation || step.content || "",
-    elements: step.elements || [] // API elements if available, empty otherwise
-  }));
+  return steps.map(step => {
+    // Migrate legacy data first
+    const migratedStep = migrateStepContent(step);
+    
+    return {
+      title: migratedStep.title,
+      narration: migratedStep.narration || getStepExplanation(migratedStep),
+      elements: migratedStep.elements || []
+    };
+  });
 }
 
 /**
@@ -56,6 +65,8 @@ export function isPocFormat(data: any[]): data is LessonSlide[] {
   return 'narration' in firstItem && 'elements' in firstItem && !('step_number' in firstItem);
 }
 
+const logger = createUtilLogger('LessonAdapter');
+
 /**
  * Fetches lesson from API and transforms to player format
  */
@@ -69,7 +80,7 @@ export async function fetchApiLesson(lessonId: string): Promise<LessonSlide[]> {
     const lesson = await response.json();
     return transformApiToPlayerFormat(lesson.steps || []);
   } catch (error) {
-    console.error('Error fetching API lesson:', error);
+    logger.error('Error fetching API lesson:', error);
     return [];
   }
 }
@@ -87,41 +98,57 @@ export async function fetchApiLessonScript(lessonId: string): Promise<LessonSlid
     const script = await response.json();
     return transformApiToPlayerFormat(script.steps || []);
   } catch (error) {
-    console.error('Error fetching API lesson script:', error);
+    logger.error('Error fetching API lesson script:', error);
     return [];
   }
 }
 
+
+
 /**
- * Creates a mock lesson slide for testing
+ * Validates lesson data consistency
  */
-export function createMockSlide(
-  narration: string = "This is a test slide", 
-  elements: ExcalidrawElement[] = []
-): LessonSlide {
-  return { narration, elements };
+export function validateLessonData(data: LessonData): string[] {
+  const errors: string[] = [];
+  
+  if (!Array.isArray(data) || data.length === 0) {
+    errors.push("Lesson data must be a non-empty array");
+    return errors;
+  }
+  
+  if (isApiFormat(data)) {
+    data.forEach((step, index) => {
+      if (!step.title?.trim()) {
+        errors.push(`Step ${index + 1}: Title is required`);
+      }
+      if (step.step_number !== index + 1) {
+        errors.push(`Step ${index + 1}: Step number mismatch`);
+      }
+      if (!getStepExplanation(step) && !step.narration) {
+        errors.push(`Step ${index + 1}: Either explanation or narration is required`);
+      }
+    });
+  } else if (isPocFormat(data)) {
+    data.forEach((slide, index) => {
+      if (!slide.narration?.trim()) {
+        errors.push(`Slide ${index + 1}: Narration is required`);
+      }
+    });
+  }
+  
+  return errors;
 }
 
 /**
- * Creates mock lesson slides for testing API compatibility
+ * Normalizes lesson data for consistency
  */
-export function createMockApiSteps(): CanvasStep[] {
-  return [
-    {
-      step_number: 1,
-      title: "Introduction",
-      explanation: "This is the first step explanation",
-      narration: "Welcome to our lesson! This is the first step.",
-      elements: [],
-      duration: 5.0
-    },
-    {
-      step_number: 2,
-      title: "Main Concept",
-      explanation: "This explains the main concept",
-      narration: "Now let's dive into the main concept.",
-      elements: [],
-      duration: 8.0
-    }
-  ];
+export function normalizeLessonData(data: LessonData): LessonSlide[] {
+  const normalized = normalizeToPlayerFormat(data);
+  
+  // Ensure consistent structure
+  return normalized.map((slide, index) => ({
+    title: slide.title || `Step ${index + 1}`,
+    narration: slide.narration || `Step ${index + 1}`,
+    elements: slide.elements || []
+  }));
 }

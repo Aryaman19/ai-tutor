@@ -18,6 +18,9 @@ import {
 } from "@ai-tutor/ui";
 import { ASSET_IMAGES } from "@/assets/asset";
 import { lessonsApi } from "@ai-tutor/api-client";
+import { createComponentLogger } from "@ai-tutor/utils";
+
+const logger = createComponentLogger('Home');
 
 const Home: React.FC = () => {
   const [topic, setTopic] = useState("");
@@ -31,7 +34,7 @@ const Home: React.FC = () => {
       navigate(`/lesson/${lesson.id}`);
     },
     onError: (error) => {
-      console.error("Error creating lesson:", error);
+      logger.error("Error creating lesson:", error);
     },
   });
 

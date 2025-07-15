@@ -1,5 +1,6 @@
 // packages/types/src/env-utils.ts
 import type { Environment, EnvironmentConfig } from "@ai-tutor/types";
+import { createUtilLogger } from "./logger";
 
 /**
  * Universal environment variable getter
@@ -118,8 +119,9 @@ export const getEnvironmentConfig = (): EnvironmentConfig => {
 export const logEnvironmentInfo = (): void => {
   if (!isDevelopment()) return;
 
+  const logger = createUtilLogger('EnvUtils');
   const config = getEnvironmentConfig();
-  console.log("🌍 Environment Configuration:", {
+  logger.info("🌍 Environment Configuration:", {
     ...config,
     variables: {
       NODE_ENV: getEnvironmentVariable("NODE_ENV"),
