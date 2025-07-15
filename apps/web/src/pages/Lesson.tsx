@@ -16,7 +16,7 @@ import { cn } from "@ai-tutor/utils";
 import { lessonsApi } from "@ai-tutor/api-client";
 import type { Lesson as LessonType } from "@ai-tutor/types";
 import { EditableTitle } from "../components/EditableTitle";
-import ExcalidrawPlayer from "../components/ExcalidrawPlayer";
+import ExcalidrawPlayerFlexible from "../components/ExcalidrawPlayerFlexible";
 
 type ViewMode = "video" | "notes" | "mindmap" | "quiz";
 
@@ -245,13 +245,28 @@ const Lesson: React.FC = () => {
                 </Card>
               ) : hasNarrationContent && lesson?.steps ? (
                 <div className="space-y-4">
-                  <ExcalidrawPlayer 
-                    steps={lesson.steps}
-                    autoPlay={false}
-                    speechRate={1}
-                    speechVolume={0.8}
-                    testMode={true}
-                  />
+                  <Card className="border-border">
+                    <CardHeader>
+                      <CardTitle className="text-card-foreground font-heading">
+                        Interactive Lesson Player
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      <ExcalidrawPlayerFlexible 
+                        steps={lesson.steps}
+                        autoPlay={false}
+                        speechRate={1}
+                        speechVolume={0.8}
+                        testMode={false}
+                        onStepChange={(stepIndex) => {
+                          console.log(`Step changed to: ${stepIndex + 1}`);
+                        }}
+                        onComplete={() => {
+                          console.log('Lesson completed!');
+                        }}
+                      />
+                    </CardContent>
+                  </Card>
                 </div>
               ) : lesson?.steps && lesson.steps.length > 0 ? (
                 <div className="space-y-4">

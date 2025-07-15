@@ -11,12 +11,17 @@ import {
   COLORS,
   FONTS,
   resetIndexCounter,
-} from './excalidraw';
-import type { LessonStep } from './excalidraw';
-import type { LessonSlide } from './lessonAdapter';
+} from '../excalidraw';
+import type { ExcalidrawElement } from '../excalidraw';
 
-export const makeLessonScript = (): LessonStep[] => {
-  const slides: LessonStep[] = [];
+// POC-compatible lesson format
+interface LessonSlide {
+  narration: string;
+  elements: ExcalidrawElement[];
+}
+
+export const makeLessonScript = (): LessonSlide[] => {
+  const slides: LessonSlide[] = [];
 
   // === Slide 0: Title Slide ===
   {
@@ -56,11 +61,7 @@ export const makeLessonScript = (): LessonStep[] => {
     });
 
     slides.push({
-      step_number: 1,
-      title: "Introduction: How the Economy Works",
-      explanation: "Welcome to our lesson on economic systems!",
-      narration:
-        "Welcome to our lesson on how the economy works! Today we'll explore the fascinating world of economic systems, understanding how money, goods, and services flow between different parts of society.",
+      narration: "Welcome to our lesson on how the economy works! Today we'll explore the fascinating world of economic systems, understanding how money, goods, and services flow between different parts of society.",
       elements: [title, subtitle, ...decorativeCircle],
     });
   }
@@ -117,11 +118,7 @@ export const makeLessonScript = (): LessonStep[] => {
     });
 
     slides.push({
-      step_number: 2,
-      title: "What is an Economy?",
-      explanation: "Understanding the basic definition and components of economic systems.",
-      narration:
-        "An economy is essentially a system where people work together to create, share, and use the things we need. It involves three main activities: production where we make goods and services, distribution where we move these items to where they're needed, and consumption where people actually use them.",
+      narration: "An economy is essentially a system where people work together to create, share, and use the things we need. It involves three main activities: production where we make goods and services, distribution where we move these items to where they're needed, and consumption where people actually use them.",
       elements: [mainTitle, ...definition, ...keyComponents],
     });
   }
@@ -185,11 +182,7 @@ export const makeLessonScript = (): LessonStep[] => {
     });
 
     slides.push({
-      step_number: 3,
-      title: "The Main Economic Players",
-      explanation: "Understanding the four key participants in any economy.",
-      narration:
-        "Every economy has four main players. Households are families and individuals who consume goods and provide labor. Businesses are companies that produce goods and services. The government provides public services and regulates the economy. And the foreign sector represents trade with other countries.",
+      narration: "Every economy has four main players. Households are families and individuals who consume goods and provide labor. Businesses are companies that produce goods and services. The government provides public services and regulates the economy. And the foreign sector represents trade with other countries.",
       elements: [
         title,
         ...householdsBox,
@@ -278,11 +271,7 @@ export const makeLessonScript = (): LessonStep[] => {
     });
 
     slides.push({
-      step_number: 4,
-      title: "The Circular Flow Model",
-      explanation: "How money, goods, and services move between households and businesses.",
-      narration:
-        "This is the circular flow model, one of the most important concepts in economics. Households provide labor and resources to firms, and in return receive money as wages and profits. Firms use this labor to produce goods and services, which flow back to households. The money and goods flow in opposite directions, creating a continuous cycle.",
+      narration: "This is the circular flow model, one of the most important concepts in economics. Households provide labor and resources to firms, and in return receive money as wages and profits. Firms use this labor to produce goods and services, which flow back to households. The money and goods flow in opposite directions, creating a continuous cycle.",
       elements: [
         title,
         ...householdsElements,
@@ -346,19 +335,10 @@ export const makeLessonScript = (): LessonStep[] => {
     });
 
     slides.push({
-      step_number: 5,
-      title: "Real World Example: Coffee Shop",
-      explanation: "Seeing the circular flow in action with a simple business example.",
-      narration:
-        "Let's see this in action with a simple coffee shop. A worker provides their labor to the coffee shop and receives wages in return. The coffee shop uses this labor to make coffee, which they sell to customers for money. Now here's the beautiful part - that worker can use their wages to buy coffee, and the cycle continues! This is how the economy keeps flowing.",
+      narration: "Let's see this in action with a simple coffee shop. A worker provides their labor to the coffee shop and receives wages in return. The coffee shop uses this labor to make coffee, which they sell to customers for money. Now here's the beautiful part - that worker can use their wages to buy coffee, and the cycle continues! This is how the economy keeps flowing.",
       elements: [title, ...flowchartElements, ...explanation],
     });
   }
 
   return slides;
 };
-
-// Sample lesson data for testing Excalidraw integration
-export function generateSampleLesson(): LessonStep[] {
-  return makeLessonScript();
-}

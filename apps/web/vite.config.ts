@@ -17,7 +17,11 @@ export default defineConfig({
     port: 3000,
     host: true,
     fs: {
-      allow: [".."], // required for monorepo access
+      allow: [
+        "..", // required for monorepo access
+        "../../node_modules", // allow access to root node_modules
+        "../../node_modules/.pnpm", // allow access to pnpm store for Excalidraw fonts
+      ],
     },
     proxy: {
       "/api": {
