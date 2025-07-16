@@ -11,6 +11,7 @@ import {
   fetchApiLessonScript
 } from "../utils/lessonAdapter";
 import { createComponentLogger } from "@ai-tutor/utils";
+import { cn } from "@ai-tutor/utils";
 
 // Using any for now - will fix typing later
 type ExcalidrawImperativeAPI = any;
@@ -47,6 +48,75 @@ interface ExcalidrawPlayerProps {
 
 const logger = createComponentLogger('ExcalidrawPlayer');
 
+// Custom CSS to hide Excalidraw UI elements
+const excalidrawHideUIStyles = `
+  .excalidraw .App-menu,
+  .excalidraw .App-toolbar,
+  .excalidraw .ToolIcon,
+  .excalidraw .zen-mode-transition,
+  .excalidraw .panelColumn,
+  .excalidraw .App-menu_top,
+  .excalidraw .App-menu_bottom,
+  .excalidraw .App-menu_left,
+  .excalidraw .App-menu_right,
+  .excalidraw .FixedSideContainer,
+  .excalidraw .layer-ui__wrapper,
+  .excalidraw .layer-ui__wrapper__top-left,
+  .excalidraw .layer-ui__wrapper__top-right,
+  .excalidraw .layer-ui__wrapper__top,
+  .excalidraw .layer-ui__wrapper__bottom-left,
+  .excalidraw .layer-ui__wrapper__bottom-right,
+  .excalidraw .layer-ui__wrapper__footer-left,
+  .excalidraw .layer-ui__wrapper__footer-center,
+  .excalidraw .layer-ui__wrapper__footer-right,
+  .excalidraw .help-icon,
+  .excalidraw .welcome-screen-menu-trigger,
+  .excalidraw .App-menu__left,
+  .excalidraw .App-menu__right,
+  .excalidraw .main-menu-trigger,
+  .excalidraw .hamburger-menu,
+  .excalidraw .zoom-actions,
+  .excalidraw .ZoomActions,
+  .excalidraw [data-testid="main-menu-trigger"],
+  .excalidraw [data-testid="help-icon"],
+  .excalidraw [title="Help"],
+  .excalidraw [title="Library"],
+  .excalidraw [title="Menu"],
+  .excalidraw .HamburgerMenuButton,
+  .excalidraw .island {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  
+  .excalidraw .excalidraw-canvas,
+  .excalidraw .excalidraw__canvas {
+    cursor: default !important;
+    user-select: none !important;
+  }
+  
+  .excalidraw canvas {
+    pointer-events: none !important;
+    cursor: default !important;
+    user-select: none !important;
+  }
+  
+  /* Allow mouse events on container while preventing canvas interactions */
+  .excalidraw {
+    pointer-events: auto !important;
+  }
+  
+  .excalidraw {
+    user-select: none !important;
+  }
+  
+  .excalidraw * {
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    user-select: none !important;
+  }
+`;
+
 export default function ExcalidrawPlayer({
   mode = 'legacy',
   steps = [],
@@ -65,6 +135,11 @@ export default function ExcalidrawPlayer({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControlsState, setShowControlsState] = useState(true);
+  const [isHovering, setIsHovering] = useState(false);
+  const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   const lessonScriptRef = useRef<LessonSlide[]>([]);
   const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -550,114 +625,369 @@ export default function ExcalidrawPlayer({
     );
   }
 
+  // Handle fullscreen functionality
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  }, []);
+
+  // Handle controls auto-hide
+  const resetHideControlsTimer = useCallback(() => {
+    if (hideControlsTimeoutRef.current) {
+      clearTimeout(hideControlsTimeoutRef.current);
+    }
+    setShowControlsState(true);
+    hideControlsTimeoutRef.current = setTimeout(() => {
+      if (!isHovering) {
+        setShowControlsState(false);
+      }
+    }, 3000);
+  }, [isHovering]);
+
+  const handleMouseEnter = useCallback(() => {
+    setIsHovering(true);
+    setShowControlsState(true);
+    if (hideControlsTimeoutRef.current) {
+      clearTimeout(hideControlsTimeoutRef.current);
+    }
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    setIsHovering(false);
+    resetHideControlsTimer();
+  }, [resetHideControlsTimer]);
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) {
+        return; // Don't handle shortcuts when typing in inputs
+      }
+      
+      switch (event.code) {
+        case 'Space':
+          event.preventDefault();
+          togglePlayPause();
+          break;
+        case 'ArrowLeft':
+          event.preventDefault();
+          goToStep(currentStepIndex - 1);
+          break;
+        case 'ArrowRight':
+          event.preventDefault();
+          goToStep(currentStepIndex + 1);
+          break;
+        case 'KeyR':
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            resetLesson();
+          }
+          break;
+        case 'KeyM':
+          event.preventDefault();
+          setIsMuted(!isMuted);
+          break;
+        case 'KeyF':
+          event.preventDefault();
+          toggleFullscreen();
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => {
+      document.removeEventListener('keydown', handleKeyPress);
+    };
+  }, [togglePlayPause, goToStep, currentStepIndex, resetLesson, isMuted, toggleFullscreen]);
+
+  // Inject CSS to hide UI elements
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = excalidrawHideUIStyles;
+    document.head.appendChild(styleElement);
+    
+    return () => {
+      document.head.removeChild(styleElement);
+    };
+  }, []);
+
+  // Handle canvas mouse events for auto-hide
+  useEffect(() => {
+    const attachCanvasEvents = () => {
+      const canvasContainer = canvasContainerRef.current;
+      if (!canvasContainer) return;
+
+      const handleCanvasMouseMove = () => {
+        resetHideControlsTimer();
+      };
+
+      const handleCanvasMouseEnter = () => {
+        setIsHovering(true);
+        setShowControlsState(true);
+        if (hideControlsTimeoutRef.current) {
+          clearTimeout(hideControlsTimeoutRef.current);
+        }
+      };
+
+      const handleCanvasMouseLeave = () => {
+        setIsHovering(false);
+        resetHideControlsTimer();
+      };
+
+      // Add event listeners to canvas container
+      canvasContainer.addEventListener('mousemove', handleCanvasMouseMove);
+      canvasContainer.addEventListener('mouseenter', handleCanvasMouseEnter);
+      canvasContainer.addEventListener('mouseleave', handleCanvasMouseLeave);
+
+      return () => {
+        canvasContainer.removeEventListener('mousemove', handleCanvasMouseMove);
+        canvasContainer.removeEventListener('mouseenter', handleCanvasMouseEnter);
+        canvasContainer.removeEventListener('mouseleave', handleCanvasMouseLeave);
+      };
+    };
+
+    // Delay attachment to ensure Excalidraw is mounted
+    const timer = setTimeout(attachCanvasEvents, 100);
+    const cleanup = attachCanvasEvents();
+
+    return () => {
+      clearTimeout(timer);
+      if (cleanup) cleanup();
+    };
+  }, [resetHideControlsTimer]);
+
+  // Initialize auto-hide on component mount
+  useEffect(() => {
+    resetHideControlsTimer();
+    return () => {
+      if (hideControlsTimeoutRef.current) {
+        clearTimeout(hideControlsTimeoutRef.current);
+      }
+    };
+  }, [resetHideControlsTimer]);
+
   return (
-    <div style={{ height: "600px", width: mode === 'legacy' ? "900px" : "100%" }}>
-      {showControls && (
-        <div style={{
-          marginBottom: "10px",
-          display: "flex",
-          gap: "10px",
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}>
-          {mode === 'legacy' && showLessonSelector && (
-            <select
-              value={selectedLesson}
-              onChange={(e) => handleLessonChange(e.target.value)}
-              disabled={isLoading}
-              style={{ padding: "5px 10px" }}
-            >
-              {Object.keys(lessons).map((key) => (
-                <option key={key} value={key}>
-                  {key}
-                </option>
-              ))}
-            </select>
-          )}
-
-          <button
-            onClick={togglePlayPause}
+    <div 
+      className={cn(
+        "relative bg-black rounded-lg overflow-hidden shadow-2xl",
+        isFullscreen ? "fixed inset-0 z-50 rounded-none" : ""
+      )}
+      style={{ 
+        height: isFullscreen ? "100vh" : "600px", 
+        width: isFullscreen ? "100vw" : (mode === 'legacy' ? "900px" : "100%")
+      }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onMouseMove={resetHideControlsTimer}
+    >
+      {/* Lesson Selector at Top (if applicable) */}
+      {mode === 'legacy' && showLessonSelector && showControls && showControlsState && (
+        <div className="absolute top-4 left-4 z-30 transition-opacity duration-300">
+          <select
+            value={selectedLesson}
+            onChange={(e) => handleLessonChange(e.target.value)}
             disabled={isLoading}
-            style={{ padding: "8px 16px", fontSize: "14px" }}
+            className="bg-black/70 text-white border border-white/20 rounded px-3 py-2 text-sm backdrop-blur-sm"
           >
-            {getPlayButtonText()}
-          </button>
-
-          <button
-            onClick={resetLesson}
-            disabled={isLoading}
-            style={{ padding: "8px 16px", fontSize: "14px" }}
-          >
-            🔄 Reset
-          </button>
-
-          <button
-            onClick={() => setIsMuted(!isMuted)}
-            style={{ 
-              padding: "8px 16px", 
-              fontSize: "14px",
-              backgroundColor: isMuted ? "#ff6b6b" : "#51cf66"
-            }}
-          >
-            {isMuted ? "🔇 Unmute" : "🔊 Mute"}
-          </button>
-
-          <span style={{ fontSize: "14px", color: "#666" }}>
-            Step {Math.min(currentStepIndex + 1, currentSteps.length)} of {currentSteps.length}
-          </span>
-
-          {currentSteps[currentStepIndex] && (
-            <span style={{ fontSize: "14px", color: "#333", fontWeight: "500" }}>
-              {currentSteps[currentStepIndex].title || `Step ${currentSteps[currentStepIndex].step_number || currentStepIndex + 1}`}
-            </span>
-          )}
-
-          <div style={{ display: "flex", gap: "5px", marginLeft: "10px" }}>
-            <button
-              onClick={() => goToStep(currentStepIndex - 1)}
-              disabled={currentStepIndex === 0}
-              style={{ 
-                padding: "4px 8px", 
-                fontSize: "12px",
-                opacity: currentStepIndex === 0 ? 0.5 : 1
-              }}
-            >
-              ← Prev
-            </button>
-            <button
-              onClick={() => goToStep(currentStepIndex + 1)}
-              disabled={currentStepIndex >= currentSteps.length - 1}
-              style={{ 
-                padding: "4px 8px", 
-                fontSize: "12px",
-                opacity: currentStepIndex >= currentSteps.length - 1 ? 0.5 : 1
-              }}
-            >
-              Next →
-            </button>
-          </div>
-
-          {isLoading && <span style={{ color: "#666" }}>Loading...</span>}
+            {Object.keys(lessons).map((key) => (
+              <option key={key} value={key} className="bg-black text-white">
+                {key}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
-      <Excalidraw
-        excalidrawAPI={(api) => {
-          setExcalidrawAPI(api);
-        }}
-        initialData={{
-          elements: [],
-          appState: {
-            viewBackgroundColor: "#fafafa",
-            currentItemFontFamily: 1,
-            zenModeEnabled: false,
-            gridModeEnabled: false,
-            isLoading: false,
-          },
-        }}
-        viewModeEnabled={true}
-        theme="light"
-      />
+      {/* Loading Indicator */}
+      {isLoading && (
+        <div className="absolute top-4 right-4 z-30">
+          <div className="bg-black/70 text-white px-3 py-2 rounded backdrop-blur-sm text-sm">
+            Loading...
+          </div>
+        </div>
+      )}
+
+      {/* Main Excalidraw Canvas */}
+      <div ref={canvasContainerRef} className="w-full h-full relative">
+        <Excalidraw
+          excalidrawAPI={(api) => {
+            setExcalidrawAPI(api);
+          }}
+          initialData={{
+            elements: [],
+            appState: {
+              viewBackgroundColor: "#fafafa",
+              currentItemFontFamily: 1,
+              zenModeEnabled: true,
+              gridModeEnabled: false,
+              isLoading: false,
+            },
+          }}
+          viewModeEnabled={true}
+          theme="light"
+          UIOptions={{
+            canvasActions: {
+              loadScene: false,
+              saveToActiveFile: false,
+              export: false,
+              saveAsImage: false,
+              clearCanvas: false,
+              changeViewBackgroundColor: false,
+              toggleTheme: false,
+            },
+            tools: {
+              image: false,
+            },
+            welcomeScreen: false,
+          }}
+        />
+      </div>
+
+      {/* Video Player Controls at Bottom */}
+      {showControls && (
+        <div 
+          className={cn(
+            "absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-black/90 to-transparent pt-5 transition-all duration-300",
+            showControlsState ? "opacity-100 translate-y-0" : "opacity-0 translate-y-full pointer-events-none"
+          )}
+        >
+          {/* Progress Bar */}
+          <div className="px-4 pb-2">
+            <div className="flex items-center gap-2 text-white text-sm mb-2">
+              <span className="min-w-0 flex-1 truncate">
+                {currentSteps[currentStepIndex]?.title || `Step ${currentSteps[currentStepIndex]?.step_number || currentStepIndex + 1}`}
+              </span>
+              <span className="text-white/70 whitespace-nowrap">
+                {Math.min(currentStepIndex + 1, currentSteps.length)} / {currentSteps.length}
+              </span>
+            </div>
+            <div className="relative w-full h-1 bg-white/20 rounded-full overflow-hidden">
+              <div 
+                className="absolute top-0 left-0 h-full bg-blue-500 transition-all duration-300 ease-out"
+                style={{ 
+                  width: `${((currentStepIndex + (isPlaying ? 0.5 : 0)) / Math.max(currentSteps.length, 1)) * 100}%` 
+                }}
+              />
+              {/* Interactive step markers */}
+              {currentSteps.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => goToStep(index)}
+                  className="absolute top-1/2 w-3 h-3 bg-white rounded-full transform -translate-y-1/2 -translate-x-1/2 hover:scale-125 transition-transform shadow-lg border-none cursor-pointer"
+                  style={{ left: `${(index / Math.max(currentSteps.length - 1, 1)) * 100}%` }}
+                  title={`Go to step ${index + 1}: ${currentSteps[index]?.title || 'Untitled'}`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Control Buttons */}
+          <div className="flex items-center justify-between px-4 pb-4">
+            {/* Left Controls */}
+            <div className="flex items-center gap-3">
+              {/* Previous Button */}
+              <button
+                onClick={() => goToStep(currentStepIndex - 1)}
+                disabled={currentStepIndex === 0}
+                className="text-white hover:text-blue-400 disabled:text-white/30 disabled:cursor-not-allowed transition-colors p-1 bg-transparent border-none flex items-center justify-center"
+                title="Previous step"
+              >
+                <svg width="24" height="24" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M15.707 15.707a1 1 0 01-1.414 0l-5-5a1 1 0 010-1.414l5-5a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 010 1.414zm-6 0a1 1 0 01-1.414 0l-5-5a1 1 0 010-1.414l5-5a1 1 0 011.414 1.414L5.414 10l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+
+              {/* Play/Pause Button */}
+              <button
+                onClick={togglePlayPause}
+                disabled={isLoading}
+                className="bg-white text-black hover:bg-gray-200 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-full p-3 transition-all hover:scale-105 shadow-lg border-none flex items-center justify-center"
+                title={isPlaying ? "Pause" : "Play"}
+              >
+                {isPlaying ? (
+                  <svg width="24" height="24" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 002 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                ) : currentStepIndex >= currentSteps.length ? (
+                  <svg width="24" height="24" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg width="24" height="24" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Next Button */}
+              <button
+                onClick={() => goToStep(currentStepIndex + 1)}
+                disabled={currentStepIndex >= currentSteps.length - 1}
+                className="text-white hover:text-blue-400 disabled:text-white/30 disabled:cursor-not-allowed transition-colors p-1 bg-transparent border-none flex items-center justify-center"
+                title="Next step"
+              >
+                <svg width="24" height="24" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414zm6 0a1 1 0 011.414 0l5 5a1 1 0 010 1.414l-5 5a1 1 0 01-1.414-1.414L14.586 10l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Right Controls */}
+            <div className="flex items-center gap-3">
+              {/* Reset Button */}
+              <button
+                onClick={resetLesson}
+                disabled={isLoading}
+                className="text-white hover:text-blue-400 disabled:text-white/30 disabled:cursor-not-allowed transition-colors p-2 bg-transparent border-none flex items-center justify-center"
+                title="Reset to beginning"
+              >
+                <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                </svg>
+              </button>
+
+              {/* Mute Button */}
+              <button
+                onClick={() => setIsMuted(!isMuted)}
+                className="text-white hover:text-blue-400 transition-colors p-2 bg-transparent border-none flex items-center justify-center"
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted ? (
+                  <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.972 7.972 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+              
+              {/* Fullscreen Button */}
+              <button
+                onClick={toggleFullscreen}
+                className="text-white hover:text-blue-400 transition-colors p-2 bg-transparent border-none flex items-center justify-center"
+                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+              >
+                {isFullscreen ? (
+                  <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 11-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 010-2h4a1 1 0 011 1v4a1 1 0 01-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 012 0v1.586l2.293-2.293a1 1 0 111.414 1.414L6.414 15H8a1 1 0 010 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 010-2h1.586l-2.293-2.293a1 1 0 111.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

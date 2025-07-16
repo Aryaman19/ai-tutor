@@ -118,9 +118,9 @@ const Lesson: React.FC = () => {
   ];
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-screen flex flex-col bg-background">
       {/* Header Section */}
-      <div className="border-b border-border bg-card px-6 h-16 flex items-center">
+      <div className="border-b border-border bg-card px-6 h-16 flex items-center flex-shrink-0">
         <div className="max-w-6xl mx-auto w-full">
           {isLessonNotFound ? (
             <div className="flex items-center space-x-3">
@@ -144,7 +144,7 @@ const Lesson: React.FC = () => {
       </div>
 
       {/* View Mode Tabs */}
-      <div className="border-b border-border bg-card px-6 py-3">
+      <div className="border-b border-border bg-card px-6 py-3 flex-shrink-0">
         <div className="max-w-6xl mx-auto">
           <div className="flex space-x-1">
             {viewTabs.map((tab) => {
@@ -170,7 +170,7 @@ const Lesson: React.FC = () => {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-0">
 
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto">
@@ -321,13 +321,13 @@ const Lesson: React.FC = () => {
             )}
 
             {viewMode === "notes" && !isLessonNotFound && (
-              <Card className="bg-card border-border">
-                <CardHeader>
+              <Card className="bg-card border-border h-full flex flex-col">
+                <CardHeader className="flex-shrink-0">
                   <CardTitle className="text-card-foreground font-heading">
                     Lesson Notes
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex-1 overflow-y-auto">
                   {isGeneratingContent ? (
                     <div className="flex items-center justify-center py-8">
                       <Loader2Icon className="h-6 w-6 animate-spin text-primary mr-2" />
