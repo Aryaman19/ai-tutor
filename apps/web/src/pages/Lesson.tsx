@@ -260,6 +260,7 @@ const Lesson: React.FC = () => {
                         autoPlay={false}
                         speechRate={1}
                         speechVolume={0.8}
+                        userId="default"
                         onStepChange={(stepIndex) => {
                         }}
                         onComplete={() => {

@@ -12,6 +12,7 @@ import {
 } from "../utils/lessonAdapter";
 import { createComponentLogger } from "@ai-tutor/utils";
 import { cn } from "@ai-tutor/utils";
+import { useTTSSettings } from "@ai-tutor/hooks";
 
 // Using any for now - will fix typing later
 type ExcalidrawImperativeAPI = any;
@@ -35,10 +36,13 @@ interface ExcalidrawPlayerProps {
   
   // Config props
   autoPlay?: boolean;
-  speechRate?: number;
-  speechVolume?: number;
+  speechRate?: number; // Optional fallback, will use settings if userId provided
+  speechVolume?: number; // Optional fallback, will use settings if userId provided
   showControls?: boolean;
   showLessonSelector?: boolean;
+  
+  // Settings integration
+  userId?: string; // When provided, will use TTS settings from user preferences
   
   // Callbacks
   onStepChange?: (stepIndex: number) => void;
@@ -125,6 +129,7 @@ export default function ExcalidrawPlayer({
   speechVolume = 0.8,
   showControls = true,
   showLessonSelector = true,
+  userId,
   onStepChange,
   onComplete,
   onLessonChange,
@@ -144,6 +149,62 @@ export default function ExcalidrawPlayer({
   const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
   const accumulatedElements = useRef<ExcalidrawElement[]>([]);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // TTS Settings integration
+  const { data: ttsSettings } = useTTSSettings(userId || "default");
+  
+  // Get effective TTS values (settings override props)
+  const effectiveSpeechRate = ttsSettings?.speed || speechRate;
+  const effectiveSpeechVolume = ttsSettings?.volume || speechVolume;
+  const selectedVoice = ttsSettings?.voice;
+  const useSettingsVoice = userId && ttsSettings?.provider === "browser" && selectedVoice;
+  
+  // Debug logging for voice selection
+  logger.debug("TTS Settings:", {
+    userId,
+    ttsSettings,
+    effectiveSpeechRate,
+    effectiveSpeechVolume,
+    selectedVoice,
+    useSettingsVoice
+  });
+  
+  // Voice selection helper with validation and fallback
+  const getSelectedVoice = useCallback((): SpeechSynthesisVoice | null => {
+    if (!useSettingsVoice || typeof window === "undefined" || !("speechSynthesis" in window)) {
+      return null;
+    }
+    
+    const voices = window.speechSynthesis.getVoices();
+    
+    // Handle case where voices haven't loaded yet
+    if (voices.length === 0) {
+      logger.debug("Voices not loaded yet, using default voice");
+      return null;
+    }
+    
+    // Try to find exact match first
+    let voice = voices.find(v => v.name === selectedVoice);
+    
+    if (!voice) {
+      // Try case-insensitive match
+      voice = voices.find(v => v.name.toLowerCase() === selectedVoice?.toLowerCase());
+    }
+    
+    if (!voice) {
+      // Try partial match
+      voice = voices.find(v => v.name.toLowerCase().includes(selectedVoice?.toLowerCase() || ""));
+    }
+    
+    if (!voice) {
+      logger.warn(`Selected voice "${selectedVoice}" not found. Available voices:`, voices.map(v => v.name));
+      logger.debug("Falling back to default voice");
+      return null;
+    }
+    
+    logger.debug(`Selected voice: ${voice.name} (${voice.lang})`);
+    return voice;
+  }, [useSettingsVoice, selectedVoice]);
   const pendingUpdateRef = useRef<{
     elements: ExcalidrawElement[];
     currentElements: ExcalidrawElement[];
@@ -399,8 +460,17 @@ export default function ExcalidrawPlayer({
     const narrationText = getNarrationText(step);
     if (narrationText && "speechSynthesis" in window && !isMuted) {
       const utterance = new SpeechSynthesisUtterance(narrationText);
-      utterance.rate = speechRate;
-      utterance.volume = speechVolume;
+      utterance.rate = effectiveSpeechRate;
+      utterance.volume = effectiveSpeechVolume;
+      
+      // Apply voice selection from settings
+      const voice = getSelectedVoice();
+      if (voice) {
+        utterance.voice = voice;
+        logger.debug(`Using voice: ${voice.name} (${voice.lang})`);
+      } else {
+        logger.debug("Using default voice - no custom voice selected or available");
+      }
 
       speechRef.current = utterance;
 
@@ -421,8 +491,8 @@ export default function ExcalidrawPlayer({
     }
   }, [
     excalidrawAPI, currentStepIndex, isPlaying, debouncedUpdateScene, regenerateIndices,
-    getNarrationText, speechRate, speechVolume, isMuted, onStepChange,
-    onComplete, getCurrentSteps, generateElementsFromStep, mode
+    getNarrationText, effectiveSpeechRate, effectiveSpeechVolume, isMuted, onStepChange,
+    onComplete, getCurrentSteps, generateElementsFromStep, mode, getSelectedVoice
   ]);
 
   const handleLessonChange = useCallback(async (lessonName: string) => {
@@ -738,6 +808,23 @@ export default function ExcalidrawPlayer({
       }
     };
   }, [resetHideControlsTimer]);
+  
+  // Handle voice loading for browsers that load voices asynchronously
+  useEffect(() => {
+    if (useSettingsVoice && typeof window !== "undefined" && "speechSynthesis" in window) {
+      const handleVoicesChanged = () => {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          logger.debug(`Voices loaded: ${voices.length} voices available`);
+        }
+      };
+      
+      window.speechSynthesis.addEventListener('voiceschanged', handleVoicesChanged);
+      return () => {
+        window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged);
+      };
+    }
+  }, [useSettingsVoice]);
 
   return (
     <div 
