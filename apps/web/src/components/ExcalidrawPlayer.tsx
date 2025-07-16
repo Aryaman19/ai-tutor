@@ -137,7 +137,6 @@ export default function ExcalidrawPlayer({
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControlsState, setShowControlsState] = useState(true);
-  const [isHovering, setIsHovering] = useState(false);
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
@@ -643,24 +642,10 @@ export default function ExcalidrawPlayer({
     }
     setShowControlsState(true);
     hideControlsTimeoutRef.current = setTimeout(() => {
-      if (!isHovering) {
-        setShowControlsState(false);
-      }
+      setShowControlsState(false);
     }, 3000);
-  }, [isHovering]);
-
-  const handleMouseEnter = useCallback(() => {
-    setIsHovering(true);
-    setShowControlsState(true);
-    if (hideControlsTimeoutRef.current) {
-      clearTimeout(hideControlsTimeoutRef.current);
-    }
   }, []);
 
-  const handleMouseLeave = useCallback(() => {
-    setIsHovering(false);
-    resetHideControlsTimer();
-  }, [resetHideControlsTimer]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -726,28 +711,11 @@ export default function ExcalidrawPlayer({
         resetHideControlsTimer();
       };
 
-      const handleCanvasMouseEnter = () => {
-        setIsHovering(true);
-        setShowControlsState(true);
-        if (hideControlsTimeoutRef.current) {
-          clearTimeout(hideControlsTimeoutRef.current);
-        }
-      };
-
-      const handleCanvasMouseLeave = () => {
-        setIsHovering(false);
-        resetHideControlsTimer();
-      };
-
       // Add event listeners to canvas container
       canvasContainer.addEventListener('mousemove', handleCanvasMouseMove);
-      canvasContainer.addEventListener('mouseenter', handleCanvasMouseEnter);
-      canvasContainer.addEventListener('mouseleave', handleCanvasMouseLeave);
 
       return () => {
         canvasContainer.removeEventListener('mousemove', handleCanvasMouseMove);
-        canvasContainer.removeEventListener('mouseenter', handleCanvasMouseEnter);
-        canvasContainer.removeEventListener('mouseleave', handleCanvasMouseLeave);
       };
     };
 
@@ -781,8 +749,6 @@ export default function ExcalidrawPlayer({
         height: isFullscreen ? "100vh" : "600px", 
         width: isFullscreen ? "100vw" : (mode === 'legacy' ? "900px" : "100%")
       }}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
       onMouseMove={resetHideControlsTimer}
     >
       {/* Lesson Selector at Top (if applicable) */}
