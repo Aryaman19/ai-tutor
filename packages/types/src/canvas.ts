@@ -12,6 +12,12 @@ export interface CanvasStep {
   canvas_data?: any;
   duration?: number;     // Estimated duration in seconds
   
+  // TTS metadata fields
+  audio_id?: string;     // TTS audio cache ID
+  tts_voice?: string;    // TTS voice used for generation
+  tts_generated?: boolean; // Whether TTS audio was generated
+  tts_error?: string;    // TTS generation error if any
+  
   // Helper method to get explanation text with fallback
   getExplanation?: () => string;
 }

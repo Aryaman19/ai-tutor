@@ -34,9 +34,33 @@ async def connect_to_mongo():
         db.database = db.client[settings.database_name]
 
         # Initialize Beanie
-        from models import UserSettings
-        from models.lesson import Lesson
-        await init_beanie(database=db.database, document_models=[UserSettings, Lesson])
+        try:
+            from models import UserSettings, Lesson
+            await init_beanie(database=db.database, document_models=[UserSettings, Lesson])
+        except ImportError as e:
+            logger.error(f"Failed to import models: {e}")
+            # Try importing individually
+            models = []
+            try:
+                from models import UserSettings
+                models.append(UserSettings)
+                logger.info("UserSettings model imported successfully")
+            except ImportError:
+                logger.error("Failed to import UserSettings model")
+            
+            try:
+                from models.lesson import Lesson
+                models.append(Lesson)
+                logger.info("Lesson model imported successfully")
+            except ImportError:
+                logger.error("Failed to import Lesson model")
+            
+            if models:
+                await init_beanie(database=db.database, document_models=models)
+                logger.info(f"Beanie initialized with {len(models)} models")
+            else:
+                logger.error("No models available for Beanie initialization")
+                return False
 
         logger.info("Beanie initialized successfully")
         return True

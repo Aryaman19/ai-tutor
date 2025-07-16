@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     # TTS Configuration
     tts_cache_dir: str = Field(default="static/audio", description="TTS audio cache directory")
     max_audio_cache_size: int = Field(default=1000, ge=1, description="Maximum cached audio files")
+    tts_voices_dir: str = Field(default="voices", description="TTS voice models directory")
+    tts_piper_path: str = Field(default="piper", description="Path to Piper TTS binary or Python module")
 
     # CORS - Parse comma-separated string to list
     cors_origins: str = Field(default="http://localhost:3000,http://localhost:5173", description="CORS origins (comma-separated)")

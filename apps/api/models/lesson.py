@@ -17,6 +17,10 @@ class CanvasStep(BaseModel):
     elements: Optional[List[dict]] = None  # Excalidraw elements
     duration: Optional[float] = None  # Estimated duration in seconds
     audio_url: Optional[str] = None  # Audio file URL
+    audio_id: Optional[str] = None  # TTS audio cache ID
+    tts_voice: Optional[str] = None  # TTS voice used for generation
+    tts_generated: Optional[bool] = None  # Whether TTS audio was generated
+    tts_error: Optional[str] = None  # TTS generation error if any
     
     def get_explanation(self) -> str:
         """Get explanation text, falling back to content for backward compatibility"""

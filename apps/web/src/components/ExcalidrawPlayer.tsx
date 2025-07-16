@@ -12,7 +12,7 @@ import {
 } from "../utils/lessonAdapter";
 import { createComponentLogger } from "@ai-tutor/utils";
 import { cn } from "@ai-tutor/utils";
-import { useTTSSettings } from "@ai-tutor/hooks";
+import { useTTSSettings, useTTSAudio, useTTSAvailability } from "@ai-tutor/hooks";
 
 // Using any for now - will fix typing later
 type ExcalidrawImperativeAPI = any;
@@ -142,6 +142,8 @@ export default function ExcalidrawPlayer({
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControlsState, setShowControlsState] = useState(true);
+  const [currentNarrationText, setCurrentNarrationText] = useState('');
+  const [useBrowserTTS, setUseBrowserTTS] = useState(false);
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
@@ -152,21 +154,49 @@ export default function ExcalidrawPlayer({
   
   // TTS Settings integration
   const { data: ttsSettings } = useTTSSettings(userId || "default");
+  const { data: ttsAvailability } = useTTSAvailability();
   
   // Get effective TTS values (settings override props)
   const effectiveSpeechRate = ttsSettings?.speed || speechRate;
   const effectiveSpeechVolume = ttsSettings?.volume || speechVolume;
   const selectedVoice = ttsSettings?.voice;
   const useSettingsVoice = userId && ttsSettings?.provider === "browser" && selectedVoice;
+  const usePiperTTS = userId && ttsSettings?.provider === "piper" && ttsAvailability?.available;
+  
+  // Piper TTS Audio Hook
+  const ttsAudio = useTTSAudio(currentNarrationText, {
+    voice: usePiperTTS ? selectedVoice : undefined,
+    autoPlay: false,
+    onPlay: () => {
+      logger.debug("Piper TTS started playing");
+    },
+    onEnd: () => {
+      logger.debug("Piper TTS finished playing");
+      setCurrentStepIndex((prev) => prev + 1);
+    },
+    onError: (error) => {
+      logger.error("Piper TTS error:", error);
+      // Check if it's a service unavailable error
+      if (error.message.includes('503') || error.message.includes('service is not available')) {
+        logger.warn("Piper TTS service unavailable, switching to browser TTS");
+      } else {
+        logger.warn("Piper TTS failed, falling back to browser TTS");
+      }
+      setUseBrowserTTS(true);
+    },
+  });
   
   // Debug logging for voice selection
   logger.debug("TTS Settings:", {
     userId,
     ttsSettings,
+    ttsAvailability,
     effectiveSpeechRate,
     effectiveSpeechVolume,
     selectedVoice,
-    useSettingsVoice
+    useSettingsVoice,
+    usePiperTTS,
+    useBrowserTTS
   });
   
   // Voice selection helper with validation and fallback
@@ -408,11 +438,22 @@ export default function ExcalidrawPlayer({
   );
 
   const stopCurrentNarration = useCallback(() => {
+    // Stop Piper TTS if it's playing
+    if (ttsAudio.audioElement) {
+      ttsAudio.controls.pause();
+      ttsAudio.controls.stop();
+    }
+    
+    // Stop browser TTS if it's playing
     if (speechRef.current) {
       window.speechSynthesis.cancel();
       speechRef.current = null;
     }
-  }, []);
+    
+    // Clear current narration text
+    setCurrentNarrationText('');
+    setUseBrowserTTS(false);
+  }, [ttsAudio]);
 
   const getNarrationText = useCallback((step: FlexibleLessonStep | LessonSlide): string => {
     if ('narration' in step && step.narration) return step.narration;
@@ -458,32 +499,56 @@ export default function ExcalidrawPlayer({
 
     // Play narration if not muted
     const narrationText = getNarrationText(step);
-    if (narrationText && "speechSynthesis" in window && !isMuted) {
-      const utterance = new SpeechSynthesisUtterance(narrationText);
-      utterance.rate = effectiveSpeechRate;
-      utterance.volume = effectiveSpeechVolume;
-      
-      // Apply voice selection from settings
-      const voice = getSelectedVoice();
-      if (voice) {
-        utterance.voice = voice;
-        logger.debug(`Using voice: ${voice.name} (${voice.lang})`);
+    if (narrationText && !isMuted) {
+      // Try Piper TTS first if enabled and available, otherwise use browser TTS
+      if (usePiperTTS && !useBrowserTTS && ttsAvailability?.available) {
+        setCurrentNarrationText(narrationText);
+        // Wait for TTS audio to be generated and play when ready
+        const tryPlayPiperTTS = () => {
+          if (ttsAudio.audioElement && !ttsAudio.status.isGenerating) {
+            ttsAudio.controls.play();
+          } else if (ttsAudio.status.error) {
+            logger.warn("Piper TTS failed, falling back to browser TTS");
+            setUseBrowserTTS(true);
+          } else {
+            // Still generating, wait a bit and try again
+            setTimeout(tryPlayPiperTTS, 100);
+          }
+        };
+        tryPlayPiperTTS();
+      } else if ("speechSynthesis" in window) {
+        // Fallback to browser TTS
+        const utterance = new SpeechSynthesisUtterance(narrationText);
+        utterance.rate = effectiveSpeechRate;
+        utterance.volume = effectiveSpeechVolume;
+        
+        // Apply voice selection from settings
+        const voice = getSelectedVoice();
+        if (voice) {
+          utterance.voice = voice;
+          logger.debug(`Using browser voice: ${voice.name} (${voice.lang})`);
+        } else {
+          logger.debug("Using default browser voice - no custom voice selected or available");
+        }
+
+        speechRef.current = utterance;
+
+        utterance.onend = () => {
+          setCurrentStepIndex((prev) => prev + 1);
+        };
+
+        utterance.onerror = (event) => {
+          logger.error("Speech synthesis error:", event);
+          setCurrentStepIndex((prev) => prev + 1);
+        };
+
+        window.speechSynthesis.speak(utterance);
       } else {
-        logger.debug("Using default voice - no custom voice selected or available");
+        // No TTS available, just advance
+        setTimeout(() => {
+          setCurrentStepIndex((prev) => prev + 1);
+        }, 2000);
       }
-
-      speechRef.current = utterance;
-
-      utterance.onend = () => {
-        setCurrentStepIndex((prev) => prev + 1);
-      };
-
-      utterance.onerror = (event) => {
-        logger.error("Speech synthesis error:", event);
-        setCurrentStepIndex((prev) => prev + 1);
-      };
-
-      window.speechSynthesis.speak(utterance);
     } else {
       setTimeout(() => {
         setCurrentStepIndex((prev) => prev + 1);
@@ -492,7 +557,8 @@ export default function ExcalidrawPlayer({
   }, [
     excalidrawAPI, currentStepIndex, isPlaying, debouncedUpdateScene, regenerateIndices,
     getNarrationText, effectiveSpeechRate, effectiveSpeechVolume, isMuted, onStepChange,
-    onComplete, getCurrentSteps, generateElementsFromStep, mode, getSelectedVoice
+    onComplete, getCurrentSteps, generateElementsFromStep, mode, getSelectedVoice,
+    usePiperTTS, useBrowserTTS, ttsAudio
   ]);
 
   const handleLessonChange = useCallback(async (lessonName: string) => {
@@ -808,6 +874,42 @@ export default function ExcalidrawPlayer({
       }
     };
   }, [resetHideControlsTimer]);
+
+  // Handle fallback to browser TTS when Piper TTS fails
+  useEffect(() => {
+    if (useBrowserTTS && currentNarrationText && !isMuted) {
+      if ("speechSynthesis" in window) {
+        const utterance = new SpeechSynthesisUtterance(currentNarrationText);
+        utterance.rate = effectiveSpeechRate;
+        utterance.volume = effectiveSpeechVolume;
+        
+        // Apply voice selection from settings
+        const voice = getSelectedVoice();
+        if (voice) {
+          utterance.voice = voice;
+          logger.debug(`Using fallback voice: ${voice.name} (${voice.lang})`);
+        }
+
+        speechRef.current = utterance;
+
+        utterance.onend = () => {
+          setCurrentStepIndex((prev) => prev + 1);
+        };
+
+        utterance.onerror = (event) => {
+          logger.error("Fallback speech synthesis error:", event);
+          setCurrentStepIndex((prev) => prev + 1);
+        };
+
+        window.speechSynthesis.speak(utterance);
+      } else {
+        // No browser TTS available either
+        setTimeout(() => {
+          setCurrentStepIndex((prev) => prev + 1);
+        }, 2000);
+      }
+    }
+  }, [useBrowserTTS, currentNarrationText, isMuted, effectiveSpeechRate, effectiveSpeechVolume, getSelectedVoice]);
   
   // Handle voice loading for browsers that load voices asynchronously
   useEffect(() => {

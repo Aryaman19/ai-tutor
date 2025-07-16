@@ -103,7 +103,10 @@ export const settingsApi = {
       anthropic: ["claude-3-sonnet", "claude-3-haiku", "claude-3-opus", "claude-3-5-sonnet"],
       browserTts: ["default", "male", "female", "en-US-male", "en-US-female", "en-GB-male", "en-GB-female"],
       elevenlabs: ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-      openaiTts: ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+      openaiTts: ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
+      piperTts: [
+        { id: "en_US-lessac-medium", name: "Lessac (Medium Quality)", language: "en_US" }
+      ]
     };
   },
 

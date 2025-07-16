@@ -22,6 +22,10 @@ gtts==2.4.0
 edge-tts==6.1.9
 pyttsx3==2.90
 
+# Piper TTS dependencies
+aiofiles==23.2.1
+librosa==0.10.1
+
 # Image processing for canvas
 Pillow==10.1.0
 

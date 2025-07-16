@@ -28,10 +28,26 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     gnupg \
+    espeak-ng \
+    espeak-ng-data \
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && npm install -g serve \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Piper TTS
+RUN wget -O /tmp/piper.tar.gz https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_amd64.tar.gz && \
+    cd /tmp && \
+    tar -xzf piper.tar.gz && \
+    cp piper/piper /usr/local/bin/ && \
+    chmod +x /usr/local/bin/piper && \
+    rm -rf /tmp/piper*
+
+# Download default Piper voice model
+RUN mkdir -p /app/voices && \
+    cd /app/voices && \
+    wget https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx && \
+    wget https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
 
 # Install Python dependencies
 COPY apps/api/requirements.txt ./

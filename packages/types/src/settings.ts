@@ -21,6 +21,40 @@ export interface TTSSettings {
   voiceSettings: Record<string, any>;
 }
 
+export interface PiperVoice {
+  id: string;
+  name: string;
+  language: string;
+}
+
+export interface TTSAudioGenerationRequest {
+  text: string;
+  voice?: string;
+}
+
+export interface TTSAudioGenerationResponse {
+  audio_id: string;
+  audio_url: string;
+  cached: boolean;
+  text: string;
+  voice: string;
+}
+
+export interface TTSCacheStats {
+  total_files: number;
+  total_size_bytes: number;
+  total_size_mb: number;
+  cache_limit: number;
+  cache_directory: string;
+}
+
+export interface TTSHealthStatus {
+  status: 'healthy' | 'unhealthy';
+  service: string;
+  healthy: boolean;
+  error?: string;
+}
+
 export interface STTSettings {
   provider: string;
   apiKey?: string;
@@ -108,6 +142,7 @@ export interface AvailableModels {
   browserTts: string[];
   elevenlabs: string[];
   openaiTts: string[];
+  piperTts: PiperVoice[];
 }
 
 // Legacy interface for backward compatibility

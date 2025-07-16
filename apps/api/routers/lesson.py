@@ -10,6 +10,15 @@ from models.lesson import (
 )
 from services.ollama_service import ollama_service
 
+# Optional TTS service import
+try:
+    from services.tts_service import piper_tts_service
+    TTS_AVAILABLE = True
+except ImportError as e:
+    print(f"TTS service not available: {e}")
+    piper_tts_service = None
+    TTS_AVAILABLE = False
+
 router = APIRouter()
 
 
@@ -334,4 +343,148 @@ async def get_lesson_script(lesson_id: str):
         raise HTTPException(
             status_code=500,
             detail="Failed to get lesson script"
+        )
+
+
+@router.post("/lesson/{lesson_id}/generate-tts", response_model=LessonResponse)
+async def generate_lesson_tts(lesson_id: str, voice: Optional[str] = None):
+    """Generate TTS audio for all steps in a lesson"""
+    try:
+        if not TTS_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="TTS service is not available"
+            )
+        
+        if not ObjectId.is_valid(lesson_id):
+            raise HTTPException(status_code=400, detail="Invalid lesson ID")
+        
+        lesson = await Lesson.get(ObjectId(lesson_id))
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+        
+        if not lesson.steps:
+            raise HTTPException(status_code=400, detail="Lesson has no steps to generate TTS for")
+        
+        # Generate TTS for each step
+        updated_steps = []
+        for step in lesson.steps:
+            if not step.narration:
+                # Skip steps without narration
+                updated_steps.append(step)
+                continue
+            
+            try:
+                # Generate TTS audio
+                audio_id = await piper_tts_service.generate_audio(step.narration, voice)
+                
+                if audio_id:
+                    # Update step with TTS metadata
+                    audio_url = piper_tts_service._get_audio_url(audio_id)
+                    updated_step = step.copy(update={
+                        "audio_id": audio_id,
+                        "audio_url": audio_url,
+                        "tts_voice": voice or piper_tts_service.default_voice,
+                        "tts_generated": True,
+                        "tts_error": None
+                    })
+                else:
+                    # Mark as failed
+                    updated_step = step.copy(update={
+                        "tts_generated": False,
+                        "tts_error": "Failed to generate TTS audio"
+                    })
+                
+                updated_steps.append(updated_step)
+                
+            except Exception as e:
+                # Mark as failed with error
+                updated_step = step.copy(update={
+                    "tts_generated": False,
+                    "tts_error": str(e)
+                })
+                updated_steps.append(updated_step)
+        
+        # Update lesson with TTS metadata
+        await lesson.update({"$set": {
+            "steps": updated_steps,
+            "updated_at": datetime.utcnow()
+        }})
+        
+        # Refresh lesson from database
+        lesson = await Lesson.get(ObjectId(lesson_id))
+        
+        return LessonResponse(
+            id=str(lesson.id),
+            topic=lesson.topic,
+            title=lesson.title,
+            difficulty_level=lesson.difficulty_level,
+            steps=lesson.steps,
+            doubts=lesson.doubts or [],
+            created_at=lesson.created_at,
+            updated_at=lesson.updated_at
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating lesson TTS: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate lesson TTS"
+        )
+
+
+@router.get("/lesson/{lesson_id}/tts-status")
+async def get_lesson_tts_status(lesson_id: str):
+    """Get TTS generation status for a lesson"""
+    try:
+        if not TTS_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="TTS service is not available"
+            )
+        
+        if not ObjectId.is_valid(lesson_id):
+            raise HTTPException(status_code=400, detail="Invalid lesson ID")
+        
+        lesson = await Lesson.get(ObjectId(lesson_id))
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+        
+        # Calculate TTS statistics
+        total_steps = len(lesson.steps)
+        steps_with_narration = len([s for s in lesson.steps if s.narration])
+        steps_with_tts = len([s for s in lesson.steps if s.tts_generated])
+        steps_with_errors = len([s for s in lesson.steps if s.tts_error])
+        
+        step_details = []
+        for step in lesson.steps:
+            step_details.append({
+                "step_number": step.step_number,
+                "title": step.title,
+                "has_narration": bool(step.narration),
+                "tts_generated": step.tts_generated,
+                "audio_url": step.audio_url,
+                "tts_voice": step.tts_voice,
+                "tts_error": step.tts_error
+            })
+        
+        return {
+            "lesson_id": str(lesson.id),
+            "total_steps": total_steps,
+            "steps_with_narration": steps_with_narration,
+            "steps_with_tts": steps_with_tts,
+            "steps_with_errors": steps_with_errors,
+            "completion_percentage": (steps_with_tts / steps_with_narration * 100) if steps_with_narration > 0 else 0,
+            "step_details": step_details
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting lesson TTS status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get lesson TTS status"
         )

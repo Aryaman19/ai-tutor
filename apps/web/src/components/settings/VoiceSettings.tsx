@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Card, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Slider, Input } from "@ai-tutor/ui";
 import type { TTSSettings } from "@ai-tutor/types";
+import { useTTSVoices } from "@ai-tutor/hooks";
 
 interface VoiceSettingsProps {
   data?: TTSSettings;
@@ -13,8 +14,12 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
   const [availableVoices, setAvailableVoices] = useState<string[]>([]);
   const [isLoadingVoices, setIsLoadingVoices] = useState(false);
 
+  // Get Piper voices from API
+  const { data: piperVoices, isLoading: isPiperVoicesLoading } = useTTSVoices();
+
   const providers = [
     { value: "browser", label: "Browser (Built-in)" },
+    { value: "piper", label: "Piper (Offline)" },
     { value: "elevenlabs", label: "ElevenLabs" },
     { value: "openai", label: "OpenAI" },
   ];
@@ -29,6 +34,9 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
       if (selectedProvider === "browser") {
         const voices = browserVoices || ["Default"];
         setAvailableVoices(voices);
+      } else if (selectedProvider === "piper") {
+        const voices = piperVoices?.map(voice => voice.name) || ["Lessac (Medium Quality)"];
+        setAvailableVoices(voices);
       } else if (selectedProvider === "elevenlabs") {
         setAvailableVoices(elevenLabsVoices);
       } else if (selectedProvider === "openai") {
@@ -39,7 +47,7 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
     };
 
     loadVoices();
-  }, [selectedProvider, browserVoices]);
+  }, [selectedProvider, browserVoices, piperVoices]);
 
   const handleProviderChange = (provider: string) => {
     setSelectedProvider(provider);
@@ -74,7 +82,7 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
             <Select
               value={data?.voice || ""}
               onValueChange={(value) => onChange({ voice: value })}
-              disabled={isLoadingVoices || availableVoices.length === 0}
+              disabled={isLoadingVoices || availableVoices.length === 0 || (selectedProvider === "piper" && isPiperVoicesLoading)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select voice" />
@@ -85,7 +93,7 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
                 ))}
               </SelectContent>
             </Select>
-            {isLoadingVoices && (
+            {(isLoadingVoices || (selectedProvider === "piper" && isPiperVoicesLoading)) && (
               <p className="text-xs text-muted-foreground mt-1">
                 Loading voices...
               </p>
@@ -93,7 +101,7 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
           </div>
         </div>
         
-        {selectedProvider !== "browser" && (
+        {selectedProvider !== "browser" && selectedProvider !== "piper" && (
           <div className="mt-4">
             <label className="block text-sm font-medium mb-2">API Key</label>
             <Input
@@ -102,6 +110,17 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
               onChange={(e) => onChange({ apiKey: e.target.value })}
               placeholder={`Enter your ${selectedProvider} API key`}
             />
+          </div>
+        )}
+        
+        {selectedProvider === "piper" && (
+          <div className="mt-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800">
+                <strong>Piper TTS:</strong> Offline text-to-speech engine that runs locally. 
+                No internet connection required and your privacy is protected.
+              </p>
+            </div>
           </div>
         )}
         

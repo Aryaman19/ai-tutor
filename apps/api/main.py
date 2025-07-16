@@ -82,14 +82,42 @@ except ImportError:
 try:
     from routers.settings import router as settings_router
     app.include_router(settings_router, prefix="/api/settings", tags=["settings"])
-except ImportError:
-    logger.warning("Settings router not found - settings endpoints will not be available")
+    logger.info("Settings router registered successfully")
+except ImportError as e:
+    logger.error(f"Settings router import failed: {e}")
+    logger.warning("Settings endpoints will not be available")
+except Exception as e:
+    logger.error(f"Failed to register settings router: {e}")
+    logger.warning("Settings endpoints will not be available")
 
 try:
     from routers.lesson import router as lesson_router
     app.include_router(lesson_router, prefix="/api", tags=["lessons"])
-except ImportError:
-    logger.warning("Lesson router not found - lesson endpoints will not be available")
+    logger.info("Lesson router registered successfully")
+except ImportError as e:
+    logger.error(f"Lesson router import failed: {e}")
+    logger.warning("Lesson endpoints will not be available")
+except Exception as e:
+    logger.error(f"Failed to register lesson router: {e}")
+    logger.warning("Lesson endpoints will not be available")
+
+try:
+    from routers.tts import router as tts_router
+    app.include_router(tts_router, prefix="/api", tags=["tts"])
+    logger.info("TTS router registered successfully")
+except ImportError as e:
+    logger.error(f"TTS router import failed: {e}")
+    logger.warning("TTS endpoints will not be available")
+except Exception as e:
+    logger.error(f"Failed to register TTS router: {e}")
+    logger.warning("TTS endpoints will not be available")
+
+# Mount static files for audio serving
+try:
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+    logger.info("Static files mounted at /static")
+except Exception as e:
+    logger.warning(f"Failed to mount static files: {e}")
 
 
 if __name__ == "__main__":
