@@ -1,9 +1,10 @@
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from services.tts_service import piper_tts_service
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,22 @@ class TTSCacheStatsResponse(BaseModel):
     total_size_mb: float
     cache_limit: int
     cache_directory: str
+
+
+class TTSStreamingRequest(BaseModel):
+    text: str
+    voice: Optional[str] = None
+    max_chunk_size: Optional[int] = 200
+
+
+class TTSStreamingChunkResponse(BaseModel):
+    chunk_id: str
+    audio_id: Optional[str]
+    audio_url: Optional[str]
+    index: int
+    text: str
+    is_ready: bool
+    error: Optional[str] = None
 
 
 @router.post("/tts/generate", response_model=TTSGenerateResponse)
@@ -92,6 +109,67 @@ async def generate_tts_audio(request: TTSGenerateRequest):
         raise HTTPException(
             status_code=500,
             detail="Failed to generate TTS audio"
+        )
+
+
+@router.post("/tts/generate-streaming")
+async def generate_streaming_tts_audio(request: TTSStreamingRequest):
+    """Generate streaming TTS audio for the given text"""
+    try:
+        if not request.text.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Text cannot be empty"
+            )
+        
+        # Check if Piper TTS service is available
+        if not piper_tts_service.is_service_available():
+            raise HTTPException(
+                status_code=503,
+                detail="Piper TTS service is not available. Please use browser TTS as fallback."
+            )
+        
+        async def generate_stream():
+            """Generate streaming response"""
+            async for chunk in piper_tts_service.generate_streaming_audio(
+                request.text, 
+                request.voice, 
+                request.max_chunk_size
+            ):
+                # Convert chunk to response format
+                chunk_response = TTSStreamingChunkResponse(
+                    chunk_id=chunk.chunk_id,
+                    audio_id=chunk.audio_id,
+                    audio_url=piper_tts_service._get_audio_url(chunk.audio_id) if chunk.audio_id else None,
+                    index=chunk.index,
+                    text=chunk.text,
+                    is_ready=chunk.is_ready,
+                    error=chunk.error
+                )
+                
+                # Yield as JSON lines
+                yield f"data: {chunk_response.model_dump_json()}\n\n"
+            
+            # Send end signal
+            yield "data: {\"type\": \"end\"}\n\n"
+        
+        return StreamingResponse(
+            generate_stream(),
+            media_type="text/plain",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating streaming TTS audio: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate streaming TTS audio"
         )
 
 

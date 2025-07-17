@@ -12,7 +12,7 @@ import {
 } from "../utils/lessonAdapter";
 import { createComponentLogger } from "@ai-tutor/utils";
 import { cn } from "@ai-tutor/utils";
-import { useTTSSettings, useTTSAudio, useTTSAvailability } from "@ai-tutor/hooks";
+import { useTTSSettings, useTTSAudio, useTTSAvailability, useStreamingTTS } from "@ai-tutor/hooks";
 
 // Using any for now - will fix typing later
 type ExcalidrawImperativeAPI = any;
@@ -144,6 +144,7 @@ export default function ExcalidrawPlayer({
   const [showControlsState, setShowControlsState] = useState(true);
   const [currentNarrationText, setCurrentNarrationText] = useState('');
   const [useBrowserTTS, setUseBrowserTTS] = useState(false);
+  const [streamingTTSEnabled, setStreamingTTSEnabled] = useState(false);
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
@@ -162,10 +163,11 @@ export default function ExcalidrawPlayer({
   const selectedVoice = ttsSettings?.voice;
   const useSettingsVoice = userId && ttsSettings?.provider === "browser" && selectedVoice;
   const usePiperTTS = userId && ttsSettings?.provider === "piper" && ttsAvailability?.available;
+  const enableStreamingTTS = userId && ttsSettings?.streaming !== false && ttsAvailability?.available;
   
-  // Piper TTS Audio Hook
+  // Piper TTS Audio Hook (non-streaming)
   const ttsAudio = useTTSAudio(currentNarrationText, {
-    voice: usePiperTTS ? selectedVoice : undefined,
+    voice: usePiperTTS && !streamingTTSEnabled ? selectedVoice : undefined,
     autoPlay: false,
     onPlay: () => {
       logger.debug("Piper TTS started playing");
@@ -185,6 +187,33 @@ export default function ExcalidrawPlayer({
       setUseBrowserTTS(true);
     },
   });
+
+  // Streaming TTS Hook
+  const streamingTTS = useStreamingTTS(streamingTTSEnabled ? currentNarrationText : '', {
+    voice: enableStreamingTTS ? selectedVoice : undefined,
+    autoPlay: false,
+    onPlay: () => {
+      logger.debug("Streaming TTS started playing");
+    },
+    onEnd: () => {
+      logger.debug("Streaming TTS finished playing");
+      setCurrentStepIndex((prev) => prev + 1);
+    },
+    onError: (error: Error) => {
+      logger.error("Streaming TTS error:", error);
+      // Check if it's a service unavailable error
+      if (error.message.includes('503') || error.message.includes('service is not available')) {
+        logger.warn("Streaming TTS service unavailable, switching to browser TTS");
+      } else {
+        logger.warn("Streaming TTS failed, falling back to browser TTS");
+      }
+      setStreamingTTSEnabled(false);
+      setUseBrowserTTS(true);
+    },
+    onChunkReady: (chunk: any) => {
+      logger.debug(`Streaming TTS chunk ready: ${chunk.index}`);
+    },
+  });
   
   // Debug logging for voice selection
   logger.debug("TTS Settings:", {
@@ -196,7 +225,9 @@ export default function ExcalidrawPlayer({
     selectedVoice,
     useSettingsVoice,
     usePiperTTS,
-    useBrowserTTS
+    useBrowserTTS,
+    streamingTTSEnabled,
+    enableStreamingTTS
   });
   
   // Voice selection helper with validation and fallback
@@ -438,6 +469,12 @@ export default function ExcalidrawPlayer({
   );
 
   const stopCurrentNarration = useCallback(() => {
+    // Stop Streaming TTS if it's playing
+    if (streamingTTS.status.isPlaying || streamingTTS.status.isGenerating) {
+      streamingTTS.controls.stop();
+      streamingTTS.controls.cancel();
+    }
+    
     // Stop Piper TTS if it's playing
     if (ttsAudio.audioElement) {
       ttsAudio.controls.pause();
@@ -450,10 +487,11 @@ export default function ExcalidrawPlayer({
       speechRef.current = null;
     }
     
-    // Clear current narration text
+    // Clear current narration text and reset states
     setCurrentNarrationText('');
     setUseBrowserTTS(false);
-  }, [ttsAudio]);
+    setStreamingTTSEnabled(false);
+  }, [ttsAudio, streamingTTS]);
 
   const getNarrationText = useCallback((step: FlexibleLessonStep | LessonSlide): string => {
     if ('narration' in step && step.narration) return step.narration;
@@ -500,8 +538,41 @@ export default function ExcalidrawPlayer({
     // Play narration if not muted
     const narrationText = getNarrationText(step);
     if (narrationText && !isMuted) {
-      // Try Piper TTS first if enabled and available, otherwise use browser TTS
-      if (usePiperTTS && !useBrowserTTS && ttsAvailability?.available) {
+      // Try Streaming TTS first if enabled and available
+      if (enableStreamingTTS && !useBrowserTTS && !streamingTTSEnabled) {
+        setCurrentNarrationText(narrationText);
+        setStreamingTTSEnabled(true);
+        
+        // Wait for first chunk to be ready and play
+        const tryPlayStreamingTTS = () => {
+          if (streamingTTS.status.generatedChunks > 0 && !streamingTTS.status.isPlaying) {
+            streamingTTS.controls.play();
+          } else if (streamingTTS.status.error) {
+            logger.warn("Streaming TTS failed, falling back to regular Piper TTS");
+            setStreamingTTSEnabled(false);
+            // Try regular Piper TTS instead
+            if (usePiperTTS) {
+              const tryPlayPiperTTS = () => {
+                if (ttsAudio.audioElement && !ttsAudio.status.isGenerating) {
+                  ttsAudio.controls.play();
+                } else if (ttsAudio.status.error) {
+                  logger.warn("Piper TTS failed, falling back to browser TTS");
+                  setUseBrowserTTS(true);
+                } else {
+                  setTimeout(tryPlayPiperTTS, 100);
+                }
+              };
+              tryPlayPiperTTS();
+            } else {
+              setUseBrowserTTS(true);
+            }
+          } else if (streamingTTS.status.isGenerating) {
+            // Still generating, wait a bit and try again
+            setTimeout(tryPlayStreamingTTS, 100);
+          }
+        };
+        setTimeout(tryPlayStreamingTTS, 100);
+      } else if (usePiperTTS && !useBrowserTTS && !streamingTTSEnabled && ttsAvailability?.available) {
         setCurrentNarrationText(narrationText);
         // Wait for TTS audio to be generated and play when ready
         const tryPlayPiperTTS = () => {
@@ -558,7 +629,7 @@ export default function ExcalidrawPlayer({
     excalidrawAPI, currentStepIndex, isPlaying, debouncedUpdateScene, regenerateIndices,
     getNarrationText, effectiveSpeechRate, effectiveSpeechVolume, isMuted, onStepChange,
     onComplete, getCurrentSteps, generateElementsFromStep, mode, getSelectedVoice,
-    usePiperTTS, useBrowserTTS, ttsAudio
+    usePiperTTS, useBrowserTTS, streamingTTSEnabled, enableStreamingTTS, ttsAudio, streamingTTS
   ]);
 
   const handleLessonChange = useCallback(async (lessonName: string) => {
@@ -1017,6 +1088,20 @@ export default function ExcalidrawPlayer({
               <span className="min-w-0 flex-1 truncate">
                 {currentSteps[currentStepIndex]?.title || `Step ${currentSteps[currentStepIndex]?.step_number || currentStepIndex + 1}`}
               </span>
+              
+              {/* Streaming TTS Status */}
+              {streamingTTSEnabled && (
+                <span className="text-blue-400 text-xs whitespace-nowrap">
+                  {streamingTTS.status.isGenerating ? (
+                    `Generating ${streamingTTS.status.generatedChunks}/${streamingTTS.status.totalChunks} chunks`
+                  ) : streamingTTS.status.isPlaying ? (
+                    `Playing chunk ${streamingTTS.status.currentChunk + 1}/${streamingTTS.status.totalChunks}`
+                  ) : (
+                    `Ready (${streamingTTS.status.totalChunks} chunks)`
+                  )}
+                </span>
+              )}
+              
               <span className="text-white/70 whitespace-nowrap">
                 {Math.min(currentStepIndex + 1, currentSteps.length)} / {currentSteps.length}
               </span>

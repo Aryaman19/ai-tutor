@@ -3,14 +3,33 @@ import hashlib
 import os
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, AsyncGenerator
 import aiofiles
 import logging
 from config import settings
 import wave
 import io
+import re
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+@dataclass
+class TextChunk:
+    """Represents a chunk of text for streaming TTS"""
+    text: str
+    index: int
+    chunk_id: str
+    
+@dataclass
+class StreamingAudioChunk:
+    """Represents a generated audio chunk for streaming"""
+    chunk_id: str
+    audio_id: str
+    index: int
+    text: str
+    is_ready: bool = False
+    error: Optional[str] = None
 
 
 class PiperTTSService:
@@ -149,7 +168,7 @@ class PiperTTSService:
         try:
             if self.use_python_piper:
                 # Use Python piper module
-                from piper.voice import PiperVoice
+                from piper import PiperVoice
                 
                 logger.info(f"Generating TTS audio using Python piper module: {audio_id}")
                 
@@ -158,7 +177,7 @@ class PiperTTSService:
                 
                 # Generate audio
                 audio_bytes = b''
-                for chunk in voice.synthesize(text):
+                for chunk in voice.synthesize(text, syn_config=None):
                     audio_bytes += chunk.audio_int16_bytes
                 
                 # Save as proper WAV file with headers
@@ -340,6 +359,186 @@ class PiperTTSService:
         except Exception as e:
             logger.error(f"Piper TTS health check failed with exception: {e}")
             return False
+
+    def _split_text_into_chunks(self, text: str, max_chunk_size: int = 200) -> List[TextChunk]:
+        """Split text into optimal chunks for streaming TTS"""
+        if not text.strip():
+            return []
+        
+        # First, split by sentences
+        sentence_endings = r'[.!?]+\s*'
+        sentences = re.split(sentence_endings, text.strip())
+        sentences = [s.strip() for s in sentences if s.strip()]
+        
+        chunks = []
+        current_chunk = ""
+        chunk_index = 0
+        
+        for sentence in sentences:
+            # If adding this sentence would exceed max size, finalize current chunk
+            if current_chunk and len(current_chunk) + len(sentence) + 1 > max_chunk_size:
+                chunk_id = hashlib.sha256(f"{current_chunk}_{chunk_index}".encode()).hexdigest()[:16]
+                chunks.append(TextChunk(
+                    text=current_chunk.strip(),
+                    index=chunk_index,
+                    chunk_id=chunk_id
+                ))
+                current_chunk = sentence
+                chunk_index += 1
+            else:
+                if current_chunk:
+                    current_chunk += " " + sentence
+                else:
+                    current_chunk = sentence
+        
+        # Add the last chunk if it exists
+        if current_chunk.strip():
+            chunk_id = hashlib.sha256(f"{current_chunk}_{chunk_index}".encode()).hexdigest()[:16]
+            chunks.append(TextChunk(
+                text=current_chunk.strip(),
+                index=chunk_index,
+                chunk_id=chunk_id
+            ))
+        
+        logger.info(f"Split text into {len(chunks)} chunks")
+        return chunks
+
+    async def _generate_chunk_batch(self, chunks: List[TextChunk], voice: str = None) -> List[StreamingAudioChunk]:
+        """Generate audio for multiple chunks in parallel"""
+        voice = voice or self.default_voice
+        
+        async def generate_single_chunk(chunk: TextChunk) -> StreamingAudioChunk:
+            try:
+                audio_id = await self.generate_audio(chunk.text, voice)
+                return StreamingAudioChunk(
+                    chunk_id=chunk.chunk_id,
+                    audio_id=audio_id,
+                    index=chunk.index,
+                    text=chunk.text,
+                    is_ready=audio_id is not None,
+                    error=None if audio_id else "Generation failed"
+                )
+            except Exception as e:
+                logger.error(f"Error generating chunk {chunk.chunk_id}: {e}")
+                return StreamingAudioChunk(
+                    chunk_id=chunk.chunk_id,
+                    audio_id=None,
+                    index=chunk.index,
+                    text=chunk.text,
+                    is_ready=False,
+                    error=str(e)
+                )
+        
+        # Generate all chunks in parallel
+        tasks = [generate_single_chunk(chunk) for chunk in chunks]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        streaming_chunks = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Exception generating chunk {i}: {result}")
+                streaming_chunks.append(StreamingAudioChunk(
+                    chunk_id=chunks[i].chunk_id,
+                    audio_id=None,
+                    index=chunks[i].index,
+                    text=chunks[i].text,
+                    is_ready=False,
+                    error=str(result)
+                ))
+            else:
+                streaming_chunks.append(result)
+        
+        return streaming_chunks
+
+    async def generate_streaming_audio(self, text: str, voice: str = None, max_chunk_size: int = 200) -> AsyncGenerator[StreamingAudioChunk, None]:
+        """
+        Generate streaming TTS audio for the given text.
+        Yields StreamingAudioChunk objects as they become available.
+        """
+        if not text.strip():
+            logger.warning("Empty text provided for streaming TTS generation")
+            return
+        
+        # Check if Piper TTS is available
+        if not self.is_service_available():
+            logger.warning("Piper TTS service is not available - cannot generate streaming audio")
+            return
+        
+        # Split text into chunks
+        chunks = self._split_text_into_chunks(text, max_chunk_size)
+        if not chunks:
+            logger.warning("No chunks generated from text")
+            return
+        
+        # Generate audio chunks in parallel but yield them in order
+        logger.info(f"Generating streaming audio for {len(chunks)} chunks")
+        
+        # Start generation for all chunks
+        generation_tasks = {}
+        for chunk in chunks:
+            task = asyncio.create_task(self._generate_single_chunk_async(chunk, voice))
+            generation_tasks[chunk.index] = task
+        
+        # Yield chunks in order as they complete
+        yielded_indices = set()
+        pending_results = {}
+        
+        while len(yielded_indices) < len(chunks):
+            # Check all pending tasks
+            for index, task in list(generation_tasks.items()):
+                if index in yielded_indices:
+                    continue
+                    
+                if task.done():
+                    try:
+                        result = await task
+                        pending_results[index] = result
+                        del generation_tasks[index]
+                    except Exception as e:
+                        logger.error(f"Error in streaming generation task {index}: {e}")
+                        pending_results[index] = StreamingAudioChunk(
+                            chunk_id=chunks[index].chunk_id,
+                            audio_id=None,
+                            index=index,
+                            text=chunks[index].text,
+                            is_ready=False,
+                            error=str(e)
+                        )
+                        del generation_tasks[index]
+            
+            # Yield any ready results in order
+            next_index = len(yielded_indices)
+            if next_index in pending_results:
+                yield pending_results[next_index]
+                yielded_indices.add(next_index)
+                del pending_results[next_index]
+            else:
+                # Wait a bit before checking again
+                await asyncio.sleep(0.1)
+    
+    async def _generate_single_chunk_async(self, chunk: TextChunk, voice: str = None) -> StreamingAudioChunk:
+        """Generate audio for a single chunk asynchronously"""
+        try:
+            audio_id = await self.generate_audio(chunk.text, voice)
+            return StreamingAudioChunk(
+                chunk_id=chunk.chunk_id,
+                audio_id=audio_id,
+                index=chunk.index,
+                text=chunk.text,
+                is_ready=audio_id is not None,
+                error=None if audio_id else "Generation failed"
+            )
+        except Exception as e:
+            logger.error(f"Error generating chunk {chunk.chunk_id}: {e}")
+            return StreamingAudioChunk(
+                chunk_id=chunk.chunk_id,
+                audio_id=None,
+                index=chunk.index,
+                text=chunk.text,
+                is_ready=False,
+                error=str(e)
+            )
 
 
 # Global instance

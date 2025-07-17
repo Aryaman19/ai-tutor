@@ -19,6 +19,7 @@ export interface TTSSettings {
   pitch: number;
   language: string;
   voiceSettings: Record<string, any>;
+  streaming?: boolean;
 }
 
 export interface PiperVoice {

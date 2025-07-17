@@ -65,6 +65,22 @@ export interface TTSAvailabilityResponse {
   error?: string;
 }
 
+export interface TTSStreamingRequest {
+  text: string;
+  voice?: string;
+  max_chunk_size?: number;
+}
+
+export interface TTSStreamingChunk {
+  chunk_id: string;
+  audio_id: string | null;
+  audio_url: string | null;
+  index: number;
+  text: string;
+  is_ready: boolean;
+  error?: string;
+}
+
 export const ttsApi = {
   /**
    * Generate TTS audio for a text chunk
@@ -191,6 +207,59 @@ export const ttsApi = {
     } catch {
       return false;
     }
+  },
+
+  /**
+   * Generate streaming TTS audio for a text chunk
+   */
+  async generateStreamingAudio(request: TTSStreamingRequest): Promise<AsyncGenerator<TTSStreamingChunk, void, unknown>> {
+    const response = await fetch(`${apiClient.defaults.baseURL}/api/tts/generate-streaming`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body reader available');
+    }
+
+    const decoder = new TextDecoder();
+    
+    return (async function* () {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.type === 'end') {
+                  return;
+                }
+                yield parsed as TTSStreamingChunk;
+              } catch (e) {
+                console.warn('Failed to parse streaming chunk:', data, e);
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    })();
   }
 };
 
