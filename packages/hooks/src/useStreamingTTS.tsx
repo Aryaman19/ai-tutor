@@ -135,12 +135,21 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
             const audioChunk = audioChunksRef.current.find(ac => ac.chunk.chunk_id === chunk.chunk_id);
             if (audioChunk) {
               audioChunk.isLoaded = true;
+              logger.debug(`Audio chunk ${chunk.index} is loaded and ready to play`);
               
               // Try to start playback if we should auto-play and this is the first chunk
               if (shouldAutoPlayRef.current && chunk.index === 0) {
                 shouldAutoPlayRef.current = false; // Only auto-play once
                 playAudio();
               }
+            }
+          });
+
+          audioElement.addEventListener('loadeddata', () => {
+            const audioChunk = audioChunksRef.current.find(ac => ac.chunk.chunk_id === chunk.chunk_id);
+            if (audioChunk) {
+              audioChunk.isLoaded = true;
+              logger.debug(`Audio chunk ${chunk.index} data loaded`);
             }
           });
 
@@ -154,13 +163,16 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
             // Try to continue with next chunk
             playNextChunk();
           });
+
+          // Force load the audio
+          audioElement.load();
         }
 
         // Add chunk to our collection
         const audioChunk: AudioChunk = {
           chunk,
           audioElement,
-          isLoaded: !chunk.is_ready, // If not ready, mark as "loaded" to skip
+          isLoaded: false, // Will be set to true by canplaythrough event
           hasPlayed: false,
         };
 
@@ -211,7 +223,10 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
   // Play audio from current position
   const playAudio = useCallback(() => {
     const chunks = audioChunksRef.current;
+    logger.debug(`playAudio called with ${chunks.length} chunks`);
+    
     if (chunks.length === 0) {
+      logger.debug("No chunks available to play");
       return;
     }
 
@@ -222,15 +237,27 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
     }
 
     const nextChunk = chunks[nextIndex];
+    logger.debug(`Attempting to play chunk ${nextIndex}:`, {
+      exists: !!nextChunk,
+      isReady: nextChunk?.chunk.is_ready,
+      hasAudioElement: !!nextChunk?.audioElement,
+      isLoaded: nextChunk?.isLoaded,
+      audioSrc: nextChunk?.audioElement?.src
+    });
+
     if (!nextChunk || !nextChunk.chunk.is_ready || !nextChunk.audioElement || !nextChunk.isLoaded) {
       // Wait for chunk to be ready
       if (nextChunk && nextChunk.chunk.is_ready && nextChunk.audioElement) {
         // Audio is ready but not loaded yet, wait a bit
+        logger.debug(`Audio chunk ${nextIndex} is ready but not loaded, waiting...`);
         setTimeout(() => playAudio(), 100);
+      } else {
+        logger.debug(`Cannot play chunk ${nextIndex} - conditions not met`);
       }
       return;
     }
 
+    logger.debug(`Playing chunk ${nextIndex}`);
     currentPlayingIndexRef.current = nextIndex;
     nextChunk.hasPlayed = true;
 
@@ -320,7 +347,7 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
     if (text?.trim()) {
       generateStreamingAudio();
     }
-  }, [text, generateStreamingAudio]);
+  }, [text]); // Only depend on text, not the callback
 
   // Cleanup on unmount
   useEffect(() => {

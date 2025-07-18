@@ -457,7 +457,7 @@ const TTSTestPage = () => {
             <div className="flex gap-4 flex-wrap">
               <Button
                 onClick={() => attemptStreamingPlayback('dedicated_play_button')}
-                disabled={!streamingTTS.chunks || streamingTTS.chunks.length === 0 || !streamingTTS.chunks.some((audioChunk: any) => audioChunk.chunk?.is_ready)}
+                disabled={!streamingTTS.chunks || streamingTTS.chunks.length === 0 || !streamingTTS.chunks.some((audioChunk: any) => audioChunk.chunk.is_ready && audioChunk.isLoaded)}
                 variant="default"
                 className="flex items-center gap-2"
               >
