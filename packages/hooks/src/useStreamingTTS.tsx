@@ -346,7 +346,7 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
       cancel: cancelStreaming,
       regenerate: generateStreamingAudio,
     },
-    chunks: audioChunksRef.current.map(ac => ac.chunk),
+    chunks: audioChunksRef.current,
     isStreaming: isStreamingRef.current,
   };
 };
