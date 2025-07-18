@@ -9,3 +9,4 @@ export * from "./src/scroll-area";
 export * from "./src/select";
 export * from "./src/slider";
 export * from "./src/theme-toggle";
+export * from "./src/voice-download";

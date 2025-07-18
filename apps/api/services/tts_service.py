@@ -11,6 +11,7 @@ import wave
 import io
 import re
 from dataclasses import dataclass
+from .voice_repository import voice_repository_service
 
 logger = logging.getLogger(__name__)
 
@@ -44,14 +45,7 @@ class PiperTTSService:
         
         # Default voice configuration
         self.default_voice = "en_US-lessac-medium"
-        self.voice_configs = {
-            "en_US-lessac-medium": {
-                "model_path": self.voices_dir / "en_US-lessac-medium.onnx",
-                "config_path": self.voices_dir / "en_US-lessac-medium.onnx.json",
-                "name": "Lessac (Medium Quality)",
-                "language": "en_US"
-            }
-        }
+        self.voice_configs = {}
         
         # Ensure cache directory exists
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -62,7 +56,61 @@ class PiperTTSService:
         
         logger.info(f"PiperTTSService initialized with cache dir: {self.cache_dir}")
     
-    def _check_piper_availability(self) -> bool:
+    async def _load_voice_configurations(self):
+        """Load voice configurations from installed voices"""
+        try:
+            # Get installed voices from repository service
+            installed_voices = await voice_repository_service.get_installed_voices()
+            logger.info(f"Found {len(installed_voices)} installed voices from repository")
+            
+            # Clear existing configurations
+            self.voice_configs.clear()
+            
+            # Add configurations for installed voices
+            for voice in installed_voices:
+                model_path = self.voices_dir / f"{voice.id}.onnx"
+                config_path = self.voices_dir / f"{voice.id}.onnx.json"
+                
+                logger.debug(f"Configuring voice {voice.id}: model={model_path.exists()}, config={config_path.exists()}")
+                
+                self.voice_configs[voice.id] = {
+                    "model_path": model_path,
+                    "config_path": config_path,
+                    "name": voice.name,
+                    "language": voice.language_code
+                }
+            
+            # Ensure default voice exists, if not use first available
+            if self.default_voice not in self.voice_configs and self.voice_configs:
+                self.default_voice = list(self.voice_configs.keys())[0]
+                logger.info(f"Default voice not found, using: {self.default_voice}")
+            
+            logger.info(f"Loaded {len(self.voice_configs)} voice configurations: {list(self.voice_configs.keys())}")
+            
+        except Exception as e:
+            logger.error(f"Error loading voice configurations: {e}")
+            # Fallback to default configuration if available
+            default_model = self.voices_dir / "en_US-lessac-medium.onnx"
+            default_config = self.voices_dir / "en_US-lessac-medium.onnx.json"
+            
+            if default_model.exists() and default_config.exists():
+                self.voice_configs = {
+                    "en_US-lessac-medium": {
+                        "model_path": default_model,
+                        "config_path": default_config,
+                        "name": "Lessac (Medium Quality)",
+                        "language": "en_US"
+                    }
+                }
+                logger.info("Loaded fallback default voice configuration")
+    
+    async def refresh_voice_configurations(self):
+        """Refresh voice configurations after voices are downloaded or deleted"""
+        self._availability_checked = False
+        await self._load_voice_configurations()
+        logger.info(f"Voice configurations refreshed: {len(self.voice_configs)} voices loaded")
+    
+    async def _check_piper_availability(self) -> bool:
         """Check if Piper TTS is available and properly configured"""
         if self._availability_checked:
             return self._is_piper_available
@@ -85,25 +133,35 @@ class PiperTTSService:
                 self._is_piper_available = False
                 return False
         
-        # Check if default voice files exist
-        default_config = self.voice_configs[self.default_voice]
-        if not default_config["model_path"].exists():
-            logger.warning(f"Default voice model not found: {default_config['model_path']}")
+        # Load voice configurations
+        await self._load_voice_configurations()
+        
+        # Check if any voices are available
+        if not self.voice_configs:
+            logger.warning("No voice configurations found")
             self._is_piper_available = False
             return False
         
-        if not default_config["config_path"].exists():
-            logger.warning(f"Default voice config not found: {default_config['config_path']}")
-            self._is_piper_available = False
-            return False
+        # Check if default voice files exist
+        if self.default_voice in self.voice_configs:
+            default_config = self.voice_configs[self.default_voice]
+            if not default_config["model_path"].exists():
+                logger.warning(f"Default voice model not found: {default_config['model_path']}")
+                self._is_piper_available = False
+                return False
+            
+            if not default_config["config_path"].exists():
+                logger.warning(f"Default voice config not found: {default_config['config_path']}")
+                self._is_piper_available = False
+                return False
         
         logger.info("Piper TTS is available and properly configured")
         self._is_piper_available = True
         return True
     
-    def is_service_available(self) -> bool:
+    async def is_service_available(self) -> bool:
         """Check if the TTS service is available"""
-        return self._check_piper_availability()
+        return await self._check_piper_availability()
     
     def _generate_audio_id(self, text: str, voice: str = None) -> str:
         """Generate a unique ID for audio based on text and voice"""
@@ -135,7 +193,7 @@ class PiperTTSService:
             return None
         
         # Check if Piper TTS is available
-        if not self.is_service_available():
+        if not await self.is_service_available():
             logger.warning("Piper TTS service is not available - cannot generate audio")
             return None
         
@@ -301,6 +359,9 @@ class PiperTTSService:
     
     async def get_available_voices(self) -> List[Dict[str, str]]:
         """Get list of available voices"""
+        # Ensure voice configurations are loaded
+        await self._load_voice_configurations()
+        
         voices = []
         for voice_id, config in self.voice_configs.items():
             if config["model_path"].exists() and config["config_path"].exists():
@@ -339,7 +400,7 @@ class PiperTTSService:
         """Check if Piper TTS is available and working"""
         try:
             # First check basic availability
-            if not self.is_service_available():
+            if not await self.is_service_available():
                 logger.error("Piper TTS service is not available")
                 return False
             
@@ -461,7 +522,7 @@ class PiperTTSService:
             return
         
         # Check if Piper TTS is available
-        if not self.is_service_available():
+        if not await self.is_service_available():
             logger.warning("Piper TTS service is not available - cannot generate streaming audio")
             return
         

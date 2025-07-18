@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useTTSAudio, useStreamingTTS, useTTSAvailability, useTTSSettings } from '@ai-tutor/hooks';
 import { ttsApi } from '@ai-tutor/api-client';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@ai-tutor/ui';
+import type { VoiceMetadata } from '@ai-tutor/types';
 
 const TTSTestPage = () => {
   const [testText, setTestText] = useState('Hello, this is a test of the text-to-speech system. We will generate audio and play it back to ensure everything is working correctly.');
@@ -15,6 +16,7 @@ const TTSTestPage = () => {
     lastPlayTrigger: null,
   });
   const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [piperVoices, setPiperVoices] = useState<VoiceMetadata[]>([]);
   const [currentRegularText, setCurrentRegularText] = useState('');
   const [currentStreamingText, setCurrentStreamingText] = useState('');
   
@@ -181,6 +183,20 @@ const TTSTestPage = () => {
       window.speechSynthesis.onvoiceschanged = loadVoices;
     }
   }, []);
+
+  // Load Piper voices
+  useEffect(() => {
+    const loadPiperVoices = async () => {
+      try {
+        const voices = await ttsApi.getInstalledVoices();
+        setPiperVoices(voices);
+      } catch (error) {
+        console.error('Failed to load Piper voices:', error);
+      }
+    };
+    
+    loadPiperVoices();
+  }, []);
   
   // Test API endpoint directly
   const testDirectAPI = async () => {
@@ -308,9 +324,26 @@ const TTSTestPage = () => {
           
           {/* Voice Selection */}
           <div>
-            <label htmlFor="voice-select" className="block text-sm font-medium mb-2 text-foreground">
-              Voice Selection
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label htmlFor="voice-select" className="block text-sm font-medium text-foreground">
+                Voice Selection
+              </label>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    const voices = await ttsApi.getInstalledVoices();
+                    setPiperVoices(voices);
+                  } catch (error) {
+                    console.error('Failed to refresh Piper voices:', error);
+                  }
+                }}
+                className="text-xs px-2 py-1 h-auto"
+              >
+                Refresh Voices
+              </Button>
+            </div>
             <select
               id="voice-select"
               value={selectedVoice}
@@ -318,13 +351,63 @@ const TTSTestPage = () => {
               className="w-full p-2 border border-border rounded-md focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors bg-background text-foreground"
             >
               <option value="">Default Voice</option>
-              <option value="en_US-lessac-medium">Piper: Lessac (Medium)</option>
-              {browserVoices.map((voice) => (
-                <option key={voice.name} value={voice.name}>
-                  Browser: {voice.name} ({voice.lang})
-                </option>
-              ))}
+              
+              {/* Piper Voices */}
+              {piperVoices.length > 0 && (
+                <optgroup label="Piper Voices (Offline)">
+                  {piperVoices.map((voice) => (
+                    <option key={voice.id} value={voice.id}>
+                      {voice.name} ({voice.language_code})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              
+              {/* Browser Voices */}
+              {browserVoices.length > 0 && (
+                <optgroup label="Browser Voices">
+                  {browserVoices.map((voice) => (
+                    <option key={voice.name} value={voice.name}>
+                      {voice.name} ({voice.lang})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
+            
+            {/* Voice Info */}
+            {selectedVoice && (
+              <div className="mt-2 p-2 bg-secondary/20 rounded-md text-sm text-muted-foreground">
+                {(() => {
+                  const piperVoice = piperVoices.find(v => v.id === selectedVoice);
+                  if (piperVoice) {
+                    return (
+                      <div>
+                        <span className="font-medium">Piper Voice:</span> {piperVoice.description}
+                        <br />
+                        <span className="font-medium">Quality:</span> {piperVoice.quality} | 
+                        <span className="font-medium"> Size:</span> {piperVoice.size_mb}MB | 
+                        <span className="font-medium"> Sample Rate:</span> {piperVoice.sample_rate}Hz
+                      </div>
+                    );
+                  }
+                  
+                  const browserVoice = browserVoices.find(v => v.name === selectedVoice);
+                  if (browserVoice) {
+                    return (
+                      <div>
+                        <span className="font-medium">Browser Voice:</span> {browserVoice.name}
+                        <br />
+                        <span className="font-medium">Language:</span> {browserVoice.lang} | 
+                        <span className="font-medium"> Engine:</span> {browserVoice.voiceURI}
+                      </div>
+                    );
+                  }
+                  
+                  return 'Default system voice';
+                })()}
+              </div>
+            )}
           </div>
           
           {/* Test Mode Selection */}

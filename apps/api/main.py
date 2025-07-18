@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
 
     # Create static directories
     os.makedirs(settings.tts_cache_dir, exist_ok=True)
+    os.makedirs(settings.tts_voices_dir, exist_ok=True)
 
     # Connect to MongoDB
     db_connected = await connect_to_mongo()

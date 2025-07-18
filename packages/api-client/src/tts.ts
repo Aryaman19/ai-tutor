@@ -81,6 +81,44 @@ export interface TTSStreamingChunk {
   error?: string;
 }
 
+export interface VoiceMetadata {
+  id: string;
+  name: string;
+  language: string;
+  language_code: string;
+  country: string;
+  quality: string;
+  size_mb: number;
+  description: string;
+  sample_rate: number;
+  is_downloaded: boolean;
+  is_downloading: boolean;
+  download_progress: number;
+}
+
+export interface VoiceDownloadRequest {
+  voice_id: string;
+}
+
+export interface VoiceDownloadResponse {
+  success: boolean;
+  message: string;
+  voice_id: string;
+}
+
+export interface VoiceDeleteResponse {
+  success: boolean;
+  message: string;
+  voice_id: string;
+}
+
+export interface VoiceDownloadProgress {
+  voice_id: string;
+  progress: number;
+  is_downloading: boolean;
+  is_downloaded: boolean;
+}
+
 export const ttsApi = {
   /**
    * Generate TTS audio for a text chunk
@@ -260,6 +298,82 @@ export const ttsApi = {
         reader.releaseLock();
       }
     })();
+  },
+
+  // Voice Management Methods
+
+  /**
+   * Get available voices from repository
+   */
+  async getAvailableVoicesFromRepository(): Promise<VoiceMetadata[]> {
+    const response = await apiClient.get<VoiceMetadata[]>('/api/tts/voices/available');
+    return response.data;
+  },
+
+  /**
+   * Get installed voices
+   */
+  async getInstalledVoices(): Promise<VoiceMetadata[]> {
+    const response = await apiClient.get<VoiceMetadata[]>('/api/tts/voices/installed');
+    return response.data;
+  },
+
+  /**
+   * Download a voice
+   */
+  async downloadVoice(voiceId: string): Promise<VoiceDownloadResponse> {
+    const response = await apiClient.post<VoiceDownloadResponse>('/api/tts/voices/download', {
+      voice_id: voiceId
+    });
+    return response.data;
+  },
+
+  /**
+   * Delete a voice
+   */
+  async deleteVoice(voiceId: string): Promise<VoiceDeleteResponse> {
+    const response = await apiClient.delete<VoiceDeleteResponse>(`/api/tts/voices/${voiceId}`);
+    return response.data;
+  },
+
+  /**
+   * Get download progress for a voice
+   */
+  async getVoiceDownloadProgress(voiceId: string): Promise<VoiceDownloadProgress> {
+    const response = await apiClient.get<VoiceDownloadProgress>(`/api/tts/voices/${voiceId}/progress`);
+    return response.data;
+  },
+
+  /**
+   * Poll voice download progress
+   */
+  async pollVoiceDownloadProgress(voiceId: string, onProgress: (progress: VoiceDownloadProgress) => void): Promise<void> {
+    const pollInterval = 1000; // 1 second
+    const maxPolls = 300; // 5 minutes max
+    let polls = 0;
+
+    const poll = async () => {
+      try {
+        const progress = await this.getVoiceDownloadProgress(voiceId);
+        onProgress(progress);
+
+        if (progress.is_downloaded || !progress.is_downloading) {
+          return;
+        }
+
+        polls++;
+        if (polls >= maxPolls) {
+          console.warn(`Voice download polling timed out for ${voiceId}`);
+          return;
+        }
+
+        setTimeout(poll, pollInterval);
+      } catch (error) {
+        console.error(`Error polling voice download progress for ${voiceId}:`, error);
+      }
+    };
+
+    poll();
   }
 };
 

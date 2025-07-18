@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from services.tts_service import piper_tts_service
+from services.voice_repository import voice_repository_service
 import logging
 import json
 
@@ -54,6 +55,37 @@ class TTSStreamingChunkResponse(BaseModel):
     error: Optional[str] = None
 
 
+class VoiceMetadataResponse(BaseModel):
+    id: str
+    name: str
+    language: str
+    language_code: str
+    country: str
+    quality: str
+    size_mb: float
+    description: str
+    sample_rate: int
+    is_downloaded: bool
+    is_downloading: bool
+    download_progress: float
+
+
+class VoiceDownloadRequest(BaseModel):
+    voice_id: str
+
+
+class VoiceDownloadResponse(BaseModel):
+    success: bool
+    message: str
+    voice_id: str
+
+
+class VoiceDeleteResponse(BaseModel):
+    success: bool
+    message: str
+    voice_id: str
+
+
 @router.post("/tts/generate", response_model=TTSGenerateResponse)
 async def generate_tts_audio(request: TTSGenerateRequest):
     """Generate TTS audio for the given text"""
@@ -65,7 +97,7 @@ async def generate_tts_audio(request: TTSGenerateRequest):
             )
         
         # Check if Piper TTS service is available
-        if not piper_tts_service.is_service_available():
+        if not await piper_tts_service.is_service_available():
             raise HTTPException(
                 status_code=503,
                 detail="Piper TTS service is not available. Please use browser TTS as fallback."
@@ -123,7 +155,7 @@ async def generate_streaming_tts_audio(request: TTSStreamingRequest):
             )
         
         # Check if Piper TTS service is available
-        if not piper_tts_service.is_service_available():
+        if not await piper_tts_service.is_service_available():
             raise HTTPException(
                 status_code=503,
                 detail="Piper TTS service is not available. Please use browser TTS as fallback."
@@ -323,7 +355,7 @@ async def get_cache_stats():
 async def tts_availability_check():
     """Check TTS service availability (fast check)"""
     try:
-        is_available = piper_tts_service.is_service_available()
+        is_available = await piper_tts_service.is_service_available()
         
         return {
             "available": is_available,
@@ -345,7 +377,7 @@ async def tts_health_check():
     """Check TTS service health"""
     try:
         # Check basic service availability first
-        is_available = piper_tts_service.is_service_available()
+        is_available = await piper_tts_service.is_service_available()
         
         if not is_available:
             return {
@@ -452,4 +484,177 @@ async def generate_batch_tts(request: dict):
         raise HTTPException(
             status_code=500,
             detail="Failed to generate batch TTS audio"
+        )
+
+
+# Voice Management Endpoints
+
+@router.get("/tts/voices/available", response_model=List[VoiceMetadataResponse])
+async def get_available_voices_from_repository(force_refresh: bool = False):
+    """Get list of available voices from repository"""
+    try:
+        voices = await voice_repository_service.get_available_voices(force_refresh=force_refresh)
+        return [
+            VoiceMetadataResponse(
+                id=voice.id,
+                name=voice.name,
+                language=voice.language,
+                language_code=voice.language_code,
+                country=voice.country,
+                quality=voice.quality,
+                size_mb=voice.size_mb,
+                description=voice.description,
+                sample_rate=voice.sample_rate,
+                is_downloaded=voice.is_downloaded,
+                is_downloading=voice.is_downloading,
+                download_progress=voice.download_progress
+            )
+            for voice in voices
+        ]
+    except Exception as e:
+        logger.error(f"Error getting available voices: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get available voices"
+        )
+
+
+@router.get("/tts/voices/installed", response_model=List[VoiceMetadataResponse])
+async def get_installed_voices():
+    """Get list of installed voices"""
+    try:
+        voices = await voice_repository_service.get_installed_voices()
+        return [
+            VoiceMetadataResponse(
+                id=voice.id,
+                name=voice.name,
+                language=voice.language,
+                language_code=voice.language_code,
+                country=voice.country,
+                quality=voice.quality,
+                size_mb=voice.size_mb,
+                description=voice.description,
+                sample_rate=voice.sample_rate,
+                is_downloaded=voice.is_downloaded,
+                is_downloading=voice.is_downloading,
+                download_progress=voice.download_progress
+            )
+            for voice in voices
+        ]
+    except Exception as e:
+        logger.error(f"Error getting installed voices: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to get installed voices"
+        )
+
+
+@router.post("/tts/voices/download", response_model=VoiceDownloadResponse)
+async def download_voice(request: VoiceDownloadRequest):
+    """Download a voice from repository"""
+    try:
+        voice_id = request.voice_id
+        
+        # Check if voice is already downloaded
+        if voice_repository_service._is_voice_downloaded(voice_id):
+            return VoiceDownloadResponse(
+                success=True,
+                message=f"Voice {voice_id} is already downloaded",
+                voice_id=voice_id
+            )
+        
+        # Check if voice is already downloading
+        if voice_repository_service.is_voice_downloading(voice_id):
+            return VoiceDownloadResponse(
+                success=False,
+                message=f"Voice {voice_id} is already being downloaded",
+                voice_id=voice_id
+            )
+        
+        # Start download
+        success = await voice_repository_service.download_voice(voice_id)
+        
+        if success:
+            # Refresh TTS service voice configurations
+            await piper_tts_service.refresh_voice_configurations()
+            
+            return VoiceDownloadResponse(
+                success=True,
+                message=f"Voice {voice_id} downloaded successfully",
+                voice_id=voice_id
+            )
+        else:
+            return VoiceDownloadResponse(
+                success=False,
+                message=f"Failed to download voice {voice_id}",
+                voice_id=voice_id
+            )
+            
+    except Exception as e:
+        logger.error(f"Error downloading voice {request.voice_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to download voice: {str(e)}"
+        )
+
+
+@router.delete("/tts/voices/{voice_id}", response_model=VoiceDeleteResponse)
+async def delete_voice(voice_id: str):
+    """Delete an installed voice"""
+    try:
+        # Check if voice is currently downloading
+        if voice_repository_service.is_voice_downloading(voice_id):
+            return VoiceDeleteResponse(
+                success=False,
+                message=f"Cannot delete voice {voice_id}: download in progress",
+                voice_id=voice_id
+            )
+        
+        # Delete the voice
+        success = await voice_repository_service.delete_voice(voice_id)
+        
+        if success:
+            # Refresh TTS service voice configurations
+            await piper_tts_service.refresh_voice_configurations()
+            
+            return VoiceDeleteResponse(
+                success=True,
+                message=f"Voice {voice_id} deleted successfully",
+                voice_id=voice_id
+            )
+        else:
+            return VoiceDeleteResponse(
+                success=False,
+                message=f"Voice {voice_id} not found or already deleted",
+                voice_id=voice_id
+            )
+            
+    except Exception as e:
+        logger.error(f"Error deleting voice {voice_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete voice: {str(e)}"
+        )
+
+
+@router.get("/tts/voices/{voice_id}/progress")
+async def get_voice_download_progress(voice_id: str):
+    """Get download progress for a voice"""
+    try:
+        progress = voice_repository_service.get_download_progress(voice_id)
+        is_downloading = voice_repository_service.is_voice_downloading(voice_id)
+        is_downloaded = voice_repository_service._is_voice_downloaded(voice_id)
+        
+        return {
+            "voice_id": voice_id,
+            "progress": progress,
+            "is_downloading": is_downloading,
+            "is_downloaded": is_downloaded
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting download progress for voice {voice_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get download progress: {str(e)}"
         )

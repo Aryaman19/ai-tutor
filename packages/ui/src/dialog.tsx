@@ -1,10 +1,12 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@ai-tutor/utils';
 
 interface DialogProps {
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   title?: string;
   children: React.ReactNode;
   className?: string;
@@ -13,14 +15,27 @@ interface DialogProps {
 export const Dialog: React.FC<DialogProps> = ({
   isOpen,
   onClose,
+  open,
+  onOpenChange,
   title,
   children,
   className
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
+  
+  // Support both isOpen/onClose and open/onOpenChange patterns
+  const isDialogOpen = open ?? isOpen ?? false;
+  const handleClose = () => {
+    if (onOpenChange) {
+      onOpenChange(false);
+    }
+    if (onClose) {
+      onClose();
+    }
+  };
 
   useEffect(() => {
-    if (isOpen) {
+    if (isDialogOpen) {
       document.body.style.overflow = 'hidden';
       dialogRef.current?.focus();
     } else {
@@ -30,27 +45,27 @@ export const Dialog: React.FC<DialogProps> = ({
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen]);
+  }, [isDialogOpen]);
 
   useEffect(() => {
     const handleEscapeKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isOpen) {
-        onClose();
+      if (event.key === 'Escape' && isDialogOpen) {
+        handleClose();
       }
     };
 
     document.addEventListener('keydown', handleEscapeKey);
     return () => document.removeEventListener('keydown', handleEscapeKey);
-  }, [isOpen, onClose]);
+  }, [isDialogOpen]);
 
-  if (!isOpen) return null;
+  if (!isDialogOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div 
         className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
+        onClick={handleClose}
       />
       
       {/* Dialog */}
@@ -74,7 +89,7 @@ export const Dialog: React.FC<DialogProps> = ({
             </h2>
           )}
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="absolute top-4 right-4 p-1 rounded-md hover:bg-accent transition-colors"
             aria-label="Close dialog"
           >
@@ -111,4 +126,33 @@ export const DialogActions: React.FC<DialogActionsProps> = ({ children, classNam
   <div className={cn("flex justify-end space-x-2 mt-6", className)}>
     {children}
   </div>
+);
+
+// Additional dialog components for compatibility
+export const DialogTrigger: React.FC<{ children: React.ReactNode; asChild?: boolean }> = ({ 
+  children, 
+  asChild = false 
+}) => {
+  if (asChild) {
+    return <>{children}</>;
+  }
+  return <>{children}</>;
+};
+
+export const DialogHeader: React.FC<{ children: React.ReactNode; className?: string }> = ({ 
+  children, 
+  className 
+}) => (
+  <div className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)}>
+    {children}
+  </div>
+);
+
+export const DialogTitle: React.FC<{ children: React.ReactNode; className?: string }> = ({ 
+  children, 
+  className 
+}) => (
+  <h2 className={cn("text-lg font-semibold leading-none tracking-tight", className)}>
+    {children}
+  </h2>
 );

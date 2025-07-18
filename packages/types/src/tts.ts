@@ -102,3 +102,56 @@ export interface TTSProviderConfig {
   offlineCapable: boolean;
   description?: string;
 }
+
+// Voice Repository Types
+export interface VoiceMetadata {
+  id: string;
+  name: string;
+  language: string;
+  language_code: string;
+  country: string;
+  quality: string;
+  size_mb: number;
+  description: string;
+  sample_rate: number;
+  is_downloaded: boolean;
+  is_downloading: boolean;
+  download_progress: number;
+}
+
+export interface VoiceDownloadRequest {
+  voice_id: string;
+}
+
+export interface VoiceDownloadResponse {
+  success: boolean;
+  message: string;
+  voice_id: string;
+}
+
+export interface VoiceDeleteResponse {
+  success: boolean;
+  message: string;
+  voice_id: string;
+}
+
+export interface VoiceDownloadProgress {
+  voice_id: string;
+  progress: number;
+  is_downloading: boolean;
+  is_downloaded: boolean;
+}
+
+export interface VoiceRepositoryStatus {
+  total_voices: number;
+  installed_voices: number;
+  available_voices: number;
+  downloading_voices: number;
+  repository_last_updated: string;
+}
+
+export interface VoiceCategory {
+  language: string;
+  language_code: string;
+  voices: VoiceMetadata[];
+}
