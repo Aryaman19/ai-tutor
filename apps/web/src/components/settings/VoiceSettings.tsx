@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Card, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Slider, Input, Button } from "@ai-tutor/ui";
-import type { TTSSettings } from "@ai-tutor/types";
-import { useTTSVoices } from "@ai-tutor/hooks";
+import type { TTSSettings, VoiceMetadata } from "@ai-tutor/types";
+import { useTTSVoices, useTTSAudio, useStreamingTTS, useTTSAvailability } from "@ai-tutor/hooks";
 import { VoiceDownloadManager } from "../voice/VoiceDownloadManager";
 import { useQueryClient } from "@tanstack/react-query";
+import { ttsApi } from "@ai-tutor/api-client";
 
 interface VoiceSettingsProps {
   data?: TTSSettings;
@@ -17,10 +18,62 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
   const [isLoadingVoices, setIsLoadingVoices] = useState(false);
   const [isVoiceManagerOpen, setIsVoiceManagerOpen] = useState(false);
   const [voiceRefreshTrigger, setVoiceRefreshTrigger] = useState(0);
+  
+  // TTS Testing State
+  const [testText, setTestText] = useState('Hello, this is a test of the text-to-speech system.');
+  const [testMode, setTestMode] = useState<'regular' | 'streaming' | 'browser'>('regular');
+  const [currentRegularText, setCurrentRegularText] = useState('');
+  const [currentStreamingText, setCurrentStreamingText] = useState('');
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<any>({});
+  const [piperVoicesForTest, setPiperVoicesForTest] = useState<VoiceMetadata[]>([]);
+  const [browserVoicesForTest, setBrowserVoicesForTest] = useState<SpeechSynthesisVoice[]>([]);
+  
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Get Piper voices from API
   const { data: piperVoices, isLoading: isPiperVoicesLoading, refetch: refetchVoices } = useTTSVoices();
   const queryClient = useQueryClient();
+  
+  // TTS Testing Hooks
+  const { data: ttsAvailability } = useTTSAvailability();
+  
+  // Get the current voice for testing - memoized to avoid stale closures
+  const getCurrentVoiceForTest = React.useCallback(() => {
+    if (selectedProvider === 'piper') {
+      // For Piper, we need to get the voice ID from the installed voices
+      const piperVoice = piperVoicesForTest.find(v => v.name === data?.voice);
+      return piperVoice?.id || data?.voice;
+    }
+    return data?.voice;
+  }, [selectedProvider, data?.voice, piperVoicesForTest]);
+  
+  // Get current voice ID for hooks
+  const currentVoiceId = getCurrentVoiceForTest();
+  
+  // Regular TTS - only trigger when currentRegularText changes
+  const regularTTS = useTTSAudio(currentRegularText, {
+    voice: currentVoiceId || undefined,
+    autoPlay: false,
+    speed: data?.speed || 1.0,
+    volume: data?.volume || 1.0,
+    onPlay: () => setDebugInfo((prev: any) => ({ ...prev, regularTTS: 'playing' })),
+    onEnd: () => setDebugInfo((prev: any) => ({ ...prev, regularTTS: 'ended' })),
+    onError: (error: any) => setDebugInfo((prev: any) => ({ ...prev, regularTTS: `error: ${error.message}` })),
+  });
+  
+  // Streaming TTS - only trigger when currentStreamingText changes
+  const streamingTTS = useStreamingTTS(currentStreamingText, {
+    voice: currentVoiceId || undefined,
+    autoPlay: false,
+    speed: data?.speed || 1.0,
+    volume: data?.volume || 1.0,
+    maxChunkSize: 50,
+    onPlay: () => setDebugInfo((prev: any) => ({ ...prev, streamingTTS: 'playing' })),
+    onEnd: () => setDebugInfo((prev: any) => ({ ...prev, streamingTTS: 'ended' })),
+    onError: (error: any) => setDebugInfo((prev: any) => ({ ...prev, streamingTTS: `error: ${error.message}` })),
+  });
 
   const providers = [
     { value: "browser", label: "Browser (Built-in)" },
@@ -44,10 +97,47 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
 
     loadVoices();
   }, [selectedProvider, browserVoices, piperVoices, voiceRefreshTrigger]);
+  
+  // Load browser voices for testing
+  useEffect(() => {
+    const loadBrowserVoices = () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        const voices = window.speechSynthesis.getVoices();
+        setBrowserVoicesForTest(voices);
+      }
+    };
+    
+    loadBrowserVoices();
+    
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = loadBrowserVoices;
+    }
+  }, []);
+
+  // Load Piper voices for testing
+  useEffect(() => {
+    const loadPiperVoices = async () => {
+      try {
+        const voices = await ttsApi.getInstalledVoices();
+        setPiperVoicesForTest(voices);
+      } catch (error) {
+        console.error('Failed to load Piper voices:', error);
+      }
+    };
+    
+    loadPiperVoices();
+  }, [piperVoices]);
 
   const handleProviderChange = (provider: string) => {
     setSelectedProvider(provider);
     onChange({ provider, voice: "" });
+    
+    // Auto-switch test mode based on provider
+    if (provider === 'piper' && testMode === 'browser') {
+      setTestMode('regular'); // Default to regular for Piper
+    } else if (provider === 'browser' && (testMode === 'regular' || testMode === 'streaming')) {
+      setTestMode('browser'); // Switch to browser for browser provider
+    }
   };
 
   const handleVoiceDownloaded = (voiceId: string) => {
@@ -64,6 +154,104 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
     refetchVoices();
     // Refresh voice list after deletion
     setVoiceRefreshTrigger(prev => prev + 1);
+  };
+  
+  // TTS Testing Functions
+  const testBrowserTTS = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setDebugInfo((prev: any) => ({ ...prev, browserTTS: 'not supported' }));
+      return;
+    }
+    
+    // Stop any existing speech
+    window.speechSynthesis.cancel();
+    
+    const utterance = new SpeechSynthesisUtterance(testText);
+    
+    // Set voice if selected
+    if (data?.voice) {
+      const voice = browserVoicesForTest.find(v => v.name === data.voice);
+      if (voice) {
+        utterance.voice = voice;
+      }
+    }
+    
+    // Apply settings
+    utterance.rate = data?.speed || 1.0;
+    utterance.volume = data?.volume || 1.0;
+    
+    utterance.onstart = () => setDebugInfo((prev: any) => ({ ...prev, browserTTS: 'started' }));
+    utterance.onend = () => setDebugInfo((prev: any) => ({ ...prev, browserTTS: 'ended' }));
+    utterance.onerror = (error) => setDebugInfo((prev: any) => ({ ...prev, browserTTS: `error: ${error.error}` }));
+    
+    speechRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+    
+    setDebugInfo((prev: any) => ({ ...prev, browserTTS: 'speaking...' }));
+  };
+  
+  const playTTS = () => {
+    const currentVoice = getCurrentVoiceForTest();
+    setDebugInfo((prev: any) => ({ 
+      ...prev, 
+      lastPlayAttempt: {
+        mode: testMode,
+        voice: currentVoice,
+        provider: selectedProvider,
+        timestamp: new Date().toISOString()
+      }
+    }));
+    
+    if (testMode === 'regular') {
+      setCurrentRegularText(testText);
+      setTimeout(() => {
+        regularTTS.controls.play();
+      }, 100);
+    } else if (testMode === 'streaming') {
+      setCurrentStreamingText(testText);
+      setTimeout(() => {
+        streamingTTS.controls.play();
+      }, 100);
+    } else if (testMode === 'browser') {
+      testBrowserTTS();
+    }
+  };
+  
+  const stopTTS = () => {
+    // Stop regular TTS - only stop playback, don't clear text
+    regularTTS.controls.stop();
+    
+    // Stop streaming TTS - only stop playback, don't cancel generation or clear text
+    streamingTTS.controls.stop();
+    
+    // Stop browser TTS
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    
+    setDebugInfo((prev: any) => ({ ...prev, stopped: new Date().toISOString() }));
+  };
+  
+  const isPlaying = () => {
+    if (testMode === 'regular') {
+      return regularTTS.status.isLoading || regularTTS.status.isPlaying;
+    } else if (testMode === 'streaming') {
+      return streamingTTS.status.isGenerating || streamingTTS.status.isPlaying;
+    }
+    return false;
+  };
+  
+  const getPlayButtonText = () => {
+    if (testMode === 'regular') {
+      if (regularTTS.status.isLoading) return '⏳ Generating...';
+      if (regularTTS.status.isPlaying) return '🔊 Playing...';
+      return 'Play Regular TTS';
+    } else if (testMode === 'streaming') {
+      if (streamingTTS.status.isGenerating) return '⏳ Generating...';
+      if (streamingTTS.status.isPlaying) return '🔊 Playing...';
+      return 'Play Streaming TTS';
+    }
+    return 'Play Browser TTS';
   };
 
   return (
@@ -173,38 +361,167 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
           </div>
         )}
         
-        <div className="mt-4 space-y-4">
+      </Card>
+      
+      {/* TTS Testing Section */}
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold mb-4">Voice Testing</h3>
+        
+        {/* Test Text Input */}
+        <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">
-              Speed: {data?.speed || 1.0}
+            <label htmlFor="test-text" className="block text-sm font-medium mb-2">
+              Test Text
             </label>
-            <Slider
-              value={[data?.speed || 1.0]}
-              onValueChange={(value) => onChange({ speed: value[0] })}
-              max={4}
-              min={0.25}
-              step={0.25}
-              className="w-full"
+            <textarea
+              id="test-text"
+              value={testText}
+              onChange={(e) => setTestText(e.target.value)}
+              className="w-full h-24 p-3 border border-border rounded-md resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors bg-background text-foreground placeholder:text-muted-foreground"
+              placeholder="Enter text to test TTS..."
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              Adjust speaking speed
-            </p>
           </div>
+          
+          {/* Test Mode Selection */}
           <div>
-            <label className="block text-sm font-medium mb-2">
-              Volume: {data?.volume || 1.0}
-            </label>
-            <Slider
-              value={[data?.volume || 1.0]}
-              onValueChange={(value) => onChange({ volume: value[0] })}
-              max={1}
-              min={0}
-              step={0.1}
-              className="w-full"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Adjust volume level
-            </p>
+            <label className="block text-sm font-medium mb-2">Test Mode</label>
+            <div className="flex gap-4">
+              {/* Show Regular and Streaming TTS options only for Piper */}
+              {selectedProvider === 'piper' && (
+                <>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="regular"
+                      checked={testMode === 'regular'}
+                      onChange={(e) => setTestMode(e.target.value as any)}
+                      className="mr-2"
+                    />
+                    Regular TTS
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="streaming"
+                      checked={testMode === 'streaming'}
+                      onChange={(e) => setTestMode(e.target.value as any)}
+                      className="mr-2"
+                    />
+                    Streaming TTS
+                  </label>
+                </>
+              )}
+              {/* Show Browser TTS option only for Browser provider */}
+              {selectedProvider === 'browser' && (
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    value="browser"
+                    checked={testMode === 'browser'}
+                    onChange={(e) => setTestMode(e.target.value as any)}
+                    className="mr-2"
+                  />
+                  Browser TTS
+                </label>
+              )}
+            </div>
+          </div>
+          
+          {/* Volume and Speed Controls */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Speed: {data?.speed || 1.0}x
+              </label>
+              <Slider
+                value={[data?.speed || 1.0]}
+                onValueChange={(value) => onChange({ speed: value[0] })}
+                max={4}
+                min={0.25}
+                step={0.25}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Adjust speaking speed for all TTS modes
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Volume: {data?.volume || 1.0}
+              </label>
+              <Slider
+                value={[data?.volume || 1.0]}
+                onValueChange={(value) => onChange({ volume: value[0] })}
+                max={1}
+                min={0}
+                step={0.1}
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Adjust volume level for all TTS modes
+              </p>
+            </div>
+          </div>
+          
+          {/* Control Buttons */}
+          <div className="flex gap-4">
+            <Button
+              onClick={playTTS}
+              disabled={isPlaying()}
+              variant="default"
+            >
+              {getPlayButtonText()}
+            </Button>
+            
+            <Button
+              onClick={stopTTS}
+              variant="destructive"
+            >
+              Stop
+            </Button>
+          </div>
+          
+          {/* Status Information */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div className="p-3 bg-secondary/20 rounded-md">
+              <h4 className="font-medium text-sm mb-1">Current Settings</h4>
+              <p className="text-xs text-muted-foreground">Speed: {data?.speed || 1.0}x</p>
+              <p className="text-xs text-muted-foreground">Volume: {data?.volume || 1.0}</p>
+              <p className="text-xs text-muted-foreground">Voice: {data?.voice || 'Default'}</p>
+              <p className="text-xs text-muted-foreground">Provider: {selectedProvider}</p>
+            </div>
+            
+            <div className="p-3 bg-secondary/20 rounded-md">
+              <h4 className="font-medium text-sm mb-1">Status</h4>
+              <p className="text-xs text-muted-foreground">Mode: {testMode}</p>
+              <p className="text-xs text-muted-foreground">TTS Available: {ttsAvailability?.available ? 'Yes' : 'No'}</p>
+              {testMode === 'regular' && (
+                <p className="text-xs text-muted-foreground">Regular: {regularTTS.status.isLoading ? 'Loading' : regularTTS.status.isPlaying ? 'Playing' : 'Ready'}</p>
+              )}
+              {testMode === 'streaming' && (
+                <p className="text-xs text-muted-foreground">Streaming: {streamingTTS.status.isGenerating ? 'Generating' : streamingTTS.status.isPlaying ? 'Playing' : 'Ready'}</p>
+              )}
+            </div>
+          </div>
+          
+          {/* Debug Information (Collapsible) */}
+          <div className="mt-4">
+            <Button
+              onClick={() => setShowDebugInfo(!showDebugInfo)}
+              variant="outline"
+              size="sm"
+            >
+              {showDebugInfo ? 'Hide' : 'Show'} Debug Info
+            </Button>
+            
+            {showDebugInfo && (
+              <div className="mt-2 p-3 bg-background border border-border rounded-md">
+                <h4 className="font-medium text-sm mb-2">Debug Information</h4>
+                <pre className="text-xs text-muted-foreground overflow-auto max-h-40">
+                  {JSON.stringify(debugInfo, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
         </div>
       </Card>

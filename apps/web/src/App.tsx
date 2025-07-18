@@ -14,7 +14,6 @@ import Home from "./pages/Home";
 import Lesson from "./pages/Lesson";
 import Settings from "./pages/Settings";
 import { SystemStatus } from "./pages/SystemStatus";
-import TTSTestPage from "./pages/tts-test";
 
 const queryClient = new QueryClient();
 
@@ -40,8 +39,7 @@ function App() {
                 <Route index element={<Home />} />
                 <Route path="lesson/:id" element={<Lesson />} />
                 <Route path="settings" element={<Settings />} />
-                <Route path="tts-test" element={<TTSTestPage />} />
-              </Route>
+                    </Route>
             </Routes>
             <Toaster />
           </div>

@@ -19,6 +19,8 @@ export interface TTSAudioStatus {
 
 export interface TTSAudioOptions {
   voice?: string;
+  speed?: number;
+  volume?: number;
   autoPlay?: boolean;
   onPlay?: () => void;
   onPause?: () => void;
@@ -43,6 +45,10 @@ export const useTTSAudio = (text: string, options: TTSAudioOptions = {}) => {
 
   // Get the voice to use (from options, settings, or default)
   const voice = options.voice || ttsSettings?.voice || undefined;
+  
+  // Get speed and volume from options or settings
+  const speed = options.speed ?? ttsSettings?.speed ?? 1.0;
+  const volume = options.volume ?? ttsSettings?.volume ?? 1.0;
 
   // Generate TTS audio
   const generateMutation = useMutation({
@@ -56,6 +62,10 @@ export const useTTSAudio = (text: string, options: TTSAudioOptions = {}) => {
       // Create and configure audio element
       const audio = ttsApi.createAudioElement(response.audio_id);
       audioRef.current = audio;
+      
+      // Apply speed and volume settings
+      audio.playbackRate = speed;
+      audio.volume = volume;
       
       // Set up event listeners
       audio.addEventListener('loadstart', () => {
@@ -137,6 +147,14 @@ export const useTTSAudio = (text: string, options: TTSAudioOptions = {}) => {
       generateMutation.mutate({ text, voice });
     }
   }, [text, voice]);
+  
+  // Update audio settings when speed or volume changes
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = speed;
+      audioRef.current.volume = volume;
+    }
+  }, [speed, volume]);
 
   // Cleanup on unmount
   useEffect(() => {

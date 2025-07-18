@@ -306,17 +306,26 @@ export function VoiceDownloadManager({ onVoiceDownloaded, onVoiceDeleted, classN
                           ) : voice.is_downloaded ? (
                             <Button
                               onClick={() => handleDelete(voice.id)}
-                              variant="destructive"
+                              variant="outline"
                               size="sm"
+                              className="p-2 h-8 w-8 border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                              title="Delete voice"
                             >
-                              Delete
+                              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9zM4 5a2 2 0 012-2v1a1 1 0 001 1h6a1 1 0 001-1V3a2 2 0 012 2v1H4V5zM3 8a1 1 0 011-1h12a1 1 0 110 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2V9a1 1 0 01-1-1z" clipRule="evenodd" />
+                              </svg>
                             </Button>
                           ) : (
                             <Button
                               onClick={() => handleDownload(voice.id)}
+                              variant="outline"
                               size="sm"
+                              className="p-2 h-8 w-8 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                              title="Download voice"
                             >
-                              Download
+                              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                              </svg>
                             </Button>
                           )}
                         </div>

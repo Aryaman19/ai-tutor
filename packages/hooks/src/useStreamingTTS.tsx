@@ -20,6 +20,8 @@ export interface StreamingTTSStatus {
 
 export interface StreamingTTSOptions {
   voice?: string;
+  speed?: number;
+  volume?: number;
   autoPlay?: boolean;
   maxChunkSize?: number;
   onPlay?: () => void;
@@ -58,6 +60,10 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
   // Get the voice to use (from options, settings, or default)
   const voice = options.voice || ttsSettings?.voice || undefined;
   const maxChunkSize = options.maxChunkSize || 200;
+  
+  // Get speed and volume from options or settings
+  const speed = options.speed ?? ttsSettings?.speed ?? 1.0;
+  const volume = options.volume ?? ttsSettings?.volume ?? 1.0;
 
   // Reset state when text changes
   useEffect(() => {
@@ -129,6 +135,10 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
         let audioElement: HTMLAudioElement | null = null;
         if (chunk.is_ready && chunk.audio_id) {
           audioElement = ttsApi.createAudioElement(chunk.audio_id);
+          
+          // Apply speed and volume settings
+          audioElement.playbackRate = speed;
+          audioElement.volume = volume;
           
           // Set up audio element event listeners
           audioElement.addEventListener('canplaythrough', () => {
@@ -342,12 +352,22 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
     }));
   }, [stopAudio]);
 
-  // Auto-generate when text changes
+  // Auto-generate when text or voice changes
   useEffect(() => {
     if (text?.trim()) {
       generateStreamingAudio();
     }
-  }, [text]); // Only depend on text, not the callback
+  }, [text, voice]); // Depend on text and voice
+  
+  // Update audio settings for all chunks when speed or volume changes
+  useEffect(() => {
+    audioChunksRef.current.forEach(audioChunk => {
+      if (audioChunk.audioElement) {
+        audioChunk.audioElement.playbackRate = speed;
+        audioChunk.audioElement.volume = volume;
+      }
+    });
+  }, [speed, volume]);
 
   // Cleanup on unmount
   useEffect(() => {
