@@ -16,7 +16,7 @@ import { SystemStatusSettings } from "@/components/settings/SystemStatusSettings
 
 const Settings: React.FC = () => {
   const { settings, updateSettings, resetSettings, isLoading, isUpdating } = useSettings();
-  const { data: availableModels } = useAvailableModels();
+  const { data: availableModels, refetchModels } = useAvailableModels();
   const { data: browserVoices } = useBrowserVoices();
 
   const [activeTab, setActiveTab] = useState<string>("llm");
@@ -69,6 +69,7 @@ const Settings: React.FC = () => {
             data={formData.llm}
             availableModels={availableModels}
             onChange={(data) => updateFormData("llm", data)}
+            onRefreshModels={refetchModels}
           />
         );
       case "tts":

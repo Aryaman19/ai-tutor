@@ -71,7 +71,8 @@ async def generate_lesson_content(lesson_id: str):
         # Generate lesson steps using Ollama
         steps = await ollama_service.generate_eli5_lesson(
             topic=lesson.topic,
-            difficulty_level=lesson.difficulty_level
+            difficulty_level=lesson.difficulty_level,
+            user_id="default"  # TODO: Add user authentication
         )
         
         if not steps:
@@ -265,7 +266,8 @@ async def generate_lesson_script(lesson_id: str):
         # Generate visual script using Ollama
         steps = await ollama_service.generate_visual_script(
             topic=lesson.topic,
-            difficulty_level=lesson.difficulty_level
+            difficulty_level=lesson.difficulty_level,
+            user_id="default"  # TODO: Add user authentication
         )
         
         if not steps:

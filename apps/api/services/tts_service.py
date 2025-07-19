@@ -246,11 +246,11 @@ class PiperTTSService:
                 logger.info(f"Generating TTS audio using Python piper module: {audio_id}")
                 
                 # Load the voice model
-                voice = PiperVoice.load(str(voice_config["model_path"]))
+                piper_voice = PiperVoice.load(str(voice_config["model_path"]))
                 
                 # Generate audio
                 audio_bytes = b''
-                for chunk in voice.synthesize(text, syn_config=None):
+                for chunk in piper_voice.synthesize(text, syn_config=None):
                     audio_bytes += chunk.audio_int16_bytes
                 
                 # Get the correct sample rate from voice configuration

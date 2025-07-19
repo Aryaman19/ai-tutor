@@ -224,10 +224,9 @@ class SettingsService:
     async def _check_ollama_model(model_name: str) -> bool:
         """Check if Ollama model is available"""
         try:
-            # This would connect to Ollama API to check model availability
-            # For now, return True for common models
-            common_models = ["gemma2:3b", "llama3:8b", "mistral:7b", "codellama:7b"]
-            return model_name in common_models
+            # Get actual available models from Ollama
+            available_models = await SettingsService._get_ollama_models()
+            return model_name in available_models
         except Exception as e:
             logger.error(f"Error checking Ollama model {model_name}: {e}")
             return False
@@ -245,13 +244,28 @@ class SettingsService:
     
     @staticmethod
     async def _get_ollama_models() -> List[str]:
-        """Get available Ollama models"""
+        """Get available Ollama models from Ollama API"""
         try:
-            # This would connect to Ollama API to get available models
-            # For now, return a static list
-            return ["gemma2:3b", "llama3:8b", "mistral:7b", "codellama:7b", "phi3:3.8b"]
+            from services.connection_service import ConnectionService
+            ollama_status = await ConnectionService.test_ollama_connection()
+            
+            if ollama_status["status"] == "connected" and "models" in ollama_status:
+                # Extract model names from the API response
+                models = []
+                for model in ollama_status["models"]:
+                    if isinstance(model, dict) and "name" in model:
+                        models.append(model["name"])
+                    elif isinstance(model, str):
+                        models.append(model)
+                return models
+            else:
+                logger.warning("Ollama not connected, returning empty models list")
+                # Return empty list if Ollama is not available
+                return []
+                
         except Exception as e:
             logger.error(f"Error getting Ollama models: {e}")
+            # Return empty list on error
             return []
     
     @staticmethod

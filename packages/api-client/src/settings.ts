@@ -95,31 +95,16 @@ export const settingsApi = {
    * Get available models for all providers
    */
   async getAvailableModels(): Promise<AvailableModels> {
-    // This would call a backend endpoint that returns available models
-    // For now, return a mock response
-    return {
-      ollama: ["gemma2:3b", "llama3:8b", "mistral:7b", "codellama:7b", "phi3:3.8b"],
-      openai: ["gpt-4", "gpt-3.5-turbo", "gpt-4-turbo", "gpt-4o"],
-      anthropic: ["claude-3-sonnet", "claude-3-haiku", "claude-3-opus", "claude-3-5-sonnet"],
-      browserTts: ["default", "male", "female", "en-US-male", "en-US-female", "en-GB-male", "en-GB-female"],
-      elevenlabs: ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-      openaiTts: ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
-      piperTts: [
-        { id: "en_US-lessac-medium", name: "Lessac (Medium Quality)", language: "en_US" }
-      ]
-    };
+    const response = await apiClient.get<AvailableModels>(`/api/settings/available-models`);
+    return response.data;
   },
 
   /**
    * Get supported languages
    */
   async getSupportedLanguages(): Promise<string[]> {
-    // This would call a backend endpoint that returns supported languages
-    // For now, return a mock response
-    return [
-      "en", "es", "fr", "de", "it", "pt", "zh", "ja", "ko", "ru", 
-      "ar", "hi", "th", "vi", "nl", "pl", "sv", "no", "da", "fi"
-    ];
+    const response = await apiClient.get<{ languages: string[] }>(`/api/settings/supported-languages`);
+    return response.data.languages;
   },
 
   /**

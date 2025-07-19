@@ -141,8 +141,8 @@ const HealthDashboardComponent: React.FC = () => {
                   <span className="font-medium">TTS</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {Object.keys(healthStatus?.services.tts || {}).length}{" "}
-                  providers
+                  {Object.values(healthStatus?.services.tts || {}).filter(provider => provider.status === "available").length}{" "}
+                  of {Object.keys(healthStatus?.services.tts || {}).length} available
                 </p>
               </div>
             </div>
@@ -227,16 +227,26 @@ const HealthDashboardComponent: React.FC = () => {
           icon={Volume2}
           status="available"
           additionalInfo={
-            <div className="space-y-2">
+            <div className="space-y-3">
               {healthStatus?.services.tts &&
                 Object.entries(healthStatus.services.tts).map(
                   ([provider, info]: [string, TTSProvider]) => (
-                    <div
-                      key={provider}
-                      className="flex justify-between items-center"
-                    >
-                      <span className="text-sm capitalize">{provider}:</span>
-                      <StatusBadge status={info.status || "unknown"} />
+                    <div key={provider} className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium capitalize">{provider}:</span>
+                        <StatusBadge status={info.status || "unknown"} />
+                      </div>
+                      {info.note && (
+                        <p className="text-xs text-muted-foreground">{info.note}</p>
+                      )}
+                      {info.voices_count !== undefined && (
+                        <p className="text-xs text-muted-foreground">
+                          {info.voices_count} voices available
+                        </p>
+                      )}
+                      {info.error && (
+                        <p className="text-xs text-red-500">{info.error}</p>
+                      )}
                     </div>
                   )
                 )}

@@ -1,23 +1,25 @@
-import React, { useState } from "react";
-import { Card, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Slider } from "@ai-tutor/ui";
+import React, { useState, useEffect } from "react";
+import { Card, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Slider, Button } from "@ai-tutor/ui";
 import type { LLMSettings, AvailableModels } from "@ai-tutor/types";
 
 interface ModelsSettingsProps {
   data?: LLMSettings;
   availableModels?: AvailableModels;
   onChange: (data: Partial<LLMSettings>) => void;
+  onRefreshModels?: () => void;
 }
 
-const ModelsSettingsComponent: React.FC<ModelsSettingsProps> = ({ data, availableModels, onChange }) => {
+const ModelsSettingsComponent: React.FC<ModelsSettingsProps> = ({ data, availableModels, onChange, onRefreshModels }) => {
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   
-  const ollamaModels = availableModels?.ollama || [
-    "gemma2:3b",
-    "llama3:8b", 
-    "mistral:7b",
-    "codellama:7b",
-    "phi3:3.8b"
-  ];
+  const ollamaModels = availableModels?.ollama || [];
+
+  // Auto-select first model if no model is selected and models are available
+  React.useEffect(() => {
+    if (ollamaModels.length > 0 && (!data?.model || !ollamaModels.includes(data.model))) {
+      onChange({ model: ollamaModels[0] });
+    }
+  }, [ollamaModels, data?.model, onChange]);
 
   return (
     <div className="space-y-6">
@@ -41,12 +43,12 @@ const ModelsSettingsComponent: React.FC<ModelsSettingsProps> = ({ data, availabl
           <div>
             <label className="block text-sm font-medium mb-2">Model</label>
             <Select
-              value={data?.model || "gemma2:3b"}
+              value={data?.model || ""}
               onValueChange={(value) => onChange({ model: value })}
-              disabled={isLoadingModels}
+              disabled={isLoadingModels || ollamaModels.length === 0}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select model" />
+                <SelectValue placeholder={ollamaModels.length === 0 ? "No models available" : "Select model"} />
               </SelectTrigger>
               <SelectContent>
                 {ollamaModels.map((model: string) => (
@@ -58,6 +60,23 @@ const ModelsSettingsComponent: React.FC<ModelsSettingsProps> = ({ data, availabl
               <p className="text-xs text-muted-foreground mt-1">
                 Loading available models...
               </p>
+            )}
+            {!isLoadingModels && ollamaModels.length === 0 && (
+              <div className="space-y-2 mt-1">
+                <p className="text-xs text-red-500">
+                  No Ollama models found. Make sure Ollama is running and has models installed.
+                </p>
+                {onRefreshModels && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onRefreshModels}
+                    className="text-xs h-7"
+                  >
+                    Check Again
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>

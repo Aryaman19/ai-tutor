@@ -62,36 +62,35 @@ class ConnectionService:
         # Test Browser TTS (always available in frontend)
         providers["browser"] = {
             "status": "available",
-            "note": "Available in frontend via Web Speech API"
+            "note": "Web Speech API - Available in browsers"
         }
 
-        # Test Edge TTS
+        # Test Piper TTS (the main offline TTS provider used in the app)
         try:
-            import edge_tts
-            providers["edge"] = {"status": "available"}
-        except ImportError:
-            providers["edge"] = {"status": "unavailable",
-                                 "error": "Module not installed"}
-
-        # Test gTTS
-        try:
-            from gtts import gTTS
-            providers["google"] = {"status": "available"}
-        except ImportError:
-            providers["google"] = {
-                "status": "unavailable", "error": "Module not installed"}
-
-        # Test pyttsx3
-        try:
-            import pyttsx3
-            engine = pyttsx3.init()
-            voices = engine.getProperty('voices')
-            providers["local"] = {
-                "status": "available",
-                "voices_count": len(voices) if voices else 0
-            }
+            # Check if Piper TTS service is available
+            from services.tts_service import piper_tts_service
+            is_available = await piper_tts_service.is_service_available()
+            
+            if is_available:
+                # Get available voices count
+                voices = await piper_tts_service.get_available_voices()
+                providers["piper"] = {
+                    "status": "available",
+                    "voices_count": len(voices),
+                    "note": "Offline TTS - High quality local voices"
+                }
+            else:
+                providers["piper"] = {
+                    "status": "unavailable",
+                    "error": "Piper TTS dependencies not found",
+                    "note": "Install piper-tts Python package"
+                }
         except Exception as e:
-            providers["local"] = {"status": "error", "error": str(e)}
+            providers["piper"] = {
+                "status": "error", 
+                "error": str(e),
+                "note": "Offline TTS service check failed"
+            }
 
         return providers
 

@@ -3,6 +3,7 @@ import httpx
 from typing import Dict, List, Optional
 from config import settings
 from models.lesson import CanvasStep
+from models.settings import UserSettings
 
 
 class OllamaService:
@@ -13,16 +14,29 @@ class OllamaService:
         self.model = "gemma3n:latest"  # Use the available model
         self.timeout = 60.0
         
-    async def _make_request(self, prompt: str) -> Optional[str]:
-        """Make a request to Ollama API"""
+    async def _make_request(self, prompt: str, user_id: str = "default") -> Optional[str]:
+        """Make a request to Ollama API with user settings"""
         try:
+            # Get user's LLM settings
+            user_settings = await UserSettings.find_one(UserSettings.user_id == user_id)
+            llm_settings = user_settings.llm if user_settings else None
+            
+            # Use settings or defaults
+            model = llm_settings.model if llm_settings else self.model
+            temperature = llm_settings.temperature if llm_settings else 0.7
+            max_tokens = llm_settings.max_tokens if llm_settings else 2048
+            
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/api/generate",
                     json={
-                        "model": self.model,
+                        "model": model,
                         "prompt": prompt,
-                        "stream": False
+                        "stream": False,
+                        "options": {
+                            "temperature": temperature,
+                            "num_predict": max_tokens,
+                        }
                     }
                 )
                 
@@ -40,7 +54,7 @@ class OllamaService:
             print(f"Unexpected error: {e}")
             return None
     
-    async def generate_eli5_lesson(self, topic: str, difficulty_level: str = "beginner") -> Optional[List[CanvasStep]]:
+    async def generate_eli5_lesson(self, topic: str, difficulty_level: str = "beginner", user_id: str = "default") -> Optional[List[CanvasStep]]:
         """Generate ELI5 lesson steps for a given topic"""
         
         difficulty_prompts = {
@@ -84,7 +98,7 @@ NARRATION: [Script for voice-over, conversational tone]
 Keep each step concise but informative, and make sure the progression is logical and easy to follow. The narration should be engaging and sound natural when spoken aloud.
 """
         
-        response = await self._make_request(prompt)
+        response = await self._make_request(prompt, user_id)
         
         if not response:
             return None
@@ -190,7 +204,7 @@ Keep each step concise but informative, and make sure the progression is logical
         # Add some buffer time for pauses and pacing
         return max(duration_seconds * 1.2, 2.0)  # Minimum 2 seconds
     
-    async def generate_doubt_answer(self, question: str, lesson_topic: str) -> Optional[str]:
+    async def generate_doubt_answer(self, question: str, lesson_topic: str, user_id: str = "default") -> Optional[str]:
         """Generate an answer for a doubt/question about the lesson"""
         
         prompt = f"""
@@ -207,7 +221,7 @@ Answer:
         
         return await self._make_request(prompt)
     
-    async def generate_visual_script(self, topic: str, difficulty_level: str = "beginner") -> Optional[List[CanvasStep]]:
+    async def generate_visual_script(self, topic: str, difficulty_level: str = "beginner", user_id: str = "default") -> Optional[List[CanvasStep]]:
         """Generate a visual lesson script with narration and drawing instructions"""
         
         difficulty_prompts = {
@@ -250,7 +264,7 @@ VISUAL_ELEMENTS: [Describe what to draw: shapes, text, arrows, positioning]
 Focus on topics that can be effectively visualized through simple drawings. Make the narration engaging and the visual descriptions clear enough that someone could recreate the drawings.
 """
         
-        response = await self._make_request(prompt)
+        response = await self._make_request(prompt, user_id)
         
         if not response:
             return None

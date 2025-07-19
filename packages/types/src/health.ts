@@ -27,9 +27,11 @@ export interface DatabaseService {
 }
 
 export interface TTSProvider {
-  status: "available" | "unavailable" | "healthy" | "degraded";
-  provider: string;
+  status: "available" | "unavailable" | "healthy" | "degraded" | "error";
+  provider?: string;
   voices?: string[];
+  voices_count?: number;
+  note?: string;
   error?: string;
 }
 

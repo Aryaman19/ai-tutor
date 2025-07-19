@@ -12,7 +12,7 @@ import {
 } from "../utils/lessonAdapter";
 import { createComponentLogger } from "@ai-tutor/utils";
 import { cn } from "@ai-tutor/utils";
-import { useTTSSettings, useTTSAudio, useTTSAvailability, useStreamingTTS } from "@ai-tutor/hooks";
+import { useTTSSettings, useTTSAudio, useTTSAvailability, useStreamingTTS, useTTSVoices } from "@ai-tutor/hooks";
 
 // Using any for now - will fix typing later
 type ExcalidrawImperativeAPI = any;
@@ -164,6 +164,7 @@ export default function ExcalidrawPlayer({
   // TTS Settings integration
   const { data: ttsSettings } = useTTSSettings(userId || "default");
   const { data: ttsAvailability } = useTTSAvailability();
+  const { data: piperVoices } = useTTSVoices();
   
   // Get effective TTS values (settings override props)
   const effectiveSpeechRate = ttsSettings?.speed || speechRate;
@@ -172,21 +173,41 @@ export default function ExcalidrawPlayer({
   const useSettingsVoice = selectedVoice && (ttsSettings?.provider === "browser" || ttsSettings?.provider === "piper");
   const usePiperTTS = ttsSettings?.provider === "piper" && ttsAvailability?.available;
   const enableStreamingTTS = ttsSettings?.streaming !== false && ttsAvailability?.available;
+
+  // Voice mapping function for Piper TTS (convert voice name to voice ID)
+  const getCurrentVoiceId = useCallback(() => {
+    if (usePiperTTS && piperVoices && selectedVoice) {
+      // For Piper, we need to get the voice ID from the installed voices
+      const piperVoice = piperVoices.find(v => v.name === selectedVoice);
+      const voiceId = piperVoice?.id || selectedVoice;
+      logger.debug("Voice mapping:", {
+        selectedVoiceName: selectedVoice,
+        foundVoiceId: voiceId,
+        availableVoices: piperVoices.map(v => ({ name: v.name, id: v.id }))
+      });
+      return voiceId;
+    }
+    return selectedVoice;
+  }, [usePiperTTS, piperVoices, selectedVoice]);
   
+  // Get current voice ID for hooks
+  const currentVoiceId = getCurrentVoiceId();
+
   // Debug hook parameters
   useEffect(() => {
     logger.debug("useTTSAudio hook parameters:", {
       text: currentNarrationText ? `"${currentNarrationText.substring(0, 50)}..."` : "empty",
       textLength: currentNarrationText.length,
-      voice: usePiperTTS ? selectedVoice : undefined,
+      voice: usePiperTTS ? currentVoiceId : undefined,
       usePiperTTS,
-      selectedVoice
+      selectedVoice,
+      currentVoiceId
     });
-  }, [currentNarrationText, usePiperTTS, selectedVoice]);
+  }, [currentNarrationText, usePiperTTS, selectedVoice, currentVoiceId]);
 
   // Piper TTS Audio Hook (non-streaming)
   const ttsAudio = useTTSAudio(currentNarrationText, {
-    voice: usePiperTTS ? selectedVoice : undefined,
+    voice: usePiperTTS ? currentVoiceId : undefined,
     autoPlay: true, // Enable autoPlay so it plays immediately when ready
     onPlay: () => {
       logger.debug("Piper TTS started playing");
@@ -223,7 +244,7 @@ export default function ExcalidrawPlayer({
 
   // Streaming TTS Hook (disabled for debugging)
   const streamingTTS = useStreamingTTS('', {
-    voice: enableStreamingTTS ? selectedVoice : undefined,
+    voice: enableStreamingTTS ? currentVoiceId : undefined,
     autoPlay: false,
     onPlay: () => {
       logger.debug("Streaming TTS started playing");
@@ -286,6 +307,7 @@ export default function ExcalidrawPlayer({
           effectiveSpeechRate,
           effectiveSpeechVolume,
           selectedVoice,
+          currentVoiceId,
           useSettingsVoice,
           usePiperTTS,
           useBrowserTTS,
@@ -766,6 +788,7 @@ export default function ExcalidrawPlayer({
       });
 
       // Generate audio using the TTS API
+      const voiceId = getCurrentVoiceId();
       const response = await fetch('/api/tts/generate', {
         method: 'POST',
         headers: {
@@ -773,7 +796,7 @@ export default function ExcalidrawPlayer({
         },
         body: JSON.stringify({
           text: narrationText,
-          voice: selectedVoice
+          voice: voiceId
         }),
       });
 
@@ -801,7 +824,7 @@ export default function ExcalidrawPlayer({
         return newSet;
       });
     }
-  }, [usePiperTTS, ttsAvailability?.available, selectedVoice, audioCache, preGenerationQueue]);
+  }, [usePiperTTS, ttsAvailability?.available, getCurrentVoiceId, audioCache, preGenerationQueue]);
 
   const preGenerateUpcomingSlides = useCallback(async (currentStepIndex: number, steps: FlexibleLessonStep[]) => {
     if (!usePiperTTS || !ttsAvailability?.available || audioPreparationActive) {
@@ -1005,7 +1028,8 @@ export default function ExcalidrawPlayer({
         logger.debug("Generating audio in real-time for step", currentStepIndex);
         logger.debug("Attempting Piper TTS with params:", {
           text: narrationText.substring(0, 100) + "...",
-          voice: selectedVoice,
+          voice: currentVoiceId,
+          selectedVoiceName: selectedVoice,
           usePiperTTS,
           ttsAvailable: ttsAvailability?.available
         });
@@ -1079,7 +1103,7 @@ export default function ExcalidrawPlayer({
     getNarrationText, effectiveSpeechRate, effectiveSpeechVolume, isMuted, onStepChange,
     onComplete, getCurrentSteps, generateElementsFromStep, mode, getSelectedVoice,
     usePiperTTS, useBrowserTTS, streamingTTSEnabled, enableStreamingTTS, ttsAudio, streamingTTS,
-    audioCache, cleanupOldAudio, preGenerateUpcomingSlides, ttsAvailability
+    audioCache, cleanupOldAudio, preGenerateUpcomingSlides, ttsAvailability, currentVoiceId
   ]);
 
   const handleLessonChange = useCallback(async (lessonName: string) => {

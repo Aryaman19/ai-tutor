@@ -80,23 +80,37 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
     { value: "piper", label: "Piper (Offline)" },
   ];
 
+  // Update the selectedProvider when data changes (e.g., from reset)
+  React.useEffect(() => {
+    if (data?.provider && data.provider !== selectedProvider) {
+      setSelectedProvider(data.provider);
+    }
+  }, [data?.provider, selectedProvider]);
+
   React.useEffect(() => {
     const loadVoices = async () => {
       setIsLoadingVoices(true);
       
+      let voices: string[] = [];
       if (selectedProvider === "browser") {
-        const voices = browserVoices || ["Default"];
+        voices = browserVoices || ["Default"];
         setAvailableVoices(voices);
       } else if (selectedProvider === "piper") {
-        const voices = piperVoices?.map(voice => voice.name) || ["Lessac (Medium Quality)"];
+        voices = piperVoices?.map(voice => voice.name) || ["Lessac (Medium Quality)"];
         setAvailableVoices(voices);
+      }
+      
+      // Set first voice as default if no voice is currently selected OR if the current voice doesn't exist in available voices
+      // This handles the reset case where voice might be "default" but actual voice names are different
+      if (voices.length > 0 && (!data?.voice || !voices.includes(data.voice))) {
+        onChange({ voice: voices[0] });
       }
       
       setIsLoadingVoices(false);
     };
 
     loadVoices();
-  }, [selectedProvider, browserVoices, piperVoices, voiceRefreshTrigger]);
+  }, [selectedProvider, browserVoices, piperVoices, voiceRefreshTrigger, data?.voice, onChange]);
   
   // Load browser voices for testing
   useEffect(() => {
@@ -130,7 +144,19 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
 
   const handleProviderChange = (provider: string) => {
     setSelectedProvider(provider);
-    onChange({ provider, voice: "" });
+    
+    // Get voices for the new provider and set the first one as default
+    let defaultVoice = "";
+    if (provider === "browser") {
+      const voices = browserVoices || ["Default"];
+      defaultVoice = voices[0] || "";
+    } else if (provider === "piper") {
+      const voices = piperVoices?.map(voice => voice.name) || ["Lessac (Medium Quality)"];
+      defaultVoice = voices[0] || "";
+    }
+    
+    // Always set a valid voice when changing provider
+    onChange({ provider, voice: defaultVoice });
     
     // Auto-switch test mode based on provider
     if (provider === 'piper' && testMode === 'browser') {

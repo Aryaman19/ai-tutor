@@ -341,3 +341,27 @@ async def export_user_settings(
     except Exception as e:
         logger.error(f"Error exporting settings for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/available-models")
+async def get_available_models():
+    """Get available models for each provider"""
+    try:
+        from services.settings_service import SettingsService
+        models = await SettingsService.get_available_models()
+        return models
+    except Exception as e:
+        logger.error(f"Error getting available models: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/supported-languages")
+async def get_supported_languages():
+    """Get supported languages"""
+    try:
+        from services.settings_service import SettingsService
+        languages = await SettingsService.get_supported_languages()
+        return {"languages": languages}
+    except Exception as e:
+        logger.error(f"Error getting supported languages: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

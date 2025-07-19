@@ -105,13 +105,26 @@ export const useSettings = (userId: string = "default") => {
 };
 
 export const useAvailableModels = () => {
-  return useQuery({
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
     queryKey: ["availableModels"],
     queryFn: () => settingsApi.getAvailableModels(),
     staleTime: 30 * 60 * 1000, // 30 minutes
     gcTime: 60 * 60 * 1000, // 1 hour
     refetchOnWindowFocus: false,
+    refetchInterval: (data) => {
+      // If no Ollama models are available, poll more frequently to detect when Ollama comes online
+      const ollamaModels = data?.ollama || [];
+      return ollamaModels.length === 0 ? 10000 : false; // Poll every 10 seconds if no models, otherwise don't poll
+    },
+    refetchIntervalInBackground: false,
   });
+
+  return {
+    ...query,
+    refetchModels: () => queryClient.invalidateQueries({ queryKey: ["availableModels"] })
+  };
 };
 
 export const useSupportedLanguages = () => {
