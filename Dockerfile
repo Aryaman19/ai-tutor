@@ -14,6 +14,10 @@ COPY apps/ ./apps/
 RUN npm install -g pnpm
 RUN pnpm install --frozen-lockfile
 
+# Set environment variables for frontend build
+ENV VITE_API_URL=http://localhost:8000
+ENV NODE_ENV=production
+
 # Build the frontend
 RUN pnpm build
 

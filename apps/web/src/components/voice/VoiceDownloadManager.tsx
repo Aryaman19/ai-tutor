@@ -3,6 +3,9 @@ import { Button, Card, Badge, ScrollArea, Select, SelectContent, SelectItem, Sel
 import { ttsApi } from '@ai-tutor/api-client';
 import type { VoiceMetadata } from '@ai-tutor/types';
 import { useQueryClient } from '@tanstack/react-query';
+import { createComponentLogger } from '@ai-tutor/utils';
+
+const logger = createComponentLogger('VoiceDownloadManager');
 
 interface VoiceDownloadManagerProps {
   onVoiceDownloaded?: (voiceId: string) => void;
@@ -30,7 +33,7 @@ export function VoiceDownloadManager({ onVoiceDownloaded, onVoiceDeleted, classN
       setError(null);
       setSuccessMessage(null);
       
-      console.log('Fetching voices from API...', forceRefresh ? '(forced refresh)' : '');
+      logger.debug('Fetching voices from API...', forceRefresh ? '(forced refresh)' : '');
       
       // Use force_refresh parameter for backend cache invalidation
       const url = forceRefresh ? 
@@ -43,11 +46,11 @@ export function VoiceDownloadManager({ onVoiceDownloaded, onVoiceDeleted, classN
       }
       
       const availableVoices = await response.json();
-      console.log('Received voices:', availableVoices);
+      logger.debug('Received voices:', availableVoices.length, 'voices');
       
       setVoices(availableVoices);
     } catch (err) {
-      console.error('Error fetching voices:', err);
+      logger.error('Error fetching voices:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch voices from API');
     } finally {
       setLoading(false);
@@ -102,7 +105,7 @@ export function VoiceDownloadManager({ onVoiceDownloaded, onVoiceDeleted, classN
         throw new Error(response.message);
       }
     } catch (err) {
-      console.error('Download error:', err);
+      logger.error('Download error:', err);
       setError(err instanceof Error ? err.message : 'Failed to download voice');
       setDownloadingVoices(prev => {
         const newSet = new Set(prev);
@@ -156,7 +159,9 @@ export function VoiceDownloadManager({ onVoiceDownloaded, onVoiceDeleted, classN
   const voicesByLanguage = groupVoicesByLanguage(filteredVoices);
   const languages = ['all', ...new Set(voices.map(v => v.language))];
 
-  const getVoiceQualityColor = (quality: string) => {
+  const getVoiceQualityColor = (quality: string | undefined) => {
+    if (!quality) return 'bg-blue-100 text-blue-800';
+    
     switch (quality.toLowerCase()) {
       case 'high': return 'bg-green-100 text-green-800';
       case 'medium': return 'bg-yellow-100 text-yellow-800';
@@ -270,7 +275,7 @@ export function VoiceDownloadManager({ onVoiceDownloaded, onVoiceDeleted, classN
                           <div className="flex items-center space-x-2 mb-2">
                             <h4 className="font-medium text-foreground">{voice.name}</h4>
                             <Badge className={getVoiceQualityColor(voice.quality)}>
-                              {voice.quality}
+                              {voice.quality || 'Unknown'}
                             </Badge>
                             {voice.is_downloaded && (
                               <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
@@ -279,11 +284,11 @@ export function VoiceDownloadManager({ onVoiceDownloaded, onVoiceDeleted, classN
                             )}
                           </div>
                           <div className="text-sm text-muted-foreground space-y-1">
-                            <p>{voice.description}</p>
+                            <p>{voice.description || 'No description available'}</p>
                             <div className="flex items-center space-x-4">
-                              <span>Size: {voice.size_mb}MB</span>
-                              <span>Sample Rate: {voice.sample_rate}Hz</span>
-                              <span>Country: {voice.country}</span>
+                              <span>Size: {voice.size_mb || 'Unknown'}MB</span>
+                              <span>Sample Rate: {voice.sample_rate || 'Unknown'}Hz</span>
+                              <span>Country: {voice.country || 'Unknown'}</span>
                             </div>
                           </div>
                         </div>

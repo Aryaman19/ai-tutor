@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import httpx
 from typing import Dict, List, Optional
 from config import settings
 from models.lesson import CanvasStep
 from models.settings import UserSettings
+
+logger = logging.getLogger(__name__)
 
 
 class OllamaService:
@@ -44,14 +47,14 @@ class OllamaService:
                     result = response.json()
                     return result.get("response", "")
                 else:
-                    print(f"Ollama API error: {response.status_code} - {response.text}")
+                    logger.error(f"Ollama API error: {response.status_code} - {response.text}")
                     return None
                     
         except httpx.RequestError as e:
-            print(f"Request error: {e}")
+            logger.error(f"Request error: {e}")
             return None
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            logger.error(f"Unexpected error: {e}", exc_info=True)
             return None
     
     async def generate_eli5_lesson(self, topic: str, difficulty_level: str = "beginner", user_id: str = "default") -> Optional[List[CanvasStep]]:

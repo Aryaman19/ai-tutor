@@ -42,12 +42,11 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
   // Get the current voice for testing - memoized to avoid stale closures
   const getCurrentVoiceForTest = React.useCallback(() => {
     if (selectedProvider === 'piper') {
-      // For Piper, we need to get the voice ID from the installed voices
-      const piperVoice = piperVoicesForTest.find(v => v.name === data?.voice);
-      return piperVoice?.id || data?.voice;
+      // For Piper, data?.voice should already be the voice ID
+      return data?.voice;
     }
     return data?.voice;
-  }, [selectedProvider, data?.voice, piperVoicesForTest]);
+  }, [selectedProvider, data?.voice]);
   
   // Get current voice ID for hooks
   const currentVoiceId = getCurrentVoiceForTest();
@@ -96,13 +95,22 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
         voices = browserVoices || ["Default"];
         setAvailableVoices(voices);
       } else if (selectedProvider === "piper") {
-        voices = piperVoices?.map(voice => voice.name) || ["Lessac (Medium Quality)"];
+        voices = piperVoices?.map(voice => voice.id) || ["en_US-lessac-medium"];
         setAvailableVoices(voices);
       }
       
-      // Set first voice as default if no voice is currently selected OR if the current voice doesn't exist in available voices
-      // This handles the reset case where voice might be "default" but actual voice names are different
-      if (voices.length > 0 && (!data?.voice || !voices.includes(data.voice))) {
+      
+      // Only auto-select first voice if:
+      // 1. We have voices available AND
+      // 2. Either no voice is selected OR the current voice doesn't exist in available voices AND
+      // 3. The data object exists (settings have loaded) to avoid overriding during initial load AND
+      // 4. For piper provider, ensure TTS voices have actually loaded (not just showing default)
+      const shouldAutoSelect = voices.length > 0 && 
+                              data && 
+                              (!data.voice || !voices.includes(data.voice)) &&
+                              (selectedProvider !== "piper" || !isPiperVoicesLoading);
+      
+      if (shouldAutoSelect) {
         onChange({ voice: voices[0] });
       }
       
@@ -151,7 +159,7 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
       const voices = browserVoices || ["Default"];
       defaultVoice = voices[0] || "";
     } else if (provider === "piper") {
-      const voices = piperVoices?.map(voice => voice.name) || ["Lessac (Medium Quality)"];
+      const voices = piperVoices?.map(voice => voice.id) || ["en_US-lessac-medium"];
       defaultVoice = voices[0] || "";
     }
     
@@ -314,9 +322,14 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
                 <SelectValue placeholder="Select voice" />
               </SelectTrigger>
               <SelectContent>
-                {availableVoices.map((voice) => (
-                  <SelectItem key={voice} value={voice}>{voice}</SelectItem>
-                ))}
+                {selectedProvider === "piper" ? 
+                  piperVoices?.map((voice) => (
+                    <SelectItem key={voice.id} value={voice.id}>{voice.name}</SelectItem>
+                  )) :
+                  availableVoices.map((voice) => (
+                    <SelectItem key={voice} value={voice}>{voice}</SelectItem>
+                  ))
+                }
               </SelectContent>
             </Select>
             {(isLoadingVoices || (selectedProvider === "piper" && isPiperVoicesLoading)) && (
@@ -513,7 +526,11 @@ const VoiceSettingsComponent: React.FC<VoiceSettingsProps> = ({ data, browserVoi
               <h4 className="font-medium text-sm mb-1">Current Settings</h4>
               <p className="text-xs text-muted-foreground">Speed: {data?.speed || 1.0}x</p>
               <p className="text-xs text-muted-foreground">Volume: {data?.volume || 1.0}</p>
-              <p className="text-xs text-muted-foreground">Voice: {data?.voice || 'Default'}</p>
+              <p className="text-xs text-muted-foreground">Voice: {
+                selectedProvider === 'piper' 
+                  ? piperVoices?.find(v => v.id === data?.voice)?.name || data?.voice || 'Default'
+                  : data?.voice || 'Default'
+              }</p>
               <p className="text-xs text-muted-foreground">Provider: {selectedProvider}</p>
             </div>
             

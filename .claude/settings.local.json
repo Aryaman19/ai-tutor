@@ -3,7 +3,8 @@
     "allow": [
       "WebFetch(domain:docs.excalidraw.com)",
       "WebFetch(domain:github.com)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(find:*)"
     ],
     "deny": []
   }

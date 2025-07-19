@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
+import logging
 from fastapi import APIRouter, HTTPException, Query
 from bson import ObjectId
 from models.lesson import (
@@ -9,16 +10,19 @@ from models.lesson import (
     UpdateLessonRequest
 )
 from services.ollama_service import ollama_service
+from utils.error_handler import ErrorHandler
 
 # Optional TTS service import
 try:
     from services.tts_service import piper_tts_service
     TTS_AVAILABLE = True
 except ImportError as e:
-    print(f"TTS service not available: {e}")
+    logger = logging.getLogger(__name__)
+    logger.warning(f"TTS service not available: {e}")
     piper_tts_service = None
     TTS_AVAILABLE = False
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -104,11 +108,7 @@ async def generate_lesson_content(lesson_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error generating lesson content: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to generate lesson content"
-        )
+        raise ErrorHandler.handle_service_error("generate lesson content", e)
 
 
 @router.get("/lessons", response_model=List[LessonResponse])
@@ -179,13 +179,11 @@ async def get_lesson(lesson_id: str):
 async def update_lesson(lesson_id: str, request: UpdateLessonRequest):
     """Update a lesson"""
     try:
-        if not ObjectId.is_valid(lesson_id):
-            raise HTTPException(status_code=400, detail="Invalid lesson ID")
-        
-        lesson = await Lesson.get(ObjectId(lesson_id))
+        lesson_obj_id = ErrorHandler.validate_object_id(lesson_id, "lesson")
+        lesson = await Lesson.get(lesson_obj_id)
         
         if not lesson:
-            raise HTTPException(status_code=404, detail="Lesson not found")
+            raise ErrorHandler.handle_not_found("Lesson", lesson_id)
         
         # Update fields
         update_data = {}
@@ -203,7 +201,7 @@ async def update_lesson(lesson_id: str, request: UpdateLessonRequest):
             await lesson.update({"$set": update_data})
             
             # Refresh lesson from database
-            lesson = await Lesson.get(ObjectId(lesson_id))
+            lesson = await Lesson.get(lesson_obj_id)
         
         return LessonResponse(
             id=str(lesson.id),
@@ -219,24 +217,18 @@ async def update_lesson(lesson_id: str, request: UpdateLessonRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error updating lesson: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to update lesson"
-        )
+        raise ErrorHandler.handle_service_error("update lesson", e)
 
 
 @router.delete("/lesson/{lesson_id}")
 async def delete_lesson(lesson_id: str):
     """Delete a lesson"""
     try:
-        if not ObjectId.is_valid(lesson_id):
-            raise HTTPException(status_code=400, detail="Invalid lesson ID")
-        
-        lesson = await Lesson.get(ObjectId(lesson_id))
+        lesson_obj_id = ErrorHandler.validate_object_id(lesson_id, "lesson")
+        lesson = await Lesson.get(lesson_obj_id)
         
         if not lesson:
-            raise HTTPException(status_code=404, detail="Lesson not found")
+            raise ErrorHandler.handle_not_found("Lesson", lesson_id)
         
         await lesson.delete()
         
@@ -245,23 +237,17 @@ async def delete_lesson(lesson_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error deleting lesson: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to delete lesson"
-        )
+        raise ErrorHandler.handle_service_error("delete lesson", e)
 
 
 @router.post("/lesson/{lesson_id}/generate-script", response_model=LessonResponse)
 async def generate_lesson_script(lesson_id: str):
     """Generate visual script content for an existing lesson with narration and visual elements"""
     try:
-        if not ObjectId.is_valid(lesson_id):
-            raise HTTPException(status_code=400, detail="Invalid lesson ID")
-        
-        lesson = await Lesson.get(ObjectId(lesson_id))
+        lesson_obj_id = ErrorHandler.validate_object_id(lesson_id, "lesson")
+        lesson = await Lesson.get(lesson_obj_id)
         if not lesson:
-            raise HTTPException(status_code=404, detail="Lesson not found")
+            raise ErrorHandler.handle_not_found("Lesson", lesson_id)
         
         # Generate visual script using Ollama
         steps = await ollama_service.generate_visual_script(
@@ -271,9 +257,8 @@ async def generate_lesson_script(lesson_id: str):
         )
         
         if not steps:
-            raise HTTPException(
-                status_code=503, 
-                detail="Failed to generate lesson script. AI service may be unavailable."
+            raise ErrorHandler.handle_service_unavailable(
+                "AI", "Failed to generate lesson script"
             )
         
         # Update lesson with generated script content

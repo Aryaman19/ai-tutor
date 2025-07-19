@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from services.tts_service import piper_tts_service
 from services.voice_repository import voice_repository_service
+from utils.error_handler import ErrorHandler
 import logging
 import json
 
@@ -137,11 +138,7 @@ async def generate_tts_audio(request: TTSGenerateRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error generating TTS audio: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to generate TTS audio"
-        )
+        raise ErrorHandler.handle_service_error("generate TTS audio", e)
 
 
 @router.post("/tts/generate-streaming")
@@ -198,11 +195,7 @@ async def generate_streaming_tts_audio(request: TTSStreamingRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error generating streaming TTS audio: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to generate streaming TTS audio"
-        )
+        raise ErrorHandler.handle_service_error("generate streaming TTS audio", e)
 
 
 @router.get("/tts/audio/{audio_id}")
@@ -253,11 +246,7 @@ async def get_tts_audio(audio_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error serving TTS audio: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to serve TTS audio"
-        )
+        raise ErrorHandler.handle_service_error("serve TTS audio", e)
 
 
 @router.delete("/tts/audio/{audio_id}")
@@ -285,11 +274,7 @@ async def delete_tts_audio(audio_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting TTS audio: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to delete TTS audio"
-        )
+        raise ErrorHandler.handle_service_error("delete TTS audio", e)
 
 
 @router.delete("/tts/cache")
@@ -329,11 +314,10 @@ async def get_available_voices():
         return voices
         
     except Exception as e:
-        logger.error(f"Error getting available voices: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to get available voices"
-        )
+        raise ErrorHandler.handle_service_error("get available voices", e)
+
+
+# Removed duplicate endpoint - using the one at line 479 for voice metadata
 
 
 @router.get("/tts/cache/stats", response_model=TTSCacheStatsResponse)
@@ -499,24 +483,20 @@ async def get_available_voices_from_repository(force_refresh: bool = False):
                 id=voice.id,
                 name=voice.name,
                 language=voice.language,
-                language_code=voice.language_code,
-                country=voice.country,
-                quality=voice.quality,
-                size_mb=voice.size_mb,
-                description=voice.description,
-                sample_rate=voice.sample_rate,
-                is_downloaded=voice.is_downloaded,
-                is_downloading=voice.is_downloading,
-                download_progress=voice.download_progress
+                language_code=getattr(voice, 'language_code', voice.language),
+                country=getattr(voice, 'country', 'Unknown'),
+                quality=getattr(voice, 'quality', 'medium'),
+                size_mb=getattr(voice, 'size_mb', 0.0),
+                description=getattr(voice, 'description', f"{voice.name} voice"),
+                sample_rate=getattr(voice, 'sample_rate', 22050),
+                is_downloaded=getattr(voice, 'is_downloaded', False),
+                is_downloading=getattr(voice, 'is_downloading', False),
+                download_progress=getattr(voice, 'download_progress', 0.0)
             )
             for voice in voices
         ]
     except Exception as e:
-        logger.error(f"Error getting available voices: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to get available voices"
-        )
+        raise ErrorHandler.handle_service_error("get available voices", e)
 
 
 @router.get("/tts/voices/installed", response_model=List[VoiceMetadataResponse])
@@ -542,11 +522,7 @@ async def get_installed_voices():
             for voice in voices
         ]
     except Exception as e:
-        logger.error(f"Error getting installed voices: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to get installed voices"
-        )
+        raise ErrorHandler.handle_service_error("get installed voices", e)
 
 
 @router.post("/tts/voices/download", response_model=VoiceDownloadResponse)

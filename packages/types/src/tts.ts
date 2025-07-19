@@ -108,15 +108,15 @@ export interface VoiceMetadata {
   id: string;
   name: string;
   language: string;
-  language_code: string;
-  country: string;
-  quality: string;
-  size_mb: number;
-  description: string;
-  sample_rate: number;
+  language_code?: string;
+  country?: string;
+  quality?: string;
+  size_mb?: number;
+  description?: string;
+  sample_rate?: number;
   is_downloaded: boolean;
-  is_downloading: boolean;
-  download_progress: number;
+  is_downloading?: boolean;
+  download_progress?: number;
 }
 
 export interface VoiceDownloadRequest {

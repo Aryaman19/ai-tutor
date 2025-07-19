@@ -174,18 +174,37 @@ export default function ExcalidrawPlayer({
   const usePiperTTS = ttsSettings?.provider === "piper" && ttsAvailability?.available;
   const enableStreamingTTS = ttsSettings?.streaming !== false && ttsAvailability?.available;
 
-  // Voice mapping function for Piper TTS (convert voice name to voice ID)
+  // Voice mapping function for Piper TTS (handle both voice IDs and voice names)
   const getCurrentVoiceId = useCallback(() => {
     if (usePiperTTS && piperVoices && selectedVoice) {
-      // For Piper, we need to get the voice ID from the installed voices
-      const piperVoice = piperVoices.find(v => v.name === selectedVoice);
-      const voiceId = piperVoice?.id || selectedVoice;
-      logger.debug("Voice mapping:", {
-        selectedVoiceName: selectedVoice,
-        foundVoiceId: voiceId,
+      // First, check if selectedVoice is already a valid voice ID
+      const voiceById = piperVoices.find(v => v.id === selectedVoice);
+      if (voiceById) {
+        logger.debug("Voice mapping (by ID):", {
+          selectedVoice,
+          foundVoiceId: voiceById.id,
+          foundVoiceName: voiceById.name
+        });
+        return voiceById.id;
+      }
+      
+      // If not found by ID, try to find by name (backward compatibility)
+      const voiceByName = piperVoices.find(v => v.name === selectedVoice);
+      if (voiceByName) {
+        logger.debug("Voice mapping (by name):", {
+          selectedVoice,
+          foundVoiceId: voiceByName.id,
+          foundVoiceName: voiceByName.name
+        });
+        return voiceByName.id;
+      }
+      
+      // If no match found, log warning and return selectedVoice as fallback
+      logger.warn("Voice mapping failed - no match found:", {
+        selectedVoice,
         availableVoices: piperVoices.map(v => ({ name: v.name, id: v.id }))
       });
-      return voiceId;
+      return selectedVoice;
     }
     return selectedVoice;
   }, [usePiperTTS, piperVoices, selectedVoice]);
@@ -782,13 +801,17 @@ export default function ExcalidrawPlayer({
       // Mark as being generated
       setPreGenerationQueue(prev => new Set(prev).add(stepIndex));
       
-      logger.debug(`Pre-generating audio for step ${stepIndex}:`, {
-        textLength: narrationText.length,
-        textPreview: narrationText.substring(0, 100) + "..."
-      });
-
       // Generate audio using the TTS API
       const voiceId = getCurrentVoiceId();
+      
+      logger.debug(`Pre-generating audio for step ${stepIndex}:`, {
+        textLength: narrationText.length,
+        textPreview: narrationText.substring(0, 100) + "...",
+        voiceId,
+        selectedVoice,
+        usePiperTTS,
+        ttsAvailable: ttsAvailability?.available
+      });
       const response = await fetch('/api/tts/generate', {
         method: 'POST',
         headers: {
@@ -801,16 +824,44 @@ export default function ExcalidrawPlayer({
       });
 
       if (response.ok) {
-        const data = await response.json();
-        const audioId = data.audio_id;
-        
-        // Cache the audio ID
-        setAudioCache(prev => new Map(prev).set(stepIndex, audioId));
-        logger.debug(`Successfully pre-generated audio for step ${stepIndex}: ${audioId}`);
-        
-        return audioId;
+        // Check if response is JSON before parsing
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await response.json();
+          const audioId = data.audio_id;
+          
+          // Cache the audio ID
+          setAudioCache(prev => new Map(prev).set(stepIndex, audioId));
+          logger.debug(`Successfully pre-generated audio for step ${stepIndex}: ${audioId}`);
+          
+          return audioId;
+        } else {
+          const responseText = await response.text();
+          logger.error(`TTS API returned non-JSON response for step ${stepIndex}:`, {
+            status: response.status,
+            contentType,
+            responsePreview: responseText.substring(0, 200)
+          });
+          return null;
+        }
       } else {
-        logger.warn(`Failed to pre-generate audio for step ${stepIndex}:`, response.status);
+        // Log detailed error information
+        const contentType = response.headers.get('content-type');
+        let errorDetails: any = { status: response.status, statusText: response.statusText };
+        
+        try {
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorDetails = { ...errorDetails, ...errorData };
+          } else {
+            const errorText = await response.text();
+            errorDetails = { ...errorDetails, responseText: errorText.substring(0, 200) };
+          }
+        } catch (parseError) {
+          logger.warn('Failed to parse error response:', parseError);
+        }
+        
+        logger.error(`Failed to pre-generate audio for step ${stepIndex}:`, errorDetails);
         return null;
       }
     } catch (error) {
