@@ -40,6 +40,7 @@ export const useTTSAudio = (text: string, options: TTSAudioOptions = {}) => {
   });
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   const queryClient = useQueryClient();
   const { data: ttsSettings } = useTTSSettings();
 
@@ -54,14 +55,26 @@ export const useTTSAudio = (text: string, options: TTSAudioOptions = {}) => {
   const generateMutation = useMutation({
     mutationFn: (request: TTSGenerateRequest) => ttsApi.generateAudio(request),
     onMutate: () => {
+      logger.debug("TTS mutation starting");
       setStatus(prev => ({ ...prev, isGenerating: true, error: null }));
     },
     onSuccess: (response) => {
+      logger.debug("TTS mutation success:", {
+        audioId: response.audio_id,
+        audioUrl: response.audio_url,
+        cached: response.cached,
+        voice: response.voice
+      });
       setStatus(prev => ({ ...prev, isGenerating: false }));
       
       // Create and configure audio element
       const audio = ttsApi.createAudioElement(response.audio_id);
+      logger.debug("Created audio element:", {
+        audioSrc: audio.src,
+        audioId: response.audio_id
+      });
       audioRef.current = audio;
+      setAudioElement(audio); // Update state to trigger re-render
       
       // Apply speed and volume settings
       audio.playbackRate = speed;
@@ -124,6 +137,11 @@ export const useTTSAudio = (text: string, options: TTSAudioOptions = {}) => {
       }
     },
     onError: (error: Error) => {
+      logger.error('TTS mutation failed:', {
+        errorMessage: error.message,
+        errorStack: error.stack,
+        errorName: error.name
+      });
       setStatus(prev => ({ 
         ...prev, 
         isGenerating: false, 
@@ -143,8 +161,27 @@ export const useTTSAudio = (text: string, options: TTSAudioOptions = {}) => {
 
   // Generate audio when text changes
   useEffect(() => {
+    logger.debug("useTTSAudio useEffect triggered:", {
+      hasText: !!text,
+      textLength: text?.length || 0,
+      textTrimmed: text?.trim()?.length || 0,
+      voice,
+      willMutate: !!(text && text.trim())
+    });
+    
+    // Clear previous audio element when text changes
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      audioRef.current = null;
+    }
+    setAudioElement(null);
+    
     if (text && text.trim()) {
+      logger.debug("Triggering TTS mutation with:", { text: text.substring(0, 100) + "...", voice });
       generateMutation.mutate({ text, voice });
+    } else {
+      logger.debug("Skipping TTS mutation - no valid text");
     }
   }, [text, voice]);
   
@@ -164,6 +201,7 @@ export const useTTSAudio = (text: string, options: TTSAudioOptions = {}) => {
         audioRef.current.src = '';
         audioRef.current = null;
       }
+      setAudioElement(null);
     };
   }, []);
 
@@ -214,7 +252,7 @@ export const useTTSAudio = (text: string, options: TTSAudioOptions = {}) => {
       setVolume,
     },
     regenerate: () => generateMutation.mutate({ text, voice }),
-    audioElement: audioRef.current,
+    audioElement: audioElement, // Use state instead of ref for reactivity
   };
 };
 

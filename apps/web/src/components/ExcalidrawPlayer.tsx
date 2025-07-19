@@ -145,6 +145,8 @@ export default function ExcalidrawPlayer({
   const [currentNarrationText, setCurrentNarrationText] = useState('');
   const [useBrowserTTS, setUseBrowserTTS] = useState(false);
   const [streamingTTSEnabled, setStreamingTTSEnabled] = useState(false);
+  const [audioPermissionGranted, setAudioPermissionGranted] = useState(false);
+  const togglePlayPauseRef = useRef(false); // Prevent double-clicks
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
@@ -161,14 +163,25 @@ export default function ExcalidrawPlayer({
   const effectiveSpeechRate = ttsSettings?.speed || speechRate;
   const effectiveSpeechVolume = ttsSettings?.volume || speechVolume;
   const selectedVoice = ttsSettings?.voice;
-  const useSettingsVoice = userId && ttsSettings?.provider === "browser" && selectedVoice;
-  const usePiperTTS = userId && ttsSettings?.provider === "piper" && ttsAvailability?.available;
-  const enableStreamingTTS = userId && ttsSettings?.streaming !== false && ttsAvailability?.available;
+  const useSettingsVoice = selectedVoice && (ttsSettings?.provider === "browser" || ttsSettings?.provider === "piper");
+  const usePiperTTS = ttsSettings?.provider === "piper" && ttsAvailability?.available;
+  const enableStreamingTTS = ttsSettings?.streaming !== false && ttsAvailability?.available;
   
+  // Debug hook parameters
+  useEffect(() => {
+    logger.debug("useTTSAudio hook parameters:", {
+      text: currentNarrationText ? `"${currentNarrationText.substring(0, 50)}..."` : "empty",
+      textLength: currentNarrationText.length,
+      voice: usePiperTTS ? selectedVoice : undefined,
+      usePiperTTS,
+      selectedVoice
+    });
+  }, [currentNarrationText, usePiperTTS, selectedVoice]);
+
   // Piper TTS Audio Hook (non-streaming)
   const ttsAudio = useTTSAudio(currentNarrationText, {
-    voice: usePiperTTS && !streamingTTSEnabled ? selectedVoice : undefined,
-    autoPlay: false,
+    voice: usePiperTTS ? selectedVoice : undefined,
+    autoPlay: true, // Enable autoPlay so it plays immediately when ready
     onPlay: () => {
       logger.debug("Piper TTS started playing");
     },
@@ -188,8 +201,8 @@ export default function ExcalidrawPlayer({
     },
   });
 
-  // Streaming TTS Hook
-  const streamingTTS = useStreamingTTS(streamingTTSEnabled ? currentNarrationText : '', {
+  // Streaming TTS Hook (disabled for debugging)
+  const streamingTTS = useStreamingTTS('', {
     voice: enableStreamingTTS ? selectedVoice : undefined,
     autoPlay: false,
     onPlay: () => {
@@ -215,20 +228,53 @@ export default function ExcalidrawPlayer({
     },
   });
   
-  // Debug logging for voice selection
-  logger.debug("TTS Settings:", {
-    userId,
-    ttsSettings,
-    ttsAvailability,
-    effectiveSpeechRate,
-    effectiveSpeechVolume,
-    selectedVoice,
-    useSettingsVoice,
-    usePiperTTS,
-    useBrowserTTS,
-    streamingTTSEnabled,
-    enableStreamingTTS
-  });
+  // Debug state changes
+  useEffect(() => {
+    logger.debug("isPlaying state changed:", isPlaying);
+  }, [isPlaying]);
+
+  useEffect(() => {
+    logger.debug("currentStepIndex state changed:", currentStepIndex);
+  }, [currentStepIndex]);
+
+  useEffect(() => {
+    logger.debug("currentNarrationText changed:", {
+      length: currentNarrationText.length,
+      text: currentNarrationText ? currentNarrationText.substring(0, 100) + "..." : "empty",
+      usePiperTTS,
+      selectedVoice
+    });
+  }, [currentNarrationText, usePiperTTS, selectedVoice]);
+
+  // Debug logging for voice selection (only on mount to prevent infinite re-renders)
+  useEffect(() => {
+    if (ttsSettings && ttsAvailability) {
+      logger.debug("TTS Settings Evaluation:", {
+        userId,
+        ttsSettings: {
+          provider: ttsSettings.provider,
+          voice: ttsSettings.voice,
+          speed: ttsSettings.speed,
+          volume: ttsSettings.volume,
+          streaming: ttsSettings.streaming
+        },
+        ttsAvailability: {
+          available: ttsAvailability.available,
+          service: ttsAvailability.service
+        },
+        computed: {
+          effectiveSpeechRate,
+          effectiveSpeechVolume,
+          selectedVoice,
+          useSettingsVoice,
+          usePiperTTS,
+          useBrowserTTS,
+          streamingTTSEnabled,
+          enableStreamingTTS
+        }
+      });
+    }
+  }, [ttsSettings, ttsAvailability]); // Only log when these core settings change
   
   // Voice selection helper with validation and fallback
   const getSelectedVoice = useCallback((): SpeechSynthesisVoice | null => {
@@ -331,29 +377,164 @@ export default function ExcalidrawPlayer({
       });
     }
     
-    // Add visual elements if they exist
+    // Add visual elements if they exist - enhanced with actual diagrams
     if (step.visual_elements && Array.isArray(step.visual_elements)) {
+      let visualY = yStart + 150;
       step.visual_elements.forEach((visualEl, index) => {
         if (typeof visualEl === 'string') {
-          const visualElement = makeText({
-            x: 50,
-            y: yStart + 150 + (index * 30),
-            text: `📊 ${visualEl}`,
-            fontSize: 14,
-            color: COLORS.secondary,
-            width: 500
-          });
-          elements.push(visualElement);
+          const visualText = visualEl.toLowerCase();
+          
+          // Create different types of diagrams based on content
+          if (visualText.includes('arrow') || visualText.includes('flow') || visualText.includes('leads to')) {
+            // Create arrow diagram
+            const arrowElements = makeLabeledRectangle({
+              x: 80,
+              y: visualY,
+              width: 120,
+              height: 40,
+              label: "Start",
+              fillColor: COLORS.light,
+              shapeColor: COLORS.primary,
+              strokeWidth: 2
+            });
+            elements.push(...arrowElements);
+            
+            // Arrow
+            const arrowElement = makeText({
+              x: 220,
+              y: visualY + 15,
+              text: "→",
+              fontSize: 24,
+              color: COLORS.primary,
+              width: 30
+            });
+            elements.push(arrowElement);
+            
+            const endElements = makeLabeledRectangle({
+              x: 270,
+              y: visualY,
+              width: 120,
+              height: 40,
+              label: "End",
+              fillColor: COLORS.light,
+              shapeColor: COLORS.secondary,
+              strokeWidth: 2
+            });
+            elements.push(...endElements);
+            visualY += 60;
+            
+          } else if (visualText.includes('vs') || visualText.includes('versus') || visualText.includes('comparison')) {
+            // Create comparison diagram
+            const leftElements = makeLabeledRectangle({
+              x: 80,
+              y: visualY,
+              width: 150,
+              height: 60,
+              label: "Option A",
+              fillColor: "#e3f2fd",
+              shapeColor: COLORS.primary,
+              strokeWidth: 2
+            });
+            elements.push(...leftElements);
+            
+            const vsElement = makeText({
+              x: 250,
+              y: visualY + 25,
+              text: "VS",
+              fontSize: 18,
+              color: COLORS.BLACK,
+              width: 30
+            });
+            elements.push(vsElement);
+            
+            const rightElements = makeLabeledRectangle({
+              x: 300,
+              y: visualY,
+              width: 150,
+              height: 60,
+              label: "Option B",
+              fillColor: "#fff3e0",
+              shapeColor: COLORS.secondary,
+              strokeWidth: 2
+            });
+            elements.push(...rightElements);
+            visualY += 80;
+            
+          } else if (visualText.includes('circle') || visualText.includes('cycle') || visualText.includes('loop')) {
+            // Create circular diagram (simplified as connected boxes)
+            const centerX = 200;
+            const centerY = visualY + 40;
+            const radius = 60;
+            
+            for (let i = 0; i < 4; i++) {
+              const angle = (i * Math.PI) / 2;
+              const x = centerX + Math.cos(angle) * radius;
+              const y = centerY + Math.sin(angle) * radius;
+              
+              const boxElements = makeLabeledRectangle({
+                x: x - 25,
+                y: y - 15,
+                width: 50,
+                height: 30,
+                label: `${i + 1}`,
+                fillColor: COLORS.light,
+                shapeColor: COLORS.primary,
+                strokeWidth: 1
+              });
+              elements.push(...boxElements);
+            }
+            visualY += 120;
+            
+          } else {
+            // Default: simple labeled box with icon
+            const iconMap: { [key: string]: string } = {
+              'chart': '📊',
+              'graph': '📈',
+              'data': '📋',
+              'money': '💰',
+              'economy': '🏦',
+              'market': '🏪',
+              'people': '👥',
+              'business': '🏢',
+              'growth': '📈',
+              'decline': '📉'
+            };
+            
+            let icon = '📊';
+            for (const [key, value] of Object.entries(iconMap)) {
+              if (visualText.includes(key)) {
+                icon = value;
+                break;
+              }
+            }
+            
+            const visualElements = makeLabeledRectangle({
+              x: 80,
+              y: visualY,
+              width: 400,
+              height: 50,
+              label: `${icon} ${visualEl}`,
+              fillColor: "#f5f5f5",
+              shapeColor: COLORS.secondary,
+              strokeWidth: 1
+            });
+            elements.push(...visualElements);
+            visualY += 70;
+          }
         }
       });
     }
     
-    // Add separator box
+    // Add separator box (adjust height based on content and visual elements)
+    const contentHeight = content ? content.split('\n').length * 25 : 0;
+    const visualElementsHeight = step.visual_elements ? step.visual_elements.length * 80 : 0;
+    const totalHeight = Math.max(300, 60 + contentHeight + visualElementsHeight);
+    
     const separatorElements = makeLabeledRectangle({
       x: 30,
       y: yStart - 10,
       width: 700,
-      height: Math.max(180, 60 + (content ? content.split('\n').length * 25 : 0)),
+      height: totalHeight,
       label: "",
       fillColor: stepIndex % 2 === 0 ? COLORS.light : "#f8f9fa",
       shapeColor: COLORS.primary,
@@ -468,6 +649,27 @@ export default function ExcalidrawPlayer({
     [excalidrawAPI, regenerateIndices, mode]
   );
 
+  // Request audio permission for autoplay
+  const requestAudioPermission = useCallback(async () => {
+    if (audioPermissionGranted) return true;
+    
+    try {
+      // Try to play a silent audio to test autoplay permission
+      const silentAudio = new Audio();
+      silentAudio.volume = 0;
+      silentAudio.muted = true;
+      await silentAudio.play();
+      silentAudio.pause();
+      
+      setAudioPermissionGranted(true);
+      logger.debug("Audio permission granted");
+      return true;
+    } catch (error) {
+      logger.warn("Audio autoplay not permitted - user interaction required:", error);
+      return false;
+    }
+  }, [audioPermissionGranted]);
+
   const stopCurrentNarration = useCallback(() => {
     // Stop Streaming TTS if it's playing
     if (streamingTTS.status.isPlaying || streamingTTS.status.isGenerating) {
@@ -488,30 +690,79 @@ export default function ExcalidrawPlayer({
     }
     
     // Clear current narration text and reset states
+    logger.debug("stopCurrentNarration: Clearing narration text");
     setCurrentNarrationText('');
     setUseBrowserTTS(false);
     setStreamingTTSEnabled(false);
-  }, [ttsAudio, streamingTTS]);
+  }, []); // Remove dependencies to prevent infinite loop
 
   const getNarrationText = useCallback((step: FlexibleLessonStep | LessonSlide): string => {
-    if ('narration' in step && step.narration) return step.narration;
-    if ('explanation' in step && step.explanation) return step.explanation;
-    if ('content' in step && step.content) return step.content;
-    return `Step ${'step_number' in step ? step.step_number || 'Unknown' : 'Unknown'}: ${'title' in step ? step.title || 'Untitled' : 'Untitled'}`;
+    logger.debug("Getting narration text from step:", {
+      stepKeys: Object.keys(step),
+      hasNarration: 'narration' in step && !!step.narration,
+      hasExplanation: 'explanation' in step && !!step.explanation,
+      hasContent: 'content' in step && !!step.content,
+      narrationLength: 'narration' in step ? step.narration?.length : 0,
+      explanationLength: 'explanation' in step ? step.explanation?.length : 0,
+      contentLength: 'content' in step ? step.content?.length : 0
+    });
+    
+    if ('narration' in step && step.narration) {
+      logger.debug("Using narration field:", step.narration.substring(0, 100) + "...");
+      return step.narration;
+    }
+    if ('explanation' in step && step.explanation) {
+      logger.debug("Using explanation field:", step.explanation.substring(0, 100) + "...");
+      return step.explanation;
+    }
+    if ('content' in step && step.content) {
+      logger.debug("Using content field:", step.content.substring(0, 100) + "...");
+      return step.content;
+    }
+    const fallbackText = `Step ${'step_number' in step ? step.step_number || 'Unknown' : 'Unknown'}: ${'title' in step ? step.title || 'Untitled' : 'Untitled'}`;
+    logger.debug("Using fallback text:", fallbackText);
+    return fallbackText;
   }, []);
 
   const playNextStep = useCallback(() => {
     const currentSteps = getCurrentSteps();
+    logger.debug("PlayNextStep called:", {
+      currentStepIndex,
+      totalSteps: currentSteps.length,
+      isPlaying,
+      hasExcalidrawAPI: !!excalidrawAPI
+    });
     
     if (!excalidrawAPI || currentStepIndex >= currentSteps.length || !isPlaying) {
-      if (currentStepIndex >= currentSteps.length) {
+      if (!excalidrawAPI) {
+        logger.warn("PlayNextStep: ExcalidrawAPI not ready, pausing playback");
+        setIsPlaying(false);
+      } else if (currentStepIndex >= currentSteps.length) {
+        logger.debug("Lesson completed");
         setIsPlaying(false);
         onComplete?.();
+      } else if (!isPlaying) {
+        logger.debug("PlayNextStep: Not playing, exiting");
       }
+      logger.debug("Exiting playNextStep early:", {
+        hasAPI: !!excalidrawAPI,
+        stepIndexValid: currentStepIndex < currentSteps.length,
+        isPlaying
+      });
       return;
     }
 
     const step = currentSteps[currentStepIndex];
+    logger.debug("Processing step:", {
+      stepIndex: currentStepIndex,
+      step: {
+        title: step.title,
+        hasNarration: 'narration' in step && !!step.narration,
+        hasExplanation: 'explanation' in step && !!step.explanation,
+        hasContent: 'content' in step && !!step.content,
+        hasElements: step.elements?.length || 0
+      }
+    });
     let currentElements = step.elements || [];
     
     // Generate elements if none exist
@@ -537,58 +788,96 @@ export default function ExcalidrawPlayer({
 
     // Play narration if not muted
     const narrationText = getNarrationText(step);
+    logger.debug("Extracted narration text:", {
+      stepNumber: step.step_number || currentStepIndex + 1,
+      stepTitle: step.title,
+      extractedTextLength: narrationText.length,
+      extractedTextPreview: narrationText.substring(0, 100) + "...",
+      stepHasNarration: 'narration' in step && !!step.narration,
+      stepHasExplanation: 'explanation' in step && !!step.explanation,
+      stepHasContent: 'content' in step && !!step.content
+    });
+    logger.debug("TTS Decision Point:", {
+      narrationText: narrationText ? narrationText.substring(0, 100) + "..." : "NO TEXT",
+      isMuted,
+      enableStreamingTTS,
+      useBrowserTTS,
+      streamingTTSEnabled,
+      usePiperTTS,
+      ttsAvailabilityAvailable: ttsAvailability?.available,
+      speechSynthesisAvailable: typeof window !== "undefined" && "speechSynthesis" in window
+    });
+    
     if (narrationText && !isMuted) {
-      // Try Streaming TTS first if enabled and available
-      if (enableStreamingTTS && !useBrowserTTS && !streamingTTSEnabled) {
+      logger.debug("Starting TTS playback for step", currentStepIndex);
+      
+      // Try Streaming TTS first if enabled and available (temporarily disabled for debugging)
+      if (false && enableStreamingTTS && !useBrowserTTS && !streamingTTSEnabled) {
+        logger.debug("Attempting Streaming TTS");
         setCurrentNarrationText(narrationText);
         setStreamingTTSEnabled(true);
         
         // Wait for first chunk to be ready and play
+        let streamingAttempts = 0;
+        const maxStreamingAttempts = 50; // 5 seconds max wait
         const tryPlayStreamingTTS = () => {
+          streamingAttempts++;
+          
+          if (streamingAttempts >= maxStreamingAttempts) {
+            logger.warn("Streaming TTS timeout, falling back to regular Piper TTS");
+            setStreamingTTSEnabled(false);
+            setUseBrowserTTS(true);
+            return;
+          }
+          
+          logger.debug("Streaming TTS Status Check:", {
+            attempts: streamingAttempts,
+            maxAttempts: maxStreamingAttempts,
+            generatedChunks: streamingTTS.status.generatedChunks,
+            totalChunks: streamingTTS.status.totalChunks,
+            isPlaying: streamingTTS.status.isPlaying,
+            isGenerating: streamingTTS.status.isGenerating,
+            error: streamingTTS.status.error
+          });
+          
           if (streamingTTS.status.generatedChunks > 0 && !streamingTTS.status.isPlaying) {
+            logger.debug("Playing streaming TTS audio");
             streamingTTS.controls.play();
           } else if (streamingTTS.status.error) {
-            logger.warn("Streaming TTS failed, falling back to regular Piper TTS");
+            logger.warn("Streaming TTS failed, falling back to browser TTS", streamingTTS.status.error);
             setStreamingTTSEnabled(false);
-            // Try regular Piper TTS instead
-            if (usePiperTTS) {
-              const tryPlayPiperTTS = () => {
-                if (ttsAudio.audioElement && !ttsAudio.status.isGenerating) {
-                  ttsAudio.controls.play();
-                } else if (ttsAudio.status.error) {
-                  logger.warn("Piper TTS failed, falling back to browser TTS");
-                  setUseBrowserTTS(true);
-                } else {
-                  setTimeout(tryPlayPiperTTS, 100);
-                }
-              };
-              tryPlayPiperTTS();
-            } else {
-              setUseBrowserTTS(true);
-            }
+            setUseBrowserTTS(true);
           } else if (streamingTTS.status.isGenerating) {
             // Still generating, wait a bit and try again
+            logger.debug("Streaming TTS still generating, waiting...");
+            setTimeout(tryPlayStreamingTTS, 100);
+          } else {
+            // No chunks ready yet, keep waiting
             setTimeout(tryPlayStreamingTTS, 100);
           }
         };
         setTimeout(tryPlayStreamingTTS, 100);
       } else if (usePiperTTS && !useBrowserTTS && !streamingTTSEnabled && ttsAvailability?.available) {
+        logger.debug("Attempting Piper TTS with params:", {
+          text: narrationText.substring(0, 100) + "...",
+          voice: selectedVoice,
+          usePiperTTS,
+          ttsAvailable: ttsAvailability?.available
+        });
+        
+        // Set text for TTS hook to generate audio
+        logger.debug("Setting narration text for hook:", {
+          narrationTextLength: narrationText.length,
+          narrationTextPreview: narrationText.substring(0, 100) + "...",
+          isEmptyString: narrationText === "",
+          isNullOrUndefined: narrationText == null
+        });
         setCurrentNarrationText(narrationText);
-        // Wait for TTS audio to be generated and play when ready
-        const tryPlayPiperTTS = () => {
-          if (ttsAudio.audioElement && !ttsAudio.status.isGenerating) {
-            ttsAudio.controls.play();
-          } else if (ttsAudio.status.error) {
-            logger.warn("Piper TTS failed, falling back to browser TTS");
-            setUseBrowserTTS(true);
-          } else {
-            // Still generating, wait a bit and try again
-            setTimeout(tryPlayPiperTTS, 100);
-          }
-        };
-        tryPlayPiperTTS();
+        
+        // Hook will autoPlay when audio is ready - no polling needed
       } else if ("speechSynthesis" in window) {
         // Fallback to browser TTS
+        logger.debug("Attempting Browser TTS");
         const utterance = new SpeechSynthesisUtterance(narrationText);
         utterance.rate = effectiveSpeechRate;
         utterance.volume = effectiveSpeechVolume;
@@ -604,23 +893,36 @@ export default function ExcalidrawPlayer({
 
         speechRef.current = utterance;
 
+        utterance.onstart = () => {
+          logger.debug("Browser TTS started speaking");
+        };
+
         utterance.onend = () => {
+          logger.debug("Browser TTS finished speaking, advancing to next step");
           setCurrentStepIndex((prev) => prev + 1);
         };
 
         utterance.onerror = (event) => {
           logger.error("Speech synthesis error:", event);
+          logger.debug("Browser TTS error, advancing to next step");
           setCurrentStepIndex((prev) => prev + 1);
         };
 
         window.speechSynthesis.speak(utterance);
       } else {
         // No TTS available, just advance
+        logger.warn("No TTS method available, advancing to next step");
         setTimeout(() => {
           setCurrentStepIndex((prev) => prev + 1);
         }, 2000);
       }
     } else {
+      if (!narrationText) {
+        logger.warn("No narration text found for step", currentStepIndex);
+      }
+      if (isMuted) {
+        logger.debug("Audio is muted, advancing to next step");
+      }
       setTimeout(() => {
         setCurrentStepIndex((prev) => prev + 1);
       }, 2000);
@@ -689,13 +991,40 @@ export default function ExcalidrawPlayer({
   }, [excalidrawAPI, stopCurrentNarration, debouncedUpdateScene, regenerateIndices, mode, onLessonChange]);
 
   const togglePlayPause = useCallback(() => {
+    // Prevent double-clicks
+    if (togglePlayPauseRef.current) {
+      logger.debug("TogglePlayPause ignored - already processing");
+      return;
+    }
+    
+    togglePlayPauseRef.current = true;
+    
     const currentSteps = getCurrentSteps();
+    logger.debug("TogglePlayPause called:", {
+      isPlaying,
+      currentStepIndex,
+      totalSteps: currentSteps.length,
+      hasSteps: currentSteps.length > 0
+    });
     
     if (isPlaying) {
+      logger.debug("Pausing playback");
       stopCurrentNarration();
       setIsPlaying(false);
     } else {
+      logger.debug("Starting playback");
+      
+      // Set playing state immediately, don't wait for audio permission
+      logger.debug("Setting isPlaying to true");
+      setIsPlaying(true);
+      
+      // Request audio permission in parallel
+      requestAudioPermission().then(audioPermitted => {
+        logger.debug("Audio permission result:", audioPermitted);
+      });
+      
       if (currentStepIndex >= currentSteps.length) {
+        logger.debug("Resetting to first step");
         setCurrentStepIndex(0);
         accumulatedElements.current = [];
         if (debounceTimerRef.current) {
@@ -710,9 +1039,13 @@ export default function ExcalidrawPlayer({
           });
         }
       }
-      setIsPlaying(true);
     }
-  }, [isPlaying, currentStepIndex, stopCurrentNarration, excalidrawAPI, getCurrentSteps]);
+    
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      togglePlayPauseRef.current = false;
+    }, 300);
+  }, [isPlaying, currentStepIndex, stopCurrentNarration, excalidrawAPI, getCurrentSteps, requestAudioPermission]);
 
   const resetLesson = useCallback(() => {
     const currentSteps = getCurrentSteps();
@@ -792,16 +1125,40 @@ export default function ExcalidrawPlayer({
     }
   }, [excalidrawAPI, debouncedUpdateScene, regenerateIndices, generateElementsFromStep, getCurrentSteps]);
 
-  // Handle step progression
+  // Handle step progression - simplified to avoid dependency loops
   useEffect(() => {
-    const currentSteps = getCurrentSteps();
-    if (isPlaying && currentStepIndex < currentSteps.length) {
-      const timer = setTimeout(() => {
-        playNextStep();
-      }, 200);
-      return () => clearTimeout(timer);
-    }
-  }, [isPlaying, currentStepIndex, playNextStep, getCurrentSteps]);
+    if (!isPlaying) return;
+    
+    logger.debug("Step progression: Starting timer for step", currentStepIndex);
+    
+    const timer = setTimeout(() => {
+      if (!isPlaying) {
+        logger.debug("Step progression: No longer playing, aborting");
+        return;
+      }
+      
+      if (!excalidrawAPI) {
+        logger.warn("Step progression: ExcalidrawAPI not ready, waiting...");
+        // Don't pause, just wait for API to be ready
+        return;
+      }
+      
+      const currentSteps = getCurrentSteps();
+      if (currentStepIndex >= currentSteps.length) {
+        logger.debug("Step progression: Lesson completed");
+        setIsPlaying(false);
+        onComplete?.();
+        return;
+      }
+      
+      logger.debug("Step progression: Executing step", currentStepIndex);
+      playNextStep();
+    }, 200);
+    
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [isPlaying, currentStepIndex, excalidrawAPI]); // Minimal stable dependencies
 
   // Cleanup on unmount
   useEffect(() => {
