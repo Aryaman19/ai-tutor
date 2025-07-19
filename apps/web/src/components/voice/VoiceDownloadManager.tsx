@@ -343,7 +343,7 @@ export function VoiceDownloadManager({ onVoiceDownloaded, onVoiceDeleted, classN
         <div className="text-center py-12 text-muted-foreground">
           <p>No voices available.</p>
           <p className="text-sm mt-2">Check console for debugging information.</p>
-          <Button onClick={fetchVoices} className="mt-4">
+          <Button onClick={() => fetchVoices()} className="mt-4">
             Retry
           </Button>
         </div>

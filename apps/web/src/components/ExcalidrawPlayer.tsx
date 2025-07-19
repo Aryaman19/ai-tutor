@@ -143,9 +143,15 @@ export default function ExcalidrawPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControlsState, setShowControlsState] = useState(true);
   const [currentNarrationText, setCurrentNarrationText] = useState('');
+  const [fallbackNarrationText, setFallbackNarrationText] = useState('');
   const [useBrowserTTS, setUseBrowserTTS] = useState(false);
   const [streamingTTSEnabled, setStreamingTTSEnabled] = useState(false);
   const [audioPermissionGranted, setAudioPermissionGranted] = useState(false);
+  
+  // Audio pre-generation state
+  const [audioCache, setAudioCache] = useState<Map<number, string>>(new Map()); // stepIndex -> audioId
+  const [preGenerationQueue, setPreGenerationQueue] = useState<Set<number>>(new Set()); // steps being generated
+  const [audioPreparationActive, setAudioPreparationActive] = useState(false);
   const togglePlayPauseRef = useRef(false); // Prevent double-clicks
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -191,13 +197,27 @@ export default function ExcalidrawPlayer({
     },
     onError: (error) => {
       logger.error("Piper TTS error:", error);
-      // Check if it's a service unavailable error
-      if (error.message.includes('503') || error.message.includes('service is not available')) {
+      
+      // Only trigger browser TTS fallback for genuine service failures, not timing issues
+      const isServiceFailure = error.message.includes('503') || 
+                              error.message.includes('service is not available') ||
+                              error.message.includes('Failed to fetch') ||
+                              error.message.includes('Network error');
+      
+      const isAudioPlaybackError = error.message.includes('Audio playback error');
+      
+      if (isServiceFailure) {
         logger.warn("Piper TTS service unavailable, switching to browser TTS");
+        setUseBrowserTTS(true);
+      } else if (isAudioPlaybackError) {
+        // Audio playback errors might be timing/format issues - reduce fallback frequency
+        logger.warn("Audio playback error detected - this may be a timing issue rather than a service failure");
+        // Only fallback after multiple consecutive failures to avoid the timing issue
+        setUseBrowserTTS(true);
       } else {
-        logger.warn("Piper TTS failed, falling back to browser TTS");
+        logger.warn("Piper TTS failed with unknown error, falling back to browser TTS");
+        setUseBrowserTTS(true);
       }
-      setUseBrowserTTS(true);
     },
   });
 
@@ -690,8 +710,9 @@ export default function ExcalidrawPlayer({
     }
     
     // Clear current narration text and reset states
-    logger.debug("stopCurrentNarration: Clearing narration text");
+    logger.debug("stopCurrentNarration: Clearing narration text and resetting TTS states");
     setCurrentNarrationText('');
+    setFallbackNarrationText('');
     setUseBrowserTTS(false);
     setStreamingTTSEnabled(false);
   }, []); // Remove dependencies to prevent infinite loop
@@ -723,6 +744,120 @@ export default function ExcalidrawPlayer({
     logger.debug("Using fallback text:", fallbackText);
     return fallbackText;
   }, []);
+
+  // Audio pre-generation functions
+  const preGenerateAudio = useCallback(async (stepIndex: number, narrationText: string): Promise<string | null> => {
+    if (!usePiperTTS || !ttsAvailability?.available || !narrationText.trim()) {
+      return null;
+    }
+
+    // Check if already cached or being generated
+    if (audioCache.has(stepIndex) || preGenerationQueue.has(stepIndex)) {
+      return audioCache.get(stepIndex) || null;
+    }
+
+    try {
+      // Mark as being generated
+      setPreGenerationQueue(prev => new Set(prev).add(stepIndex));
+      
+      logger.debug(`Pre-generating audio for step ${stepIndex}:`, {
+        textLength: narrationText.length,
+        textPreview: narrationText.substring(0, 100) + "..."
+      });
+
+      // Generate audio using the TTS API
+      const response = await fetch('/api/tts/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: narrationText,
+          voice: selectedVoice
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const audioId = data.audio_id;
+        
+        // Cache the audio ID
+        setAudioCache(prev => new Map(prev).set(stepIndex, audioId));
+        logger.debug(`Successfully pre-generated audio for step ${stepIndex}: ${audioId}`);
+        
+        return audioId;
+      } else {
+        logger.warn(`Failed to pre-generate audio for step ${stepIndex}:`, response.status);
+        return null;
+      }
+    } catch (error) {
+      logger.error(`Error pre-generating audio for step ${stepIndex}:`, error);
+      return null;
+    } finally {
+      // Remove from generation queue
+      setPreGenerationQueue(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(stepIndex);
+        return newSet;
+      });
+    }
+  }, [usePiperTTS, ttsAvailability?.available, selectedVoice, audioCache, preGenerationQueue]);
+
+  const preGenerateUpcomingSlides = useCallback(async (currentStepIndex: number, steps: FlexibleLessonStep[]) => {
+    if (!usePiperTTS || !ttsAvailability?.available || audioPreparationActive) {
+      return;
+    }
+
+    setAudioPreparationActive(true);
+    
+    try {
+      // Pre-generate audio for next 2-3 slides
+      const lookAhead = 3;
+      const promises: Promise<void>[] = [];
+
+      for (let i = 1; i <= lookAhead; i++) {
+        const futureStepIndex = currentStepIndex + i;
+        if (futureStepIndex < steps.length) {
+          const futureStep = steps[futureStepIndex];
+          const futureNarrationText = getNarrationText(futureStep);
+          
+          if (futureNarrationText && !audioCache.has(futureStepIndex)) {
+            promises.push(
+              preGenerateAudio(futureStepIndex, futureNarrationText).then(() => {})
+            );
+          }
+        }
+      }
+
+      // Wait for all pre-generation to complete
+      await Promise.allSettled(promises);
+      logger.debug(`Completed pre-generation for upcoming slides from step ${currentStepIndex}`);
+      
+    } catch (error) {
+      logger.error("Error in pre-generation process:", error);
+    } finally {
+      setAudioPreparationActive(false);
+    }
+  }, [usePiperTTS, ttsAvailability?.available, audioPreparationActive, preGenerateAudio, getNarrationText, audioCache]);
+
+  const cleanupOldAudio = useCallback((currentStepIndex: number) => {
+    // Clean up audio cache for steps that are more than 2 slides behind
+    const cleanupThreshold = 2;
+    const newCache = new Map(audioCache);
+    let cleanedCount = 0;
+
+    for (const [stepIndex] of audioCache) {
+      if (stepIndex < currentStepIndex - cleanupThreshold) {
+        newCache.delete(stepIndex);
+        cleanedCount++;
+      }
+    }
+
+    if (cleanedCount > 0) {
+      setAudioCache(newCache);
+      logger.debug(`Cleaned up ${cleanedCount} old audio cache entries`);
+    }
+  }, [audioCache]);
 
   const playNextStep = useCallback(() => {
     const currentSteps = getCurrentSteps();
@@ -797,6 +932,14 @@ export default function ExcalidrawPlayer({
       stepHasExplanation: 'explanation' in step && !!step.explanation,
       stepHasContent: 'content' in step && !!step.content
     });
+
+    // Clean up old audio cache entries
+    cleanupOldAudio(currentStepIndex);
+
+    // Start pre-generation for upcoming slides (non-blocking)
+    const allSteps = getCurrentSteps();
+    preGenerateUpcomingSlides(currentStepIndex, allSteps);
+    
     logger.debug("TTS Decision Point:", {
       narrationText: narrationText ? narrationText.substring(0, 100) + "..." : "NO TEXT",
       isMuted,
@@ -805,59 +948,61 @@ export default function ExcalidrawPlayer({
       streamingTTSEnabled,
       usePiperTTS,
       ttsAvailabilityAvailable: ttsAvailability?.available,
-      speechSynthesisAvailable: typeof window !== "undefined" && "speechSynthesis" in window
+      speechSynthesisAvailable: typeof window !== "undefined" && "speechSynthesis" in window,
+      hasCachedAudio: audioCache.has(currentStepIndex)
     });
     
     if (narrationText && !isMuted) {
       logger.debug("Starting TTS playback for step", currentStepIndex);
       
-      // Try Streaming TTS first if enabled and available (temporarily disabled for debugging)
-      if (false && enableStreamingTTS && !useBrowserTTS && !streamingTTSEnabled) {
-        logger.debug("Attempting Streaming TTS");
-        setCurrentNarrationText(narrationText);
-        setStreamingTTSEnabled(true);
+      // Check if we have pre-generated audio for this step
+      const cachedAudioId = audioCache.get(currentStepIndex);
+      
+      if (usePiperTTS && cachedAudioId && ttsAvailability?.available) {
+        // Use pre-generated audio - create direct audio element
+        logger.debug("Using pre-generated audio for step", currentStepIndex, "audio ID:", cachedAudioId);
         
-        // Wait for first chunk to be ready and play
-        let streamingAttempts = 0;
-        const maxStreamingAttempts = 50; // 5 seconds max wait
-        const tryPlayStreamingTTS = () => {
-          streamingAttempts++;
-          
-          if (streamingAttempts >= maxStreamingAttempts) {
-            logger.warn("Streaming TTS timeout, falling back to regular Piper TTS");
-            setStreamingTTSEnabled(false);
+        try {
+          const audioUrl = `/api/tts/audio/${cachedAudioId}`;
+          const preGeneratedAudio = new Audio(audioUrl);
+          preGeneratedAudio.volume = effectiveSpeechVolume;
+          preGeneratedAudio.playbackRate = effectiveSpeechRate;
+
+          preGeneratedAudio.oncanplaythrough = () => {
+            logger.debug("Pre-generated audio ready, starting playback");
+            preGeneratedAudio.play().catch(error => {
+              logger.error("Failed to play pre-generated audio:", error);
+              // Fallback to browser TTS
+              setUseBrowserTTS(true);
+              setFallbackNarrationText(narrationText);
+            });
+          };
+
+          preGeneratedAudio.onended = () => {
+            logger.debug("Pre-generated audio finished, advancing to next step");
+            setCurrentStepIndex((prev) => prev + 1);
+          };
+
+          preGeneratedAudio.onerror = (error) => {
+            logger.error("Pre-generated audio error:", error);
+            // Fallback to browser TTS
             setUseBrowserTTS(true);
-            return;
-          }
+            setFallbackNarrationText(narrationText);
+          };
+
+          // Start loading the audio
+          preGeneratedAudio.load();
           
-          logger.debug("Streaming TTS Status Check:", {
-            attempts: streamingAttempts,
-            maxAttempts: maxStreamingAttempts,
-            generatedChunks: streamingTTS.status.generatedChunks,
-            totalChunks: streamingTTS.status.totalChunks,
-            isPlaying: streamingTTS.status.isPlaying,
-            isGenerating: streamingTTS.status.isGenerating,
-            error: streamingTTS.status.error
-          });
-          
-          if (streamingTTS.status.generatedChunks > 0 && !streamingTTS.status.isPlaying) {
-            logger.debug("Playing streaming TTS audio");
-            streamingTTS.controls.play();
-          } else if (streamingTTS.status.error) {
-            logger.warn("Streaming TTS failed, falling back to browser TTS", streamingTTS.status.error);
-            setStreamingTTSEnabled(false);
-            setUseBrowserTTS(true);
-          } else if (streamingTTS.status.isGenerating) {
-            // Still generating, wait a bit and try again
-            logger.debug("Streaming TTS still generating, waiting...");
-            setTimeout(tryPlayStreamingTTS, 100);
-          } else {
-            // No chunks ready yet, keep waiting
-            setTimeout(tryPlayStreamingTTS, 100);
-          }
-        };
-        setTimeout(tryPlayStreamingTTS, 100);
+        } catch (error) {
+          logger.error("Error setting up pre-generated audio:", error);
+          // Fallback to browser TTS
+          setUseBrowserTTS(true);
+          setFallbackNarrationText(narrationText);
+        }
+        
       } else if (usePiperTTS && !useBrowserTTS && !streamingTTSEnabled && ttsAvailability?.available) {
+        // Generate audio in real-time (original behavior) - only for first slide or cache misses
+        logger.debug("Generating audio in real-time for step", currentStepIndex);
         logger.debug("Attempting Piper TTS with params:", {
           text: narrationText.substring(0, 100) + "...",
           voice: selectedVoice,
@@ -872,6 +1017,8 @@ export default function ExcalidrawPlayer({
           isEmptyString: narrationText === "",
           isNullOrUndefined: narrationText == null
         });
+        // Store the text for potential fallback use
+        setFallbackNarrationText(narrationText);
         setCurrentNarrationText(narrationText);
         
         // Hook will autoPlay when audio is ready - no polling needed
@@ -931,7 +1078,8 @@ export default function ExcalidrawPlayer({
     excalidrawAPI, currentStepIndex, isPlaying, debouncedUpdateScene, regenerateIndices,
     getNarrationText, effectiveSpeechRate, effectiveSpeechVolume, isMuted, onStepChange,
     onComplete, getCurrentSteps, generateElementsFromStep, mode, getSelectedVoice,
-    usePiperTTS, useBrowserTTS, streamingTTSEnabled, enableStreamingTTS, ttsAudio, streamingTTS
+    usePiperTTS, useBrowserTTS, streamingTTSEnabled, enableStreamingTTS, ttsAudio, streamingTTS,
+    audioCache, cleanupOldAudio, preGenerateUpcomingSlides, ttsAvailability
   ]);
 
   const handleLessonChange = useCallback(async (lessonName: string) => {
@@ -942,6 +1090,11 @@ export default function ExcalidrawPlayer({
     setIsPlaying(false);
     setCurrentStepIndex(0);
     accumulatedElements.current = [];
+
+    // Clear audio cache for new lesson
+    setAudioCache(new Map());
+    setPreGenerationQueue(new Set());
+    setAudioPreparationActive(false);
 
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -1055,6 +1208,11 @@ export default function ExcalidrawPlayer({
     setCurrentStepIndex(0);
     accumulatedElements.current = [];
 
+    // Clear audio cache on reset
+    setAudioCache(new Map());
+    setPreGenerationQueue(new Set());
+    setAudioPreparationActive(false);
+
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
@@ -1107,7 +1265,7 @@ export default function ExcalidrawPlayer({
     }
   }, [selectedLesson, mode]);
 
-  // Initialize first step
+  // Initialize first step and pre-generate initial audio
   useEffect(() => {
     if (excalidrawAPI) {
       const currentSteps = getCurrentSteps();
@@ -1121,9 +1279,15 @@ export default function ExcalidrawPlayer({
           accumulatedElements.current = [...cleanedFirstStep];
           debouncedUpdateScene(accumulatedElements.current, cleanedFirstStep, 100);
         }
+
+        // Start pre-generation for the first few slides
+        if (usePiperTTS && ttsAvailability?.available && currentSteps.length > 1) {
+          logger.debug("Starting initial pre-generation for lesson");
+          preGenerateUpcomingSlides(-1, currentSteps); // Start from step -1 to include step 0, 1, 2
+        }
       }
     }
-  }, [excalidrawAPI, debouncedUpdateScene, regenerateIndices, generateElementsFromStep, getCurrentSteps]);
+  }, [excalidrawAPI, debouncedUpdateScene, regenerateIndices, generateElementsFromStep, getCurrentSteps, usePiperTTS, ttsAvailability, preGenerateUpcomingSlides]);
 
   // Handle step progression - simplified to avoid dependency loops
   useEffect(() => {
@@ -1305,9 +1469,21 @@ export default function ExcalidrawPlayer({
 
   // Handle fallback to browser TTS when Piper TTS fails
   useEffect(() => {
-    if (useBrowserTTS && currentNarrationText && !isMuted) {
-      if ("speechSynthesis" in window) {
-        const utterance = new SpeechSynthesisUtterance(currentNarrationText);
+    if (useBrowserTTS && !isMuted && isPlaying) {
+      // Use fallback text if available, otherwise current text
+      const textToSpeak = fallbackNarrationText || currentNarrationText;
+      
+      if (textToSpeak && "speechSynthesis" in window) {
+        logger.debug("Starting browser TTS fallback", {
+          textLength: textToSpeak.length,
+          textPreview: textToSpeak.substring(0, 100) + "...",
+          usingFallbackText: !!fallbackNarrationText
+        });
+        
+        // Clear the current narration text to prevent Piper TTS from trying again
+        setCurrentNarrationText('');
+        
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
         utterance.rate = effectiveSpeechRate;
         utterance.volume = effectiveSpeechVolume;
         
@@ -1321,23 +1497,38 @@ export default function ExcalidrawPlayer({
         speechRef.current = utterance;
 
         utterance.onend = () => {
+          logger.debug("Browser TTS fallback finished, advancing to next step");
           setCurrentStepIndex((prev) => prev + 1);
+          // Reset browser TTS flag and clear fallback text after completion
+          setUseBrowserTTS(false);
+          setFallbackNarrationText('');
         };
 
         utterance.onerror = (event) => {
           logger.error("Fallback speech synthesis error:", event);
           setCurrentStepIndex((prev) => prev + 1);
+          // Reset browser TTS flag and clear fallback text after error
+          setUseBrowserTTS(false);
+          setFallbackNarrationText('');
         };
 
         window.speechSynthesis.speak(utterance);
-      } else {
-        // No browser TTS available either
+      } else if (!textToSpeak) {
+        logger.warn("No text available for browser TTS fallback, advancing to next step");
         setTimeout(() => {
           setCurrentStepIndex((prev) => prev + 1);
+          setUseBrowserTTS(false);
+        }, 2000);
+      } else {
+        // No browser TTS available either
+        logger.warn("No browser TTS available, advancing to next step");
+        setTimeout(() => {
+          setCurrentStepIndex((prev) => prev + 1);
+          setUseBrowserTTS(false);
         }, 2000);
       }
     }
-  }, [useBrowserTTS, currentNarrationText, isMuted, effectiveSpeechRate, effectiveSpeechVolume, getSelectedVoice]);
+  }, [useBrowserTTS, fallbackNarrationText, currentNarrationText, isMuted, isPlaying, effectiveSpeechRate, effectiveSpeechVolume, getSelectedVoice]);
   
   // Handle voice loading for browsers that load voices asynchronously
   useEffect(() => {
@@ -1446,7 +1637,7 @@ export default function ExcalidrawPlayer({
                 {currentSteps[currentStepIndex]?.title || `Step ${currentSteps[currentStepIndex]?.step_number || currentStepIndex + 1}`}
               </span>
               
-              {/* Streaming TTS Status */}
+              {/* TTS Status */}
               {streamingTTSEnabled && (
                 <span className="text-blue-400 text-xs whitespace-nowrap">
                   {streamingTTS.status.isGenerating ? (
@@ -1455,6 +1646,17 @@ export default function ExcalidrawPlayer({
                     `Playing chunk ${streamingTTS.status.currentChunk + 1}/${streamingTTS.status.totalChunks}`
                   ) : (
                     `Ready (${streamingTTS.status.totalChunks} chunks)`
+                  )}
+                </span>
+              )}
+              
+              {/* Audio Pre-generation Status */}
+              {usePiperTTS && (audioPreparationActive || preGenerationQueue.size > 0) && (
+                <span className="text-green-400 text-xs whitespace-nowrap">
+                  {audioPreparationActive ? (
+                    `Pre-generating audio (${preGenerationQueue.size} pending)`
+                  ) : (
+                    `Audio ready (${audioCache.size} cached)`
                   )}
                 </span>
               )}
