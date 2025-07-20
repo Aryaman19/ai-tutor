@@ -381,6 +381,523 @@ Focus on topics that can be effectively visualized through simple drawings. Make
                 return response.status_code == 200
         except:
             return False
+    
+    async def test_llm_capability(self, model: str, prompt: str, streaming: bool = False, 
+                                  temperature: float = 0.7, max_tokens: int = 150) -> Dict:
+        """Test LLM capabilities including streaming support and feature detection"""
+        import time
+        
+        start_time = time.time()
+        
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                request_data = {
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": streaming,
+                    "options": {
+                        "temperature": temperature,
+                        "num_predict": max_tokens,
+                    }
+                }
+                
+                if streaming:
+                    response = await self._test_streaming_response(client, request_data)
+                else:
+                    response = await self._test_non_streaming_response(client, request_data)
+                
+                end_time = time.time()
+                response_time = end_time - start_time
+                
+                # Get base features and update with actual streaming test result
+                features = await self._detect_model_features(model)
+                features["streaming"] = response.get("streaming_supported", streaming)
+                
+                return {
+                    "success": True,
+                    "response": response.get("response", ""),
+                    "responseTime": response_time,
+                    "tokenCount": response.get("token_count"),
+                    "streaming": streaming,
+                    "streamingMetrics": response.get("streaming_metrics"),
+                    "streamingSupported": response.get("streaming_supported", streaming),
+                    "features": features
+                }
+                
+        except Exception as e:
+            end_time = time.time()
+            response_time = end_time - start_time
+            
+            return {
+                "success": False,
+                "error": str(e),
+                "responseTime": response_time,
+                "streaming": streaming
+            }
+    
+    async def _test_streaming_response(self, client: httpx.AsyncClient, request_data: Dict) -> Dict:
+        """Test streaming response functionality with real-time monitoring"""
+        import time
+        import asyncio
+        
+        try:
+            start_time = time.time()
+            response = await client.post(
+                f"{self.base_url}/api/generate",
+                json=request_data
+            )
+            
+            if response.status_code == 200:
+                if request_data["stream"]:
+                    # Enhanced streaming validation with real-time monitoring
+                    full_response = ""
+                    chunk_count = 0
+                    chunk_times = []
+                    chunk_sizes = []
+                    first_chunk_time = None
+                    last_chunk_time = start_time
+                    progressive_content = []
+                    
+                    async for line in response.aiter_lines():
+                        if line.strip():
+                            chunk_time = time.time()
+                            
+                            try:
+                                import json
+                                chunk = json.loads(line)
+                                
+                                if "response" in chunk and chunk["response"]:
+                                    chunk_content = chunk["response"]
+                                    full_response += chunk_content
+                                    
+                                    # Record streaming metrics
+                                    chunk_count += 1
+                                    chunk_sizes.append(len(chunk_content))
+                                    progressive_content.append(chunk_content)
+                                    
+                                    if first_chunk_time is None:
+                                        first_chunk_time = chunk_time
+                                    
+                                    # Calculate inter-chunk delay
+                                    inter_chunk_delay = chunk_time - last_chunk_time
+                                    chunk_times.append(inter_chunk_delay)
+                                    last_chunk_time = chunk_time
+                                    
+                                    # Small delay to allow real-time monitoring
+                                    await asyncio.sleep(0.001)
+                                
+                                # Check if streaming is complete
+                                if chunk.get("done", False):
+                                    break
+                                    
+                            except json.JSONDecodeError:
+                                continue
+                    
+                    # Calculate streaming quality metrics
+                    total_time = time.time() - start_time
+                    first_token_latency = (first_chunk_time - start_time) if first_chunk_time else 0
+                    avg_chunk_delay = sum(chunk_times) / len(chunk_times) if chunk_times else 0
+                    total_tokens = sum(chunk_sizes)
+                    tokens_per_second = total_tokens / total_time if total_time > 0 else 0
+                    
+                    # Validate actual streaming behavior
+                    is_real_streaming = self._validate_streaming_behavior(
+                        chunk_count, chunk_times, first_token_latency, total_time
+                    )
+                    
+                    # Check content progression quality
+                    content_quality = self._analyze_content_progression(progressive_content)
+                    
+                    return {
+                        "response": full_response,
+                        "streaming_supported": is_real_streaming,
+                        "streaming_metrics": {
+                            "chunk_count": chunk_count,
+                            "first_token_latency": first_token_latency,
+                            "average_chunk_delay": avg_chunk_delay,
+                            "total_time": total_time,
+                            "tokens_per_second": tokens_per_second,
+                            "chunk_times": chunk_times[:10],  # First 10 for analysis
+                            "content_quality": content_quality,
+                            "real_streaming": is_real_streaming
+                        }
+                    }
+                else:
+                    result = response.json()
+                    return {
+                        "response": result.get("response", ""),
+                        "streaming_supported": False
+                    }
+            else:
+                raise Exception(f"HTTP {response.status_code}: {response.text}")
+                
+        except Exception as e:
+            # If streaming fails, try non-streaming fallback
+            try:
+                request_data["stream"] = False
+                fallback_response = await client.post(
+                    f"{self.base_url}/api/generate",
+                    json=request_data
+                )
+                
+                if fallback_response.status_code == 200:
+                    result = fallback_response.json()
+                    return {
+                        "response": result.get("response", ""),
+                        "streaming_supported": False,
+                        "streaming_error": str(e)
+                    }
+                else:
+                    raise Exception(f"Both streaming and fallback failed: {str(e)}")
+            except Exception as fallback_error:
+                raise Exception(f"Streaming failed: {str(e)}, Fallback failed: {str(fallback_error)}")
+    
+    def _validate_streaming_behavior(self, chunk_count: int, chunk_times: list, 
+                                   first_token_latency: float, total_time: float) -> bool:
+        """Validate if response demonstrates real streaming behavior"""
+        
+        # Must have multiple chunks for streaming
+        if chunk_count < 2:
+            return False
+        
+        # First token should arrive relatively quickly (not buffered)
+        if first_token_latency > 5.0:  # More than 5 seconds suggests buffering
+            return False
+        
+        # Should have reasonable inter-chunk delays (not all at once)
+        if chunk_times:
+            # Check if chunks arrive progressively (not all at once)
+            quick_chunks = sum(1 for delay in chunk_times if delay < 0.1)  # Less than 100ms
+            if quick_chunks == len(chunk_times):
+                # All chunks arrived too quickly - likely buffered
+                return False
+            
+            # Check for consistent streaming pattern
+            avg_delay = sum(chunk_times) / len(chunk_times)
+            if avg_delay > 2.0:  # Average delay too high
+                return False
+        
+        # Streaming should be reasonably efficient
+        if total_time > 30.0:  # More than 30 seconds is too slow
+            return False
+        
+        return True
+    
+    def _analyze_content_progression(self, progressive_content: list) -> Dict:
+        """Analyze the quality of content progression in streaming"""
+        if not progressive_content:
+            return {"quality": "poor", "reason": "no_content"}
+        
+        total_chunks = len(progressive_content)
+        
+        # Check for meaningful progression
+        cumulative_lengths = []
+        current_length = 0
+        for chunk in progressive_content:
+            current_length += len(chunk)
+            cumulative_lengths.append(current_length)
+        
+        # Good streaming should show steady progression
+        if total_chunks < 3:
+            quality = "poor"
+            reason = "too_few_chunks"
+        elif cumulative_lengths[-1] < 10:  # Less than 10 characters total
+            quality = "poor" 
+            reason = "content_too_short"
+        else:
+            # Check for steady growth pattern
+            growth_rates = []
+            for i in range(1, len(cumulative_lengths)):
+                if cumulative_lengths[i-1] > 0:
+                    growth_rate = cumulative_lengths[i] / cumulative_lengths[i-1]
+                    growth_rates.append(growth_rate)
+            
+            if growth_rates and min(growth_rates) > 1.0:  # Always growing
+                quality = "good"
+                reason = "steady_progression"
+            else:
+                quality = "fair"
+                reason = "irregular_progression"
+        
+        return {
+            "quality": quality,
+            "reason": reason,
+            "chunk_count": total_chunks,
+            "final_length": cumulative_lengths[-1] if cumulative_lengths else 0,
+            "progression_pattern": cumulative_lengths[:5]  # First 5 for analysis
+        }
+    
+    async def _test_non_streaming_response(self, client: httpx.AsyncClient, request_data: Dict) -> Dict:
+        """Test non-streaming response functionality"""
+        response = await client.post(
+            f"{self.base_url}/api/generate",
+            json=request_data
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            return {
+                "response": result.get("response", ""),
+                "token_count": result.get("eval_count"),
+                "streaming_supported": True  # Assume streaming works if non-streaming works
+            }
+        else:
+            raise Exception(f"HTTP {response.status_code}: {response.text}")
+    
+    async def _detect_model_features(self, model: str) -> Dict:
+        """Detect model capabilities and features"""
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # Get model info
+                response = await client.post(
+                    f"{self.base_url}/api/show",
+                    json={"name": model}
+                )
+                
+                if response.status_code == 200:
+                    model_info = response.json()
+                    logger.info(f"Model info for {model}: {model_info}")
+                    
+                    # Extract features from model info with fallbacks
+                    context_length = await self._extract_context_length(model_info, model)
+                    max_tokens = self._infer_max_tokens_from_model(model, context_length)
+                    
+                    features = {
+                        "streaming": None,  # Will be determined by actual testing
+                        "contextLength": context_length,
+                        "multimodal": False,  # Remove unreliable detection
+                        "functionCalling": False,  # Most local models don't support this
+                        "visionSupport": False,  # Remove unreliable detection
+                        "codeGeneration": False,  # Remove unreliable detection
+                        "maxTokens": max_tokens,
+                        "temperature": True,
+                        "topP": True,
+                        "frequencyPenalty": False,  # Ollama doesn't support these
+                        "presencePenalty": False
+                    }
+                    
+                    logger.info(f"Detected features for {model}: {features}")
+                    return features
+                else:
+                    # Return default features if model info can't be retrieved
+                    return self._get_default_features()
+                    
+        except Exception:
+            return self._get_default_features()
+    
+    async def _extract_context_length(self, model_info: Dict, model_name: str) -> int:
+        """Extract context length from model info and tags"""
+        logger.info(f"Extracting context length for model: {model_name}")
+        try:
+            # First try to find context length in model_info from /api/show
+            if "parameters" in model_info:
+                params = model_info["parameters"]
+                if "context_length" in params:
+                    value = params["context_length"]
+                    if value is not None:
+                        return int(value)
+                if "num_ctx" in params:
+                    value = params["num_ctx"]
+                    if value is not None:
+                        return int(value)
+            
+            # Check model details for context info
+            if "model_info" in model_info:
+                info = model_info["model_info"]
+                if isinstance(info, dict):
+                    # Look for context-related fields
+                    for key in ["context_length", "max_context", "ctx_len", "context_size"]:
+                        if key in info:
+                            value = info[key]
+                            if value is not None:
+                                return int(value)
+            
+            # Try to get info from Ollama tags API
+            model_tags_info = await self.get_model_details_from_tags(model_name)
+            if model_tags_info:
+                # Check for context length in model details/tags
+                if "details" in model_tags_info:
+                    details = model_tags_info["details"]
+                    for key in ["context_length", "num_ctx", "max_context"]:
+                        if key in details:
+                            value = details[key]
+                            if value is not None:
+                                return int(value)
+                
+                # Check model name/tag for known patterns
+                tag_context = self._infer_context_from_model_tag(model_tags_info)
+                if tag_context > 0:
+                    return tag_context
+            
+            # Fallback to model name-based inference
+            context_length = self._infer_context_from_model_name(model_name)
+            logger.info(f"Using model name inference for {model_name}: {context_length} tokens")
+            return context_length
+            
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Error extracting context length: {e}")
+            return self._infer_context_from_model_name(model_name)
+    
+    def _infer_context_from_model_tag(self, model_tags_info: Dict) -> int:
+        """Infer context length from model tag information"""
+        try:
+            # Check model name and size from tags
+            model_name = model_tags_info.get("name", "").lower()
+            model_size = model_tags_info.get("size", 0)
+            
+            # Known context lengths for popular models
+            model_context_map = {
+                "llama": {"32k": 32768, "16k": 16384, "8k": 8192, "4k": 4096},
+                "gemma3n": {"default": 32768},  # Gemma 3n models default to 32k
+                "gemma3": {"default": 32768},   # Gemma 3 models default to 32k
+                "gemma2": {"8k": 8192, "default": 8192},  # Gemma 2 models default to 8k
+                "gemma": {"32k": 32768, "8k": 8192, "2k": 2048, "default": 8192},
+                "phi": {"16k": 16384, "4k": 4096},
+                "mistral": {"32k": 32768, "8k": 8192},
+                "codellama": {"16k": 16384, "4k": 4096},
+                "deepseek": {"32k": 32768, "16k": 16384},
+                "qwen": {"32k": 32768, "8k": 8192},
+            }
+            
+            # Check for context indicators in model name
+            for model_type, contexts in model_context_map.items():
+                if model_type in model_name:
+                    # First check for specific context indicators
+                    for context_indicator, context_length in contexts.items():
+                        if context_indicator != "default" and context_indicator in model_name:
+                            return context_length
+                    # If no specific indicator found, use default if available
+                    if "default" in contexts:
+                        return contexts["default"]
+            
+            # Infer based on model size (rough estimates)
+            if model_size > 0:
+                size_gb = model_size / (1024 * 1024 * 1024)  # Convert to GB
+                if size_gb > 40:  # Large models (70B+)
+                    return 8192
+                elif size_gb > 15:  # Medium models (13B-70B)
+                    return 4096
+                elif size_gb > 5:  # Small models (7B-13B)
+                    return 4096
+                else:  # Very small models
+                    return 2048
+            
+            return 0  # No inference possible
+            
+        except Exception as e:
+            logger.warning(f"Error inferring context from model tag: {e}")
+            return 0
+    
+    def _infer_context_from_model_name(self, model_name: str) -> int:
+        """Infer context length from model name patterns"""
+        model_lower = model_name.lower()
+        
+        # Check for explicit context length indicators
+        context_patterns = {
+            "32k": 32768, "16k": 16384, "8k": 8192, "4k": 4096, "2k": 2048,
+            "32768": 32768, "16384": 16384, "8192": 8192, "4096": 4096, "2048": 2048
+        }
+        
+        for pattern, context_length in context_patterns.items():
+            if pattern in model_lower:
+                return context_length
+        
+        # Model family defaults with specific variants
+        if any(x in model_lower for x in ["llama3", "llama-3"]):
+            return 8192  # Llama 3 typically has 8k context
+        elif "llama" in model_lower:
+            return 4096  # Older Llama models
+        elif any(x in model_lower for x in ["gemma3n", "gemma-3n", "gemma3"]):
+            return 32768  # Gemma 3n models support 32k context
+        elif "gemma2" in model_lower:
+            return 8192  # Gemma 2 models have 8k context
+        elif "gemma" in model_lower:
+            return 8192  # Original Gemma models typically have 8k context
+        elif any(x in model_lower for x in ["phi3", "phi-3"]):
+            return 16384  # Phi-3 has longer context
+        elif "phi" in model_lower:
+            return 4096  # Older Phi models
+        elif "mistral" in model_lower:
+            return 8192  # Mistral typically 8k
+        elif "qwen" in model_lower:
+            return 8192  # Qwen typically 8k
+        elif any(x in model_lower for x in ["codellama", "code-llama"]):
+            return 16384  # Code Llama often has longer context
+        else:
+            return 4096  # Conservative default
+    
+    
+    def _infer_max_tokens_from_model(self, model: str, context_length: int) -> int:
+        """Infer reasonable max tokens based on model and context length"""
+        model_lower = model.lower()
+        
+        # For most models, max output is typically 25-50% of context length
+        # but with reasonable minimums and maximums
+        base_max = min(context_length // 2, 4096)  # Up to half context, max 4096
+        
+        # Model-specific adjustments
+        if "7b" in model_lower or "8b" in model_lower:
+            return min(base_max, 4096)
+        elif "13b" in model_lower or "14b" in model_lower:
+            return min(base_max, 8192)
+        elif "30b" in model_lower or "34b" in model_lower:
+            return min(base_max, 8192)
+        elif "70b" in model_lower:
+            return min(base_max, 8192)
+        elif "gemma" in model_lower:
+            return min(base_max, 8192)
+        elif "llama" in model_lower:
+            return min(base_max, 4096)
+        else:
+            return min(base_max, 2048)  # Conservative default
+    
+    def _get_default_features(self) -> Dict:
+        """Get default feature set for unknown models"""
+        return {
+            "streaming": None,  # Will be determined by actual testing
+            "contextLength": 4096,
+            "multimodal": False,
+            "functionCalling": False,
+            "visionSupport": False,
+            "codeGeneration": False,
+            "maxTokens": 2048,
+            "temperature": True,
+            "topP": True,
+            "frequencyPenalty": False,
+            "presencePenalty": False
+        }
+    
+    async def get_available_models(self) -> List[str]:
+        """Get list of available models from Ollama"""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{self.base_url}/api/tags")
+                if response.status_code == 200:
+                    data = response.json()
+                    models = []
+                    for model in data.get("models", []):
+                        models.append(model.get("name", ""))
+                    return models
+                else:
+                    return []
+        except Exception:
+            return []
+
+    async def get_model_details_from_tags(self, model_name: str) -> Dict:
+        """Get detailed model information from Ollama tags API"""
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{self.base_url}/api/tags")
+                if response.status_code == 200:
+                    data = response.json()
+                    for model in data.get("models", []):
+                        if model.get("name") == model_name:
+                            return model
+                    return {}
+                else:
+                    return {}
+        except Exception:
+            return {}
 
 
 # Global instance

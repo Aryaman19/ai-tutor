@@ -146,6 +146,77 @@ export interface AvailableModels {
   piperTts: PiperVoice[];
 }
 
+// LLM Testing Types
+export interface LLMTestRequest {
+  prompt: string;
+  model: string;
+  provider: string;
+  streaming?: boolean;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface StreamingMetrics {
+  chunk_count: number;
+  first_token_latency: number;
+  average_chunk_delay: number;
+  total_time: number;
+  tokens_per_second: number;
+  chunk_times: number[];
+  content_quality: {
+    quality: 'good' | 'fair' | 'poor';
+    reason: string;
+    chunk_count: number;
+    final_length: number;
+    progression_pattern: number[];
+  };
+  real_streaming: boolean;
+}
+
+export interface LLMTestResponse {
+  success: boolean;
+  response?: string;
+  responseTime: number;
+  tokenCount?: number;
+  streaming: boolean;
+  streamingSupported?: boolean;
+  streamingMetrics?: StreamingMetrics;
+  error?: string;
+  features?: LLMFeatures;
+}
+
+export interface LLMFeatures {
+  streaming: boolean | null;  // null = not yet tested, boolean = actual test result
+  contextLength: number;
+  multimodal: boolean;
+  functionCalling: boolean;
+  visionSupport: boolean;
+  codeGeneration: boolean;
+  maxTokens: number;
+  temperature: boolean;
+  topP: boolean;
+  frequencyPenalty: boolean;
+  presencePenalty: boolean;
+}
+
+export interface LLMTestingState {
+  isRunning: boolean;
+  currentTest: 'streaming' | 'non-streaming' | 'features' | null;
+  lastTestResult?: LLMTestResponse;
+  features?: LLMFeatures;
+  error?: string;
+}
+
+export interface LLMCapabilityTest {
+  name: string;
+  description: string;
+  testType: 'streaming' | 'feature' | 'performance';
+  status: 'pending' | 'running' | 'passed' | 'failed';
+  result?: any;
+  error?: string;
+  duration?: number;
+}
+
 // Legacy interface for backward compatibility
 export interface AISettings {
   llm: {

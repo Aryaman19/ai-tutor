@@ -140,6 +140,17 @@ except Exception as e:
     logger.error(f"Failed to register TTS router: {e}")
     logger.warning("TTS endpoints will not be available")
 
+try:
+    from routers.llm import router as llm_router
+    app.include_router(llm_router, prefix="/api/llm", tags=["llm"])
+    logger.info("LLM router registered successfully")
+except ImportError as e:
+    logger.error(f"LLM router import failed: {e}")
+    logger.warning("LLM endpoints will not be available")
+except Exception as e:
+    logger.error(f"Failed to register LLM router: {e}")
+    logger.warning("LLM endpoints will not be available")
+
 # Mount static files for audio serving
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")
