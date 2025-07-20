@@ -140,6 +140,17 @@ except Exception as e:
     logger.error(f"Failed to register TTS router: {e}")
     logger.warning("TTS endpoints will not be available")
 
+try:
+    from routers.timeline_lesson import router as timeline_lesson_router
+    app.include_router(timeline_lesson_router, prefix="/api", tags=["timeline-lessons"])
+    logger.info("Timeline lesson router registered successfully")
+except ImportError as e:
+    logger.error(f"Timeline lesson router import failed: {e}")
+    logger.warning("Timeline lesson endpoints will not be available")
+except Exception as e:
+    logger.error(f"Failed to register timeline lesson router: {e}")
+    logger.warning("Timeline lesson endpoints will not be available")
+
 # Mount static files for audio serving
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")

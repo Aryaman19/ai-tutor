@@ -36,7 +36,8 @@ async def connect_to_mongo():
         # Initialize Beanie
         try:
             from models import UserSettings, Lesson
-            await init_beanie(database=db.database, document_models=[UserSettings, Lesson])
+            from models.timeline_lesson import TimelineLesson
+            await init_beanie(database=db.database, document_models=[UserSettings, Lesson, TimelineLesson])
         except ImportError as e:
             logger.error(f"Failed to import models: {e}")
             # Try importing individually
@@ -54,6 +55,13 @@ async def connect_to_mongo():
                 logger.info("Lesson model imported successfully")
             except ImportError:
                 logger.error("Failed to import Lesson model")
+                
+            try:
+                from models.timeline_lesson import TimelineLesson
+                models.append(TimelineLesson)
+                logger.info("TimelineLesson model imported successfully")
+            except ImportError:
+                logger.error("Failed to import TimelineLesson model")
             
             if models:
                 await init_beanie(database=db.database, document_models=models)
