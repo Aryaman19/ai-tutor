@@ -1,12 +1,25 @@
 import asyncio
 import logging
 import httpx
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, AsyncGenerator, Tuple
 from config import settings
 from models.lesson import CanvasStep
 from models.settings import UserSettings
 
 logger = logging.getLogger(__name__)
+
+# Import chunked generation components - moved after logger definition
+try:
+    from services.chunked_content_generator import (
+        ChunkedContentGenerator,
+        GenerationProgress,
+        ChunkGenerationResult
+    )
+    from templates.timeline_prompts import ContentType, DifficultyLevel
+    CHUNKED_GENERATION_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Chunked generation not available: {e}")
+    CHUNKED_GENERATION_AVAILABLE = False
 
 
 class OllamaService:
@@ -16,6 +29,12 @@ class OllamaService:
         self.base_url = settings.get_ollama_url()
         self.model = "gemma3n:latest"  # Use the available model
         self.timeout = 60.0
+        
+        # Initialize chunked content generator if available
+        if CHUNKED_GENERATION_AVAILABLE:
+            self.chunked_generator = ChunkedContentGenerator(self)
+        else:
+            self.chunked_generator = None
         
     async def _make_request(self, prompt: str, user_id: str = "default") -> Optional[str]:
         """Make a request to Ollama API with user settings"""
@@ -898,6 +917,257 @@ Focus on topics that can be effectively visualized through simple drawings. Make
                     return {}
         except Exception:
             return {}
+    
+    # Chunked Content Generation Methods
+    
+    async def generate_chunked_lesson(
+        self,
+        topic: str,
+        difficulty_level: str = "beginner",
+        content_type: str = "definition",
+        target_duration: float = 120.0,
+        user_id: str = "default"
+    ) -> AsyncGenerator[Tuple[Dict, Optional[Dict]], None]:
+        """
+        Generate lesson using chunked content generation with progress updates.
+        
+        Args:
+            topic: Educational topic to cover
+            difficulty_level: beginner, intermediate, or advanced
+            content_type: Type of content (definition, process, comparison, etc.)
+            target_duration: Total target duration in seconds
+            user_id: User ID for personalized settings
+            
+        Yields:
+            Tuple of (progress_dict, chunk_result_dict_or_none)
+        """
+        
+        if not self.chunked_generator:
+            logger.error("Chunked generation not available")
+            yield {
+                "status": "error",
+                "error": "Chunked generation not available",
+                "total_chunks": 0,
+                "completed_chunks": 0
+            }, None
+            return
+        
+        try:
+            # Convert string parameters to enums
+            difficulty_enum = self._string_to_difficulty(difficulty_level)
+            content_type_enum = self._string_to_content_type(content_type)
+            
+            logger.info(f"Starting chunked lesson generation: {topic}")
+            
+            # Generate chunked lesson with progress updates
+            async for progress, chunk_result in self.chunked_generator.generate_chunked_lesson(
+                topic=topic,
+                difficulty=difficulty_enum,
+                content_type=content_type_enum,
+                target_total_duration=target_duration,
+                user_id=user_id
+            ):
+                # Convert progress to dict for JSON serialization
+                progress_dict = {
+                    "status": progress.status.value,
+                    "total_chunks": progress.total_chunks,
+                    "completed_chunks": progress.completed_chunks,
+                    "current_chunk": progress.current_chunk,
+                    "estimated_time_remaining": progress.estimated_time_remaining,
+                    "current_operation": progress.current_operation,
+                    "errors": progress.errors
+                }
+                
+                # Convert chunk result to dict if available
+                chunk_dict = None
+                if chunk_result:
+                    chunk_dict = {
+                        "chunk_id": chunk_result.chunk_id,
+                        "chunk_number": chunk_result.chunk_number,
+                        "timeline_events": chunk_result.timeline_events,
+                        "chunk_summary": chunk_result.chunk_summary,
+                        "next_chunk_hint": chunk_result.next_chunk_hint,
+                        "concepts_introduced": chunk_result.concepts_introduced,
+                        "visual_elements_created": chunk_result.visual_elements_created,
+                        "generation_time": chunk_result.generation_time,
+                        "token_count": chunk_result.token_count,
+                        "status": chunk_result.status.value,
+                        "error_message": chunk_result.error_message
+                    }
+                
+                yield progress_dict, chunk_dict
+                
+        except Exception as e:
+            logger.error(f"Error in chunked lesson generation: {e}")
+            yield {
+                "status": "failed",
+                "error": str(e),
+                "total_chunks": 0,
+                "completed_chunks": 0
+            }, None
+    
+    async def convert_chunks_to_canvas_steps(
+        self,
+        chunk_results: List[Dict],
+        topic: str
+    ) -> List[CanvasStep]:
+        """
+        Convert chunk generation results to CanvasStep format for compatibility.
+        
+        Args:
+            chunk_results: List of chunk result dictionaries
+            topic: Original topic for context
+            
+        Returns:
+            List of CanvasStep objects
+        """
+        
+        if not self.chunked_generator:
+            logger.warning("Chunked generator not available, returning empty list")
+            return []
+        
+        try:
+            # Convert dict results back to ChunkGenerationResult objects
+            chunk_objects = []
+            for chunk_dict in chunk_results:
+                if chunk_dict.get("status") == "completed":
+                    # Create a mock ChunkGenerationResult for compatibility
+                    from services.chunked_content_generator import ChunkGenerationResult, GenerationStatus
+                    
+                    chunk_obj = ChunkGenerationResult(
+                        chunk_id=chunk_dict["chunk_id"],
+                        chunk_number=chunk_dict["chunk_number"],
+                        timeline_events=chunk_dict["timeline_events"],
+                        chunk_summary=chunk_dict["chunk_summary"],
+                        next_chunk_hint=chunk_dict["next_chunk_hint"],
+                        concepts_introduced=chunk_dict["concepts_introduced"],
+                        visual_elements_created=chunk_dict["visual_elements_created"],
+                        generation_time=chunk_dict["generation_time"],
+                        token_count=chunk_dict["token_count"],
+                        status=GenerationStatus.COMPLETED
+                    )
+                    chunk_objects.append(chunk_obj)
+            
+            # Convert to canvas steps
+            return await self.chunked_generator.convert_chunks_to_canvas_steps(
+                chunk_objects, topic
+            )
+            
+        except Exception as e:
+            logger.error(f"Error converting chunks to canvas steps: {e}")
+            return []
+    
+    def get_chunked_generation_stats(self) -> Dict:
+        """Get statistics about chunked content generation performance"""
+        
+        if not self.chunked_generator:
+            return {"status": "unavailable", "reason": "chunked_generation_not_available"}
+        
+        try:
+            return self.chunked_generator.get_generation_stats()
+        except Exception as e:
+            logger.error(f"Error getting generation stats: {e}")
+            return {"status": "error", "error": str(e)}
+    
+    def _string_to_difficulty(self, difficulty_str: str) -> 'DifficultyLevel':
+        """Convert string difficulty to DifficultyLevel enum"""
+        difficulty_map = {
+            "beginner": DifficultyLevel.BEGINNER,
+            "intermediate": DifficultyLevel.INTERMEDIATE,
+            "advanced": DifficultyLevel.ADVANCED
+        }
+        return difficulty_map.get(difficulty_str.lower(), DifficultyLevel.BEGINNER)
+    
+    def _string_to_content_type(self, content_type_str: str) -> 'ContentType':
+        """Convert string content type to ContentType enum"""
+        content_type_map = {
+            "definition": ContentType.DEFINITION,
+            "process": ContentType.PROCESS,
+            "comparison": ContentType.COMPARISON,
+            "example": ContentType.EXAMPLE,
+            "list": ContentType.LIST,
+            "concept_map": ContentType.CONCEPT_MAP,
+            "formula": ContentType.FORMULA,
+            "story": ContentType.STORY
+        }
+        return content_type_map.get(content_type_str.lower(), ContentType.DEFINITION)
+    
+    async def analyze_topic_for_chunking(
+        self,
+        topic: str,
+        difficulty_level: str = "beginner",
+        content_type: str = "definition",
+        target_duration: float = 120.0,
+        user_id: str = "default"
+    ) -> Dict:
+        """
+        Analyze topic and provide chunking recommendations without generating content.
+        
+        Args:
+            topic: Educational topic to analyze
+            difficulty_level: Target difficulty level
+            content_type: Type of content to generate
+            target_duration: Target total duration
+            user_id: User ID for personalized settings
+            
+        Returns:
+            Dictionary with chunking analysis and recommendations
+        """
+        
+        if not self.chunked_generator:
+            return {
+                "status": "unavailable",
+                "reason": "chunked_generation_not_available"
+            }
+        
+        try:
+            # Convert string parameters to enums
+            difficulty_enum = self._string_to_difficulty(difficulty_level)
+            content_type_enum = self._string_to_content_type(content_type)
+            
+            logger.info(f"Analyzing topic for chunking: {topic}")
+            
+            # Get chunking analysis
+            recommendation, chunk_configs = await self.chunked_generator.analyze_and_plan_chunks(
+                topic=topic,
+                difficulty=difficulty_enum,
+                content_type=content_type_enum,
+                target_total_duration=target_duration,
+                user_id=user_id
+            )
+            
+            # Convert to serializable format
+            return {
+                "status": "success",
+                "recommendation": {
+                    "chunk_size": recommendation.chunk_size.value,
+                    "target_duration": recommendation.target_duration,
+                    "target_tokens": recommendation.target_tokens,
+                    "estimated_chunks_needed": recommendation.estimated_chunks_needed,
+                    "break_points": recommendation.break_points,
+                    "reasoning": recommendation.reasoning,
+                    "complexity_factors": recommendation.complexity_factors,
+                    "confidence": recommendation.confidence
+                },
+                "chunk_configs": [
+                    {
+                        "max_tokens": config.max_tokens,
+                        "target_duration": config.target_duration,
+                        "content_type": config.content_type.value,
+                        "difficulty": config.difficulty.value,
+                        "include_visual_instructions": config.include_visual_instructions,
+                        "maintain_continuity": config.maintain_continuity
+                    }
+                    for config in chunk_configs
+                ]
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing topic for chunking: {e}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
 
 
 # Global instance
