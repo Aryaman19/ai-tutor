@@ -12,12 +12,12 @@ import type {
   ContentType,
   LayoutHint,
   ImportanceLevel,
-} from '@ai-tutor/types/timeline/TimelineEvent';
+} from '@ai-tutor/types';
 
 import type {
   StreamingTimelineChunk,
   ChunkContext,
-} from '@ai-tutor/types/timeline/StreamingTimelineChunk';
+} from '@ai-tutor/types';
 
 import type { CanvasStep } from '@ai-tutor/types';
 
@@ -28,7 +28,7 @@ import {
   extractStepEntities,
 } from '@ai-tutor/types';
 
-import { createUtilLogger } from '@ai-tutor/utils';
+import { createUtilLogger } from '../logger';
 
 const logger = createUtilLogger('TimelineContentClassifier');
 
@@ -46,7 +46,7 @@ export interface ContentAnalysisResult {
   complexity: 'simple' | 'medium' | 'complex';
   
   /** Key entities and concepts */
-  keyEntities: Array<{
+  keyConceptEntities: Array<{
     text: string;
     type: 'concept' | 'person' | 'place' | 'term' | 'formula';
     importance: ImportanceLevel;
@@ -301,8 +301,8 @@ export class TimelineContentClassifier {
     
     // Add existing entities
     existingEntities.forEach(entity => {
-      if (!result.keyEntities.some(e => e.text === entity)) {
-        result.keyEntities.push({
+      if (!result.keyConceptEntities.some(e => e.text === entity)) {
+        result.keyConceptEntities.push({
           text: entity,
           type: 'concept',
           importance: 'medium',
@@ -340,19 +340,19 @@ export class TimelineContentClassifier {
     const complexity = this.assessComplexity(cleanContent);
     
     // Extract entities
-    const keyEntities = this.extractEntities(cleanContent);
+    const keyConceptEntities = this.extractEntities(cleanContent);
     
     // Find relationships
-    const relationships = this.extractRelationships(cleanContent, keyEntities);
+    const relationships = this.extractRelationships(cleanContent, keyConceptEntities);
     
     // Detect visual requirements
     const visualRequirements = this.detectVisualRequirements(cleanContent);
     
     // Generate layout hints
-    const layoutHints = this.generateLayoutHints(primaryType, keyEntities, visualRequirements);
+    const layoutHints = this.generateLayoutHints(primaryType, keyConceptEntities, visualRequirements);
     
     // Calculate metrics
-    const metrics = this.calculateMetrics(cleanContent, keyEntities, visualRequirements);
+    const metrics = this.calculateMetrics(cleanContent, keyConceptEntities, visualRequirements);
     
     // Analyze structure
     const structure = this.analyzeContentStructure(cleanContent);
@@ -361,7 +361,7 @@ export class TimelineContentClassifier {
       primaryType,
       secondaryTypes,
       complexity,
-      keyEntities,
+      keyConceptEntities,
       relationships,
       visualRequirements,
       layoutHints,
@@ -373,7 +373,7 @@ export class TimelineContentClassifier {
       sourceId, 
       primaryType, 
       complexity,
-      entityCount: keyEntities.length,
+      entityCount: keyConceptEntities.length,
       relationshipCount: relationships.length 
     });
 
@@ -817,7 +817,7 @@ export class TimelineContentClassifier {
     }, 'simple' as 'simple' | 'medium' | 'complex');
     
     // Combine and deduplicate entities
-    const allEntities = analyses.flatMap(a => a.keyEntities);
+    const allEntities = analyses.flatMap(a => a.keyConceptEntities);
     const entityMap = new Map<string, typeof allEntities[0]>();
     
     allEntities.forEach(entity => {
@@ -829,7 +829,7 @@ export class TimelineContentClassifier {
       }
     });
     
-    const keyEntities = Array.from(entityMap.values())
+    const keyConceptEntities = Array.from(entityMap.values())
       .sort((a, b) => b.mentions - a.mentions)
       .slice(0, this.config.maxEntities);
     
@@ -858,14 +858,14 @@ export class TimelineContentClassifier {
       sourceId, 
       analysisCount: analyses.length,
       combinedPrimaryType: primaryType,
-      totalEntities: keyEntities.length 
+      totalEntities: keyConceptEntities.length 
     });
     
     return {
       primaryType,
       secondaryTypes,
       complexity,
-      keyEntities,
+      keyConceptEntities,
       relationships,
       visualRequirements,
       layoutHints,

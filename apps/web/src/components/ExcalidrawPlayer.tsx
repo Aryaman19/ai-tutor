@@ -1,5 +1,5 @@
 import "@excalidraw/excalidraw/index.css";
-import { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo, forwardRef, useImperativeHandle } from "react";
 import { Excalidraw } from "@excalidraw/excalidraw";
 import type { ExcalidrawElement } from "../utils/excalidraw";
 import { regenerateElementIndices, makeText, makeLabeledRectangle, COLORS } from "../utils/excalidraw";
@@ -13,6 +13,71 @@ import {
 import { createComponentLogger } from "@ai-tutor/utils";
 import { cn } from "@ai-tutor/utils";
 import { useTTSSettings, useTTSAudio, useTTSAvailability, useStreamingTTS, useTTSVoices } from "@ai-tutor/hooks";
+
+// Phase 3 Timeline Layout Engine Integration
+import { 
+  createResponsiveRegionManager, 
+  getDefaultCanvasSize,
+  type ResponsiveRegionManager 
+} from "@ai-tutor/utils/src/excalidraw/semantic-layout/responsive-regions";
+import { 
+  createCollisionDetector,
+  type CollisionDetector 
+} from "@ai-tutor/utils/src/excalidraw/semantic-layout/collision-detector";
+import { 
+  createTimelineLayoutEngine,
+  type TimelineLayoutEngine 
+} from "@ai-tutor/utils/src/excalidraw/semantic-layout/timeline-layout-engine";
+import { 
+  createSmartElementFactory,
+  type SmartElementFactory 
+} from "@ai-tutor/utils/src/excalidraw/elements/smart-element-factory";
+import type { TimelineEvent } from "@ai-tutor/types";
+
+// Phase 4 Timeline Control & Playback Integration
+import { TimelineEventScheduler } from "@ai-tutor/utils/src/streaming/timeline-event-scheduler";
+import { EventExecutor } from "@ai-tutor/utils/src/streaming/event-executor";
+import { TimelineContentProcessor } from "@ai-tutor/utils/src/streaming/timeline-content-processor";
+import { SeekOptimizer } from "@ai-tutor/utils/src/streaming/seek-optimizer";
+import { TransitionAnimator } from "@ai-tutor/utils/src/streaming/transition-animator";
+import { MemoryManager } from "@ai-tutor/utils/src/streaming/memory-manager";
+import { ChunkCoordinator } from "@ai-tutor/utils/src/streaming/chunk-coordinator";
+// Define types locally for now to avoid import issues
+type PlaybackState = 'playing' | 'paused' | 'seeking' | 'stopped' | 'buffering';
+type ProcessingState = 'idle' | 'processing' | 'buffering' | 'ready' | 'error';
+
+interface EventExecutionContext {
+  currentPosition: number;
+  playbackSpeed: number;
+  canvasState: {
+    viewport: { x: number; y: number; zoom: number };
+    activeElements: string[];
+    dimensions: { width: number; height: number };
+  };
+  audioState: {
+    currentAudio?: { id: string; text: string; startTime: number; duration: number; progress: number; };
+    queue: Array<{ id: string; text: string; scheduledTime: number; }>;
+    volume: number;
+    properties: Record<string, any>;
+  };
+  performanceMode: {
+    reducedAnimations: boolean;
+    skipEffects: boolean;
+    maxConcurrentOps: number;
+  };
+}
+
+interface SeekResult {
+  targetPosition: number;
+  seekTime: number;
+  success: boolean;
+  error?: string;
+  layoutState: any;
+  activeEvents: any[];
+  eventsToExecute: any[];
+  visibleElements: any[];
+  audioState: any;
+}
 
 // Using any for now - will fix typing later
 type ExcalidrawImperativeAPI = any;
@@ -31,7 +96,7 @@ interface FlexibleLessonStep {
 
 interface ExcalidrawPlayerProps {
   // Legacy mode props (for backward compatibility)
-  mode?: 'legacy' | 'flexible';
+  mode?: 'legacy' | 'flexible' | 'timeline' | 'phase4'; // Added phase4 mode for enhanced timeline
   steps?: FlexibleLessonStep[];
   
   // Config props
@@ -41,6 +106,22 @@ interface ExcalidrawPlayerProps {
   showControls?: boolean;
   showLessonSelector?: boolean;
   
+  // Phase 3 Timeline Layout props
+  enableTimelineLayout?: boolean;
+  timelineEvents?: TimelineEvent[];
+  canvasSize?: { width: number; height: number };
+  layoutMode?: 'responsive' | 'fixed';
+  enableSmartElements?: boolean;
+  
+  // Phase 4 Timeline Control & Playback props
+  enablePhase4Timeline?: boolean;
+  enableAdvancedSeek?: boolean;
+  enableContentBuffering?: boolean;
+  enableMemoryOptimization?: boolean;
+  timelineMode?: 'legacy' | 'advanced';
+  seekResponseTarget?: number; // Milliseconds
+  bufferSize?: number; // Buffer size in milliseconds
+  
   // Settings integration
   userId?: string; // When provided, will use TTS settings from user preferences
   
@@ -48,6 +129,9 @@ interface ExcalidrawPlayerProps {
   onStepChange?: (stepIndex: number) => void;
   onComplete?: () => void;
   onLessonChange?: (lessonName: string) => void;
+  onTimelineSeek?: (timestamp: number) => void; // New timeline callback
+  onPlaybackStateChange?: (state: PlaybackState) => void; // Phase 4 callback
+  onSeekComplete?: (result: SeekResult) => void; // Phase 4 callback
 }
 
 const logger = createComponentLogger('ExcalidrawPlayer');
@@ -121,7 +205,24 @@ const excalidrawHideUIStyles = `
   }
 `;
 
-export default function ExcalidrawPlayer({
+
+interface ExcalidrawPlayerRef {
+  // Phase 3 Timeline methods
+  updateTimelineData: (timelineEvents: TimelineEvent[]) => void;
+  seekToTimestamp: (timestamp: number) => void;
+  playTimeline: () => void;
+  pauseTimeline: () => void;
+  
+  // Phase 4 Enhanced Timeline methods
+  seekToPosition: (position: number, options?: { smooth?: boolean; immediate?: boolean }) => Promise<void>;
+  setPlaybackSpeed: (speed: number) => void;
+  getPlaybackMetrics: () => any;
+  getSeekPerformanceMetrics: () => any;
+  optimizeMemory: () => Promise<void>;
+  resetTimeline: () => void;
+}
+
+const ExcalidrawPlayer = forwardRef<ExcalidrawPlayerRef, any>(({
   mode = 'legacy',
   steps = [],
   autoPlay = false,
@@ -133,7 +234,24 @@ export default function ExcalidrawPlayer({
   onStepChange,
   onComplete,
   onLessonChange,
-}: ExcalidrawPlayerProps) {
+  // Phase 3 props
+  enableTimelineLayout = false,
+  timelineEvents = [],
+  canvasSize,
+  layoutMode = 'responsive',
+  enableSmartElements = true,
+  onTimelineSeek,
+  // Phase 4 props
+  enablePhase4Timeline = false,
+  enableAdvancedSeek = true,
+  enableContentBuffering = true,
+  enableMemoryOptimization = true,
+  timelineMode = 'legacy',
+  seekResponseTarget = 100,
+  bufferSize = 15000,
+  onPlaybackStateChange,
+  onSeekComplete,
+}: ExcalidrawPlayerProps, ref) => {
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<string>("How Economy Works");
   const [isPlaying, setIsPlaying] = useState(autoPlay);
@@ -155,6 +273,35 @@ export default function ExcalidrawPlayer({
   const togglePlayPauseRef = useRef(false); // Prevent double-clicks
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  // Phase 3 Timeline Layout Engine state
+  const [currentTimestamp, setCurrentTimestamp] = useState(0);
+  const [timelineEngineReady, setTimelineEngineReady] = useState(false);
+  const [layoutMode3, setLayoutMode3] = useState(layoutMode);
+  const [canvasSize3, setCanvasSize3] = useState(canvasSize || getDefaultCanvasSize());
+  const timelineEngineRef = useRef<TimelineLayoutEngine | null>(null);
+  const regionManagerRef = useRef<ResponsiveRegionManager | null>(null);
+  const collisionDetectorRef = useRef<CollisionDetector | null>(null);
+  const smartElementFactoryRef = useRef<SmartElementFactory | null>(null);
+  
+  // Phase 4 Timeline Control & Playback state
+  const [phase4Enabled, setPhase4Enabled] = useState(enablePhase4Timeline || mode === 'phase4');
+  const [playbackState, setPlaybackState] = useState<PlaybackState>('stopped');
+  const [currentPosition, setCurrentPosition] = useState(0);
+  const [playbackSpeed, setPlaybackSpeedState] = useState(1.0);
+  const [totalDuration, setTotalDuration] = useState(0);
+  const [processingState, setProcessingState] = useState<ProcessingState>('idle');
+  const [bufferLevel, setBufferLevel] = useState(0);
+  const [seekPerformance, setSeekPerformance] = useState({ averageSeekTime: 0, totalSeeks: 0 });
+  
+  // Phase 4 Component References
+  const eventSchedulerRef = useRef<TimelineEventScheduler | null>(null);
+  const eventExecutorRef = useRef<EventExecutor | null>(null);
+  const contentProcessorRef = useRef<TimelineContentProcessor | null>(null);
+  const seekOptimizerRef = useRef<SeekOptimizer | null>(null);
+  const transitionAnimatorRef = useRef<TransitionAnimator | null>(null);
+  const memoryManagerRef = useRef<MemoryManager | null>(null);
+  const chunkCoordinatorRef = useRef<ChunkCoordinator | null>(null);
 
   const lessonScriptRef = useRef<LessonSlide[]>([]);
   const speechRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -224,10 +371,10 @@ export default function ExcalidrawPlayer({
     });
   }, [currentNarrationText, usePiperTTS, selectedVoice, currentVoiceId]);
 
-  // Piper TTS Audio Hook (non-streaming)
+  // Piper TTS Audio Hook (non-streaming) - Always call with consistent parameters
   const ttsAudio = useTTSAudio(currentNarrationText, {
-    voice: usePiperTTS ? currentVoiceId : undefined,
-    autoPlay: true, // Enable autoPlay so it plays immediately when ready
+    voice: currentVoiceId, // Always pass voice ID (will be undefined if not Piper)
+    autoPlay: usePiperTTS && !useBrowserTTS, // Only autoplay if using Piper TTS
     onPlay: () => {
       logger.debug("Piper TTS started playing");
     },
@@ -261,9 +408,9 @@ export default function ExcalidrawPlayer({
     },
   });
 
-  // Streaming TTS Hook (disabled for debugging)
+  // Streaming TTS Hook - Always call with consistent parameters
   const streamingTTS = useStreamingTTS('', {
-    voice: enableStreamingTTS ? currentVoiceId : undefined,
+    voice: currentVoiceId, // Always pass voice ID (will be undefined if not available)
     autoPlay: false,
     onPlay: () => {
       logger.debug("Streaming TTS started playing");
@@ -336,6 +483,332 @@ export default function ExcalidrawPlayer({
       });
     }
   }, [ttsSettings, ttsAvailability]); // Only log when these core settings change
+
+  // Phase 3: Timeline Layout Engine Initialization
+  useEffect(() => {
+    if (!enableTimelineLayout || mode !== 'timeline') {
+      return;
+    }
+
+    logger.debug("Initializing Phase 3 Timeline Layout Engine", {
+      enableTimelineLayout,
+      timelineEvents: timelineEvents.length,
+      canvasSize: canvasSize3,
+      layoutMode: layoutMode3,
+      enableSmartElements
+    });
+
+    // Initialize responsive region manager
+    regionManagerRef.current = createResponsiveRegionManager(canvasSize3);
+
+    // Initialize collision detector
+    collisionDetectorRef.current = createCollisionDetector({
+      gridSize: 200,
+      minSeparation: 20
+    });
+
+    // Initialize smart element factory
+    if (enableSmartElements) {
+      smartElementFactoryRef.current = createSmartElementFactory({
+        adaptToContent: true,
+        useProgressiveComplexity: true,
+        enableContextualMetaphors: true,
+        responsiveDesign: layoutMode3 === 'responsive',
+        maxComplexityLevel: 'advanced',
+        colorScheme: 'default',
+        styleConsistency: true
+      });
+    }
+
+    // Initialize timeline layout engine
+    if (regionManagerRef.current && collisionDetectorRef.current) {
+      timelineEngineRef.current = createTimelineLayoutEngine(
+        regionManagerRef.current,
+        collisionDetectorRef.current,
+        {
+          enableAnimations: true,
+          defaultTransitionDuration: 500,
+          maxSeekCacheSize: 50,
+          precacheRadius: 5000,
+          performanceMode: 'auto'
+        }
+      );
+
+      // Load timeline events
+      if (timelineEvents.length > 0) {
+        timelineEngineRef.current.loadTimelineEvents(timelineEvents);
+        logger.debug(`Loaded ${timelineEvents.length} timeline events`);
+      }
+
+      setTimelineEngineReady(true);
+      logger.debug("Timeline Layout Engine initialized successfully");
+    }
+
+    // Cleanup on unmount or dependency change
+    return () => {
+      if (timelineEngineRef.current) {
+        timelineEngineRef.current.clearCache();
+      }
+      setTimelineEngineReady(false);
+      logger.debug("Timeline Layout Engine cleaned up");
+    };
+  }, [enableTimelineLayout, mode, timelineEvents, canvasSize3, layoutMode3, enableSmartElements]);
+  
+  // Phase 4: Timeline Control & Playback Initialization
+  useEffect(() => {
+    if (!phase4Enabled || (mode !== 'phase4' && mode !== 'timeline')) {
+      return;
+    }
+
+    logger.debug("Initializing Phase 4 Timeline Control & Playback", {
+      phase4Enabled,
+      mode,
+      enableAdvancedSeek,
+      enableContentBuffering,
+      enableMemoryOptimization,
+      timelineEvents: timelineEvents.length
+    });
+
+    try {
+      // Initialize Memory Manager first
+      memoryManagerRef.current = new MemoryManager({
+        maxTotalMemory: 100 * 1024 * 1024, // 100MB
+        autoCleanup: { 
+          enabled: enableMemoryOptimization !== false,
+          interval: 30000,
+          minInterval: 5000,
+          aggressiveThreshold: 0.95
+        },
+        monitoring: { 
+          enabled: true,
+          updateInterval: 1000,
+          trackAccessPatterns: true
+        }
+      });
+
+      // Initialize Chunk Coordinator
+      chunkCoordinatorRef.current = new ChunkCoordinator({
+        maxCachedChunks: 10,
+        validateOnAdd: true,
+        autoProcess: true,
+        performance: {
+          enablePreloading: enableContentBuffering !== false,
+          enableBackgroundProcessing: true,
+          memoryCleanupThreshold: 50 * 1024 * 1024 // 50MB
+        }
+      });
+
+      // Initialize Event Scheduler
+      eventSchedulerRef.current = new TimelineEventScheduler({
+        maxConcurrentEvents: 5,
+        lookaheadTime: bufferSize || 1000,
+        preciseTimingMode: enableAdvancedSeek !== false,
+        performance: {
+          enableMetrics: true,
+          executionTimeout: 5000,
+          cleanupInterval: 30000
+        }
+      });
+
+      // Initialize Event Executor
+      eventExecutorRef.current = new EventExecutor({
+        animationSpeedMultiplier: 1.0,
+        enableCollisionDetection: true,
+        optimizationLevel: 'medium'
+      }, {
+        crossfadeDuration: 200,
+        voiceSettings: {
+          speed: effectiveSpeechRate,
+          volume: effectiveSpeechVolume,
+          pitch: 1.0
+        }
+      });
+
+      // Initialize Seek Optimizer
+      if (enableAdvancedSeek !== false) {
+        seekOptimizerRef.current = new SeekOptimizer({
+          targetResponseTime: seekResponseTarget || 100,
+          enableCaching: true,
+          cacheSize: 50,
+          keyframeInterval: 5000,
+          performance: {
+            enableFastMode: false,
+            maxEventsPerFrame: 20,
+            useSimplifiedLayout: false,
+            skipAnimations: false
+          }
+        });
+      }
+
+      // Initialize Content Processor
+      if (enableContentBuffering !== false && chunkCoordinatorRef.current && eventSchedulerRef.current) {
+        contentProcessorRef.current = new TimelineContentProcessor(
+          chunkCoordinatorRef.current,
+          eventSchedulerRef.current,
+          {
+            bufferStrategy: {
+              targetBufferSize: bufferSize || 15000,
+              minBufferSize: 5000,
+              maxBufferSize: 60000,
+              refillThreshold: 0.3,
+              adaptiveBuffering: true
+            },
+            performance: {
+              enableBackgroundProcessing: true,
+              maxConcurrentProcessing: 2,
+              eventBatchSize: 10,
+              processingTimeout: 10000
+            }
+          }
+        );
+      }
+
+      // Initialize Transition Animator
+      transitionAnimatorRef.current = new TransitionAnimator({
+        defaultDuration: 300,
+        defaultEasing: 'ease_out',
+        performance: {
+          targetFPS: 60,
+          adaptiveQuality: true,
+          frameBudget: 16.67,
+          enableGPU: true
+        }
+      });
+
+      // Set up event handlers for Phase 4 components
+      if (eventSchedulerRef.current) {
+        eventSchedulerRef.current.on('playbackStarted', () => {
+          setPlaybackState('playing');
+          onPlaybackStateChange?.('playing');
+        });
+
+        eventSchedulerRef.current.on('playbackPaused', () => {
+          setPlaybackState('paused');
+          onPlaybackStateChange?.('paused');
+        });
+
+        eventSchedulerRef.current.on('playbackStopped', () => {
+          setPlaybackState('stopped');
+          onPlaybackStateChange?.('stopped');
+        });
+
+        eventSchedulerRef.current.on('seekCompleted', (data: any) => {
+          setCurrentPosition(data.position);
+          setSeekPerformance(prev => ({
+            averageSeekTime: (prev.averageSeekTime * prev.totalSeeks + data.seekTime) / (prev.totalSeeks + 1),
+            totalSeeks: prev.totalSeeks + 1
+          }));
+          onSeekComplete?.(data);
+        });
+      }
+
+      // Set up event executor handlers
+      if (eventExecutorRef.current) {
+        eventExecutorRef.current.on('visualExecuted', (data: any) => {
+          // Update Excalidraw with new visual elements
+          if (excalidrawAPI && data.instruction && data.instruction.action === 'create') {
+            try {
+              // This would integrate with the actual element creation logic
+              logger.debug('Visual element executed', data);
+            } catch (error) {
+              logger.error('Error executing visual element', error);
+            }
+          }
+        });
+
+        eventExecutorRef.current.on('narrationExecuted', (data: any) => {
+          // Handle audio narration execution
+          const narrationText = data.audioCue?.text;
+          if (narrationText) {
+            setCurrentNarrationText(narrationText);
+          }
+        });
+
+        eventExecutorRef.current.on('transitionExecuted', (data: any) => {
+          // Handle canvas transitions
+          if (data.result.success && data.result.finalViewport) {
+            const viewport = data.result.finalViewport;
+            if (excalidrawAPI) {
+              excalidrawAPI.updateScene({
+                appState: {
+                  scrollX: viewport.x,
+                  scrollY: viewport.y,
+                  zoom: { value: viewport.zoom }
+                }
+              });
+            }
+          }
+        });
+      }
+
+      // Set up content processor handlers
+      if (contentProcessorRef.current) {
+        contentProcessorRef.current.on('processingStarted', () => {
+          setProcessingState('processing');
+        });
+
+        contentProcessorRef.current.on('chunkProcessed', (data: any) => {
+          setBufferLevel(data.bufferLevel);
+        });
+
+        contentProcessorRef.current.on('bufferOptimized', (data: any) => {
+          logger.debug('Buffer optimized', data);
+        });
+      }
+
+      // Load timeline events if available
+      if (timelineEvents.length > 0) {
+        eventSchedulerRef.current?.loadEvents(timelineEvents);
+        seekOptimizerRef.current?.loadEvents(timelineEvents);
+        
+        // Calculate total duration
+        const duration = Math.max(...timelineEvents.map(e => e.timestamp + e.duration));
+        setTotalDuration(duration);
+        
+        logger.debug(`Loaded ${timelineEvents.length} timeline events for Phase 4`, {
+          totalDuration: duration
+        });
+      }
+
+      // Start content processing if enabled
+      if (contentProcessorRef.current) {
+        contentProcessorRef.current.startProcessing().catch(error => {
+          logger.error('Error starting content processing', error);
+        });
+      }
+
+      logger.debug("Phase 4 Timeline Control & Playback initialized successfully");
+
+    } catch (error) {
+      logger.error("Error initializing Phase 4 components", error);
+    }
+
+    // Cleanup on unmount or dependency change
+    return () => {
+      logger.debug("Cleaning up Phase 4 components");
+      
+      // Shutdown all Phase 4 components
+      eventSchedulerRef.current?.shutdown();
+      eventExecutorRef.current?.resetMetrics();
+      contentProcessorRef.current?.shutdown();
+      seekOptimizerRef.current?.shutdown();
+      transitionAnimatorRef.current?.shutdown();
+      memoryManagerRef.current?.shutdown();
+      chunkCoordinatorRef.current?.shutdown();
+      
+      // Reset state
+      setPlaybackState('stopped');
+      setProcessingState('idle');
+      setCurrentPosition(0);
+      setBufferLevel(0);
+      
+      logger.debug("Phase 4 cleanup completed");
+    };
+  }, [
+    phase4Enabled, mode, enableAdvancedSeek, enableContentBuffering, enableMemoryOptimization,
+    seekResponseTarget, bufferSize, timelineEvents, effectiveSpeechRate, effectiveSpeechVolume,
+    excalidrawAPI, onPlaybackStateChange, onSeekComplete
+  ]);
   
   // Voice selection helper with validation and fallback
   const getSelectedVoice = useCallback((): SpeechSynthesisVoice | null => {
@@ -383,13 +856,45 @@ export default function ExcalidrawPlayer({
     if (mode === 'flexible') {
       return steps;
     }
+    
+    if ((mode === 'timeline' || mode === 'phase4') && timelineEvents && timelineEvents.length > 0) {
+      // Convert timeline events to lesson steps
+      logger.debug("📋 Converting timeline events to steps:", {
+        mode,
+        timelineEventsCount: timelineEvents.length,
+        firstEvent: timelineEvents[0] ? {
+          id: timelineEvents[0].id,
+          timestamp: timelineEvents[0].timestamp,
+          type: timelineEvents[0].type,
+          hasContent: !!timelineEvents[0].content
+        } : null
+      });
+      
+      return timelineEvents.map((event, index) => ({
+        step_number: index + 1,
+        title: `Timeline Event ${index + 1}`,
+        content: typeof event.content === 'string' ? event.content : JSON.stringify(event.content),
+        narration: typeof event.content === 'string' ? event.content : 
+                  (event.content as any)?.audio?.text || 
+                  (event.content as any)?.visual?.properties?.text || 
+                  'Timeline event content',
+        elements: [], // Elements will be generated by timeline engine
+        duration: event.duration
+      }));
+    }
+    
+    logger.debug("📋 Using legacy lesson script:", {
+      mode,
+      lessonScriptLength: lessonScriptRef.current.length
+    });
+    
     return lessonScriptRef.current.map((slide, index) => ({
       step_number: index + 1,
       title: slide.title,
       narration: slide.narration,
       elements: slide.elements,
     }));
-  }, [mode, steps]);
+  }, [mode, steps, timelineEvents]);
 
   // Function to generate basic Excalidraw elements from lesson step data
   const generateElementsFromStep = useCallback((step: FlexibleLessonStep, stepIndex: number): ExcalidrawElement[] => {
@@ -933,6 +1438,279 @@ export default function ExcalidrawPlayer({
     }
   }, [audioCache]);
 
+  // Phase 3: Timeline Navigation Methods
+  const seekToTimestamp = useCallback(async (timestamp: number) => {
+    console.log(`🔍 Timeline Engine Debug:`);
+    console.log(`  - timelineEngineReady: ${timelineEngineReady}`);
+    console.log(`  - timelineEngineRef.current exists: ${!!timelineEngineRef.current}`);
+    console.log(`  - mode: ${mode}`);
+    console.log(`  - enableTimelineLayout: ${enableTimelineLayout}`);
+    
+    if (!timelineEngineReady || !timelineEngineRef.current) {
+      logger.warn("Timeline seek attempted but engine not ready");
+      console.warn(`🚫 Seek blocked - Engine ready: ${timelineEngineReady}, Engine exists: ${!!timelineEngineRef.current}`);
+      return;
+    }
+
+    logger.debug(`Timeline seek to timestamp: ${timestamp}ms`);
+    
+    // Check if timeline engine has any events loaded
+    const currentTimeline = timelineEngineRef.current.getKeyframes();
+    console.log(`📅 Timeline engine keyframes:`, currentTimeline);
+    console.log(`🕰️ Timeline engine duration:`, timelineEngineRef.current.getTimelineDuration());
+
+    try {
+      const seekResult = timelineEngineRef.current.seekToTimestamp(timestamp);
+      
+      console.log(`📊 Timeline seek result:`, {
+        timestamp: timestamp,
+        elementsFound: seekResult.elements.length,
+        transitions: seekResult.transitions.length,
+        seekTime: seekResult.seekTime
+      });
+      logger.debug(`Timeline seek result: ${seekResult.elements.length} elements found`);
+      
+      if (seekResult.elements.length > 0) {
+        // Update Excalidraw with new elements
+        console.log(`🎨 Updating scene with ${seekResult.elements.length} elements`);
+        logger.debug('Updating Excalidraw scene with timeline elements');
+        debouncedUpdateScene(seekResult.elements, [], 50);
+        
+        // Update current timestamp
+        setCurrentTimestamp(timestamp);
+        
+        // Trigger callback
+        onTimelineSeek?.(timestamp);
+        
+        logger.debug(`Timeline seek completed in ${seekResult.seekTime}ms with ${seekResult.elements.length} elements`);
+      } else {
+        logger.warn(`No elements found for timestamp ${timestamp}ms`);
+      }
+    } catch (error) {
+      logger.error("Timeline seek failed:", error);
+    }
+  }, [timelineEngineReady, debouncedUpdateScene, onTimelineSeek]);
+
+  const getTimelineDuration = useCallback(() => {
+    return timelineEngineRef.current?.getTimelineDuration() || 0;
+  }, []);
+
+  const getTimelineKeyframes = useCallback(() => {
+    return timelineEngineRef.current?.getKeyframes() || [];
+  }, []);
+
+  // Add missing timeline methods
+  const updateTimelineData = useCallback((timelineEvents: TimelineEvent[]) => {
+    if (timelineEngineRef.current) {
+      timelineEngineRef.current.updateTimelineData(timelineEvents);
+      logger.debug(`Timeline data updated with ${timelineEvents.length} events`);
+      
+      // Log the events for debugging
+      timelineEvents.forEach((event, index) => {
+        logger.debug(`Event ${index}: timestamp=${event.timestamp}, duration=${event.duration}, content="${typeof event.content === 'string' ? event.content.substring(0, 50) : 'object'}"`);
+      });
+    }
+  }, []);
+
+  const playTimeline = useCallback(() => {
+    setIsPlaying(true);
+    logger.debug('Timeline playback started');
+  }, []);
+
+  const pauseTimeline = useCallback(() => {
+    setIsPlaying(false);
+    logger.debug('Timeline playback paused');
+  }, []);
+
+  // Phase 4 Enhanced Timeline Methods
+  const seekToPosition = useCallback(async (position: number, options: { smooth?: boolean; immediate?: boolean } = {}) => {
+    logger.debug('Seeking to position with Phase 4', { position, options });
+    
+    try {
+      if (phase4Enabled && seekOptimizerRef.current && eventSchedulerRef.current) {
+        // Use Phase 4 advanced seeking
+        const seekResult = await seekOptimizerRef.current.seekToPosition(position);
+        
+        if (seekResult.success) {
+          // Apply seek result to UI
+          setCurrentPosition(position);
+          setCurrentTimestamp(position);
+          
+          // Update Excalidraw with new layout state
+          if (excalidrawAPI && seekResult.visibleElements.length > 0) {
+            // Convert visible elements to Excalidraw elements
+            // This would integrate with the actual element creation from Phase 3
+            logger.debug('Applying seek result to canvas', {
+              visibleElements: seekResult.visibleElements.length,
+              activeEvents: seekResult.activeEvents.length
+            });
+          }
+          
+          // Execute any immediate events
+          if (eventExecutorRef.current && seekResult.eventsToExecute.length > 0) {
+            const context = {
+              currentPosition: position,
+              playbackSpeed: playbackSpeed,
+              canvasState: {
+                viewport: seekResult.layoutState.viewport,
+                activeElements: Array.from(seekResult.layoutState.elements.keys()),
+                dimensions: canvasSize3
+              },
+              audioState: {
+                currentAudio: seekResult.audioState.currentAudio?.id,
+                audioQueue: seekResult.audioState.queue.map(q => q.id),
+                volume: seekResult.audioState.volume
+              },
+              performanceMode: {
+                reducedAnimations: false,
+                skipEffects: false,
+                maxConcurrentOps: 5
+              }
+            };
+            
+            for (const event of seekResult.eventsToExecute) {
+              await eventExecutorRef.current.executeEvent(event, context);
+            }
+          }
+          
+          onTimelineSeek?.(position);
+          logger.debug('Phase 4 seek completed successfully', {
+            position,
+            seekTime: seekResult.seekTime,
+            eventsExecuted: seekResult.eventsToExecute.length
+          });
+        } else {
+          logger.error('Phase 4 seek failed', { error: seekResult.error });
+          // Fallback to basic seek
+          seekToTimestamp(position);
+        }
+      } else {
+        // Fallback to Phase 3 or basic seek
+        seekToTimestamp(position);
+      }
+    } catch (error) {
+      logger.error('Error in Phase 4 seek', error);
+      // Fallback to basic seek
+      seekToTimestamp(position);
+    }
+  }, [phase4Enabled, playbackSpeed, canvasSize3, seekToTimestamp, onTimelineSeek, excalidrawAPI]);
+
+  const setPlaybackSpeedMethod = useCallback((speed: number) => {
+    if (speed <= 0 || speed > 4) {
+      logger.warn('Invalid playback speed', { speed });
+      return;
+    }
+    
+    setPlaybackSpeedState(speed);
+    
+    if (phase4Enabled && eventSchedulerRef.current) {
+      eventSchedulerRef.current.setPlaybackSpeed(speed);
+    }
+    
+    logger.debug('Playback speed changed', { speed });
+  }, [phase4Enabled]);
+
+  const getPlaybackMetrics = useCallback(() => {
+    if (phase4Enabled && eventSchedulerRef.current) {
+      return eventSchedulerRef.current.getMetrics();
+    }
+    
+    return {
+      currentPosition,
+      totalDuration,
+      state: playbackState,
+      playbackSpeed,
+      bufferLevel
+    };
+  }, [phase4Enabled, currentPosition, totalDuration, playbackState, playbackSpeed, bufferLevel]);
+
+  const getSeekPerformanceMetrics = useCallback(() => {
+    if (phase4Enabled && seekOptimizerRef.current) {
+      return seekOptimizerRef.current.getPerformanceMetrics();
+    }
+    
+    return seekPerformance;
+  }, [phase4Enabled, seekPerformance]);
+
+  const optimizeMemory = useCallback(async () => {
+    if (phase4Enabled && memoryManagerRef.current) {
+      try {
+        await memoryManagerRef.current.optimize();
+        logger.debug('Memory optimization completed');
+      } catch (error) {
+        logger.error('Error optimizing memory', error);
+      }
+    }
+    
+    // Also optimize seek cache if available
+    if (seekOptimizerRef.current) {
+      seekOptimizerRef.current.optimizeCache();
+    }
+  }, [phase4Enabled]);
+
+  const resetTimeline = useCallback(() => {
+    logger.debug('Resetting timeline');
+    
+    // Reset Phase 4 components if enabled
+    if (phase4Enabled) {
+      eventSchedulerRef.current?.stop();
+      contentProcessorRef.current?.stopProcessing();
+      seekOptimizerRef.current?.clearCache();
+      transitionAnimatorRef.current?.cancelAll();
+      memoryManagerRef.current?.clearAll();
+    }
+    
+    // Reset state
+    setCurrentPosition(0);
+    setCurrentTimestamp(0);
+    setPlaybackState('stopped');
+    setProcessingState('idle');
+    setBufferLevel(0);
+    setIsPlaying(false);
+    
+    logger.debug('Timeline reset completed');
+  }, [phase4Enabled]);
+
+  // Enhanced timeline playback methods for Phase 4
+  const enhancedPlayTimeline = useCallback(() => {
+    if (phase4Enabled && eventSchedulerRef.current) {
+      eventSchedulerRef.current.play();
+      setIsPlaying(true);
+    } else {
+      playTimeline();
+    }
+  }, [phase4Enabled, playTimeline]);
+
+  const enhancedPauseTimeline = useCallback(() => {
+    if (phase4Enabled && eventSchedulerRef.current) {
+      eventSchedulerRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      pauseTimeline();
+    }
+  }, [phase4Enabled, pauseTimeline]);
+
+  // Expose methods via useImperativeHandle
+  useImperativeHandle(ref, () => ({
+    // Phase 3 Timeline methods
+    updateTimelineData,
+    seekToTimestamp,
+    playTimeline: enhancedPlayTimeline,
+    pauseTimeline: enhancedPauseTimeline,
+    
+    // Phase 4 Enhanced Timeline methods
+    seekToPosition,
+    setPlaybackSpeed: setPlaybackSpeedMethod,
+    getPlaybackMetrics,
+    getSeekPerformanceMetrics,
+    optimizeMemory,
+    resetTimeline
+  }), [
+    updateTimelineData, seekToTimestamp, enhancedPlayTimeline, enhancedPauseTimeline,
+    seekToPosition, setPlaybackSpeedMethod, getPlaybackMetrics, getSeekPerformanceMetrics,
+    optimizeMemory, resetTimeline
+  ]);
+
   const playNextStep = useCallback(() => {
     const currentSteps = getCurrentSteps();
     logger.debug("PlayNextStep called:", {
@@ -1139,13 +1917,23 @@ export default function ExcalidrawPlayer({
         }, 2000);
       }
     } else {
+      logger.debug("🔇 No TTS Playback - Fallback Mode:", {
+        hasNarrationText: !!narrationText,
+        narrationLength: narrationText?.length || 0,
+        isMuted,
+        reasonForFallback: !narrationText ? 'No narration text' : isMuted ? 'Audio muted' : 'Unknown'
+      });
+      
       if (!narrationText) {
         logger.warn("No narration text found for step", currentStepIndex);
       }
       if (isMuted) {
         logger.debug("Audio is muted, advancing to next step");
       }
+      
+      logger.debug("⏰ Setting timeout to advance to next step in 2 seconds");
       setTimeout(() => {
+        logger.debug("➡️ Timeout fired - Advancing to next step from", currentStepIndex);
         setCurrentStepIndex((prev) => prev + 1);
       }, 2000);
     }
@@ -1156,6 +1944,26 @@ export default function ExcalidrawPlayer({
     usePiperTTS, useBrowserTTS, streamingTTSEnabled, enableStreamingTTS, ttsAudio, streamingTTS,
     audioCache, cleanupOldAudio, preGenerateUpcomingSlides, ttsAvailability, currentVoiceId
   ]);
+
+  // Enhanced step navigation with timeline support
+  const playNextStepWithTimeline = useCallback(() => {
+    if (mode === 'timeline' && timelineEngineReady) {
+      // Calculate next timestamp based on timeline events
+      const keyframes = getTimelineKeyframes();
+      const currentIndex = keyframes.findIndex(k => k > currentTimestamp);
+      
+      if (currentIndex >= 0 && currentIndex < keyframes.length) {
+        seekToTimestamp(keyframes[currentIndex]);
+      } else {
+        // End of timeline
+        setIsPlaying(false);
+        onComplete?.();
+      }
+    } else {
+      // Use existing step-based navigation
+      playNextStep();
+    }
+  }, [mode, timelineEngineReady, currentTimestamp, getTimelineKeyframes, seekToTimestamp, playNextStep, onComplete]);
 
   const handleLessonChange = useCallback(async (lessonName: string) => {
     if (mode !== 'legacy') return;
@@ -1232,7 +2040,16 @@ export default function ExcalidrawPlayer({
       isPlaying,
       currentStepIndex,
       totalSteps: currentSteps.length,
-      hasSteps: currentSteps.length > 0
+      hasSteps: currentSteps.length > 0,
+      mode,
+      stepsFromProps: steps?.length || 0,
+      timelineEventsCount: timelineEvents?.length || 0,
+      currentStepsPreview: currentSteps.slice(0, 2).map(step => ({
+        hasNarration: !!step?.narration,
+        hasVisualElements: !!step?.visual_elements,
+        hasInstructions: !!step?.content,
+        stepKeys: Object.keys(step || {})
+      }))
     });
     
     if (isPlaying) {
@@ -1366,23 +2183,50 @@ export default function ExcalidrawPlayer({
 
   // Handle step progression - simplified to avoid dependency loops
   useEffect(() => {
+    logger.debug("🎯 Step Progression useEffect:", {
+      isPlaying,
+      currentStepIndex,
+      hasExcalidrawAPI: !!excalidrawAPI
+    });
+    
     if (!isPlaying) return;
     
     logger.debug("Step progression: Starting timer for step", currentStepIndex);
     
     const timer = setTimeout(() => {
+      logger.debug("🔄 Step Progression Timer Fired:", {
+        isStillPlaying: isPlaying,
+        hasAPI: !!excalidrawAPI,
+        currentStepIndex
+      });
+      
       if (!isPlaying) {
         logger.debug("Step progression: No longer playing, aborting");
         return;
       }
       
       if (!excalidrawAPI) {
-        logger.warn("Step progression: ExcalidrawAPI not ready, waiting...");
-        // Don't pause, just wait for API to be ready
+        logger.warn("Step progression: ExcalidrawAPI not ready, retrying in 500ms...");
+        // Don't pause, retry after a short delay
+        setTimeout(() => {
+          if (isPlaying) {
+            logger.debug("🔄 Retrying step progression after ExcalidrawAPI delay");
+            const currentSteps = getCurrentSteps();
+            if (currentStepIndex < currentSteps.length) {
+              playNextStep();
+            }
+          }
+        }, 500);
         return;
       }
       
       const currentSteps = getCurrentSteps();
+      logger.debug("📊 Current Steps Check:", {
+        totalSteps: currentSteps.length,
+        currentIndex: currentStepIndex,
+        canProceed: currentStepIndex < currentSteps.length
+      });
+      
       if (currentStepIndex >= currentSteps.length) {
         logger.debug("Step progression: Lesson completed");
         setIsPlaying(false);
@@ -1390,7 +2234,7 @@ export default function ExcalidrawPlayer({
         return;
       }
       
-      logger.debug("Step progression: Executing step", currentStepIndex);
+      logger.debug("🎥 Step progression: Executing step", currentStepIndex);
       playNextStep();
     }, 200);
     
@@ -1416,16 +2260,6 @@ export default function ExcalidrawPlayer({
     if (currentStepIndex >= currentSteps.length) return "🔄 Restart";
     return "▶️ Resume";
   };
-
-  const currentSteps = getCurrentSteps();
-
-  if (currentSteps.length === 0) {
-    return (
-      <div style={{ height: "600px", width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <p style={{ color: "#666", fontSize: "18px" }}>No lesson steps available</p>
-      </div>
-    );
-  }
 
   // Handle fullscreen functionality
   const toggleFullscreen = useCallback(() => {
@@ -1622,6 +2456,18 @@ export default function ExcalidrawPlayer({
     }
   }, [useSettingsVoice]);
 
+  // Get current steps after all hooks are declared
+  const currentSteps = getCurrentSteps();
+
+  // Early return for empty steps to avoid hook order issues
+  if (currentSteps.length === 0) {
+    return (
+      <div style={{ height: "600px", width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <p style={{ color: "#666", fontSize: "18px" }}>No lesson steps available</p>
+      </div>
+    );
+  }
+
   return (
     <div 
       className={cn(
@@ -1665,6 +2511,7 @@ export default function ExcalidrawPlayer({
       <div ref={canvasContainerRef} className="w-full h-full relative">
         <Excalidraw
           excalidrawAPI={(api) => {
+            logger.debug("🎨 ExcalidrawAPI initialized", { hasAPI: !!api });
             setExcalidrawAPI(api);
           }}
           initialData={{
@@ -1779,11 +2626,21 @@ export default function ExcalidrawPlayer({
               {/* Play/Pause Button */}
               <button
                 onClick={togglePlayPause}
-                disabled={isLoading}
-                className="bg-white text-black hover:bg-gray-200 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-full p-3 transition-all hover:scale-105 shadow-lg border-none flex items-center justify-center"
-                title={isPlaying ? "Pause" : "Play"}
+                disabled={isLoading || !excalidrawAPI}
+                className={`rounded-full p-3 transition-all shadow-lg border-none flex items-center justify-center ${
+                  !excalidrawAPI 
+                    ? 'bg-yellow-500 text-black cursor-wait' 
+                    : isLoading 
+                      ? 'bg-gray-500 text-white cursor-not-allowed'
+                      : 'bg-white text-black hover:bg-gray-200 hover:scale-105'
+                }`}
+                title={!excalidrawAPI ? "Loading canvas..." : isPlaying ? "Pause" : "Play"}
               >
-                {isPlaying ? (
+                {!excalidrawAPI ? (
+                  <svg width="24" height="24" fill="currentColor" viewBox="0 0 20 20" className="animate-spin">
+                    <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                  </svg>
+                ) : isPlaying ? (
                   <svg width="24" height="24" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 002 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
                   </svg>
@@ -1864,4 +2721,8 @@ export default function ExcalidrawPlayer({
       )}
     </div>
   );
-}
+});
+
+ExcalidrawPlayer.displayName = 'ExcalidrawPlayer';
+
+export default ExcalidrawPlayer;

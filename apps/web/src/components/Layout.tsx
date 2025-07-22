@@ -238,7 +238,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
 
         {/* Page Content */}
-        <main className="flex-1 bg-background overflow-hidden">{children}</main>
+        <main className="flex-1 bg-background overflow-y-auto">{children}</main>
       </div>
 
       {/* Delete Confirmation Modal */}

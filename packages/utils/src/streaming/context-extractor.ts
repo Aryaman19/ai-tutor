@@ -8,15 +8,16 @@
 import type {
   StreamingTimelineChunk,
   ChunkContext,
-} from '@ai-tutor/types/timeline/StreamingTimelineChunk';
+} from '@ai-tutor/types';
 
 import type {
   TimelineEvent,
   VisualInstruction,
   LayoutHint,
-} from '@ai-tutor/types/timeline/TimelineEvent';
+} from '@ai-tutor/types';
 
-import { createUtilLogger } from '@ai-tutor/utils';
+import { createUtilLogger } from '../logger';
+import { asContentObject, asString } from '../type-utils';
 
 const logger = createUtilLogger('ContextExtractor');
 
@@ -285,7 +286,7 @@ export class ContextExtractor {
       for (const event of chunk.events) {
         if (!event.content) continue;
         
-        const eventEntities = this.extractEntitiesFromText(event.content, event.timestamp || 0);
+        const eventEntities = this.extractEntitiesFromText(asString(event.content), event.timestamp || 0);
         
         for (const entity of eventEntities) {
           const key = `${entity.type}:${entity.name}`;
@@ -295,7 +296,7 @@ export class ContextExtractor {
             const existing = entityMap.get(key)!;
             existing.frequency += 1;
             existing.lastOccurrence = event.timestamp || 0;
-            existing.contexts.push(event.content);
+            existing.contexts.push(asString(event.content));
             
             // Update importance based on frequency and recency
             existing.importance = this.calculateEntityImportance(existing);
@@ -349,7 +350,7 @@ export class ContextExtractor {
       for (const event of chunk.events) {
         if (!event.content) continue;
         
-        const entities = this.extractEntitiesFromText(event.content, event.timestamp || 0);
+        const entities = this.extractEntitiesFromText(asString(event.content), event.timestamp || 0);
         
         for (const entity of entities) {
           const key = `${entity.type}:${entity.name}`;
@@ -358,7 +359,7 @@ export class ContextExtractor {
             const existing = entityMap.get(key)!;
             existing.frequency += 1;
             existing.lastOccurrence = event.timestamp || 0;
-            existing.contexts.push(event.content);
+            existing.contexts.push(asString(event.content));
             existing.importance = this.calculateEntityImportance(existing);
           } else {
             entityMap.set(key, entity);
@@ -461,26 +462,31 @@ export class ContextExtractor {
     
     for (const chunk of chunks) {
       for (const event of chunk.events) {
-        if (event.visualInstruction) {
-          activeElements.push(event.visualInstruction);
+        // Handle both legacy visualInstruction and new content structure
+        const content = asContentObject(event.content);
+        const visual = content.visual || (typeof event.visualInstruction === 'object' ? event.visualInstruction : null);
+        
+        if (visual) {
+          activeElements.push(visual);
           
           // Extract visual themes
-          if (event.visualInstruction.elementType) {
-            visualThemes.add(event.visualInstruction.elementType);
+          if (visual.elementType) {
+            visualThemes.add(visual.elementType);
           }
           
           // Track layout patterns
-          if (event.layoutHints) {
-            layoutPatterns.push(event.layoutHints);
+          if (event.layoutHints && event.layoutHints.length > 0) {
+            const firstHint = event.layoutHints[0];
+            layoutPatterns.push(firstHint);
             
-            if (event.layoutHints.preferredRegion) {
-              availableRegions.add(event.layoutHints.preferredRegion);
+            if (firstHint.preferredRegion) {
+              availableRegions.add(firstHint.preferredRegion);
             }
           }
           
           // Extract color information (if available in properties)
-          if (event.visualInstruction.properties?.color) {
-            colorSchemes.add(event.visualInstruction.properties.color);
+          if (visual.properties?.color) {
+            colorSchemes.add(visual.properties.color);
           }
         }
       }
@@ -669,7 +675,7 @@ export class ContextExtractor {
   private analyzeTone(chunks: StreamingTimelineChunk[]): string {
     // Simple tone analysis based on content patterns
     const allContent = chunks
-      .flatMap(chunk => chunk.events.map(event => event.content || ''))
+      .flatMap(chunk => chunk.events.map(event => asString(event.content) || ''))
       .join(' ');
     
     if (allContent.includes('!')) return 'enthusiastic';
@@ -704,7 +710,7 @@ export class ContextExtractor {
     const chunkFactor = Math.min(1.0, chunks.length / 3);
     const entityFactor = Math.min(1.0, entities.length / 10);
     const contentFactor = chunks.some(chunk => 
-      chunk.events.some(event => event.content && event.content.length > 50)
+      chunk.events.some(event => event.content && asString(event.content).length > 50)
     ) ? 1.0 : 0.5;
     
     return (chunkFactor + entityFactor + contentFactor) / 3;

@@ -930,5 +930,538 @@ export function makeFlowchart(options: {
 
 // Aliases for POC compatibility
 export { makeLabeledArrowPOC as makeLabeledArrow };
+
+// Phase 3: Timeline-Aware Element Creation
+// Extends existing element creators with timeline positioning and semantic intelligence
+
+/**
+ * Create timeline-aware text elements with automatic positioning and sizing
+ */
+export function makeTimelineText(options: {
+  content: string;
+  position: { x: number; y: number };
+  semanticType?: 'definition' | 'process' | 'comparison' | 'example' | 'list' | 'concept_map' | 'formula' | 'story';
+  timestamp?: number;
+  complexity?: 'simple' | 'medium' | 'complex';
+  canvasSize?: { width: number; height: number };
+}): ExcalidrawElement {
+  const { content, position, semanticType = 'definition', complexity = 'medium', canvasSize } = options;
+  
+  // Calculate optimal font size based on semantic type and complexity
+  let fontSize = 16;
+  if (semanticType === 'definition' || semanticType === 'formula') fontSize = 18;
+  if (semanticType === 'story' || semanticType === 'example') fontSize = 14;
+  if (complexity === 'simple') fontSize += 2;
+  if (complexity === 'complex') fontSize -= 2;
+  
+  // Calculate responsive width
+  const baseWidth = Math.min(400, (canvasSize?.width || 1200) * 0.4);
+  const textWidth = Math.max(200, Math.min(baseWidth, content.length * 8));
+  const textHeight = Math.ceil(content.length / (textWidth / fontSize)) * (fontSize + 4) + 20;
+
+  return makeText({
+    x: position.x,
+    y: position.y,
+    text: content,
+    width: textWidth,
+    height: textHeight,
+    fontSize,
+    fontFamily: semanticType === 'formula' ? FONT_FAMILIES.CASCADIA : FONT_FAMILIES.VIRGIL,
+    textAlign: semanticType === 'definition' ? 'center' : 'left',
+    color: getSemanticColor(semanticType),
+  });
+}
+
+/**
+ * Create timeline-aware process flow elements
+ */
+export function makeTimelineProcessFlow(options: {
+  steps: string[];
+  startPosition: { x: number; y: number };
+  direction: 'horizontal' | 'vertical';
+  timestamp?: number;
+  animated?: boolean;
+  canvasSize?: { width: number; height: number };
+}): ExcalidrawElement[] {
+  const { steps, startPosition, direction, animated = true, canvasSize } = options;
+  const elements: ExcalidrawElement[] = [];
+  
+  const stepWidth = Math.min(150, (canvasSize?.width || 1200) / (steps.length + 1));
+  const stepHeight = 80;
+  const spacing = 40;
+  
+  steps.forEach((step, index) => {
+    const x = direction === 'horizontal' 
+      ? startPosition.x + index * (stepWidth + spacing)
+      : startPosition.x;
+    const y = direction === 'vertical'
+      ? startPosition.y + index * (stepHeight + spacing)
+      : startPosition.y;
+
+    // Step box
+    const stepBox = makeRectangle(x, y, stepWidth, stepHeight, {
+      backgroundColor: getProcessStepColor(index),
+      strokeColor: COLORS.primary,
+      strokeWidth: animated ? 3 : 2,
+    });
+    elements.push(stepBox);
+
+    // Step text
+    const stepText = makeText({
+      x: x + 10,
+      y: y + stepHeight/2 - 10,
+      text: step,
+      width: stepWidth - 20,
+      fontSize: 14,
+      textAlign: 'center',
+      color: COLORS.BLACK,
+    });
+    elements.push(stepText);
+
+    // Arrow to next step
+    if (index < steps.length - 1) {
+      const arrowX = direction === 'horizontal' ? x + stepWidth : x + stepWidth/2;
+      const arrowY = direction === 'vertical' ? y + stepHeight : y + stepHeight/2;
+      const arrowEndX = direction === 'horizontal' ? arrowX + spacing : arrowX;
+      const arrowEndY = direction === 'vertical' ? arrowY + spacing : arrowY;
+
+      const arrow = makeArrow(arrowX, arrowY, arrowEndX, arrowEndY, {
+        strokeColor: COLORS.primary,
+        strokeWidth: 2,
+        endArrowhead: 'arrow',
+      });
+      elements.push(arrow);
+    }
+  });
+
+  return elements;
+}
+
+/**
+ * Create timeline-aware comparison elements
+ */
+export function makeTimelineComparison(options: {
+  leftContent: string;
+  rightContent: string;
+  title?: string;
+  position: { x: number; y: number };
+  canvasSize?: { width: number; height: number };
+}): ExcalidrawElement[] {
+  const { leftContent, rightContent, title, position, canvasSize } = options;
+  const elements: ExcalidrawElement[] = [];
+  
+  const totalWidth = Math.min(600, (canvasSize?.width || 1200) * 0.6);
+  const columnWidth = (totalWidth - 40) / 2;
+  const height = 200;
+
+  // Title if provided
+  if (title) {
+    const titleText = makeText({
+      x: position.x,
+      y: position.y - 40,
+      text: title,
+      width: totalWidth,
+      fontSize: 20,
+      textAlign: 'center',
+      color: COLORS.BLACK,
+    });
+    elements.push(titleText);
+  }
+
+  // Left column
+  const leftBox = makeRectangle(position.x, position.y, columnWidth, height, {
+    backgroundColor: '#e3f2fd',
+    strokeColor: COLORS.primary,
+    strokeWidth: 2,
+  });
+  elements.push(leftBox);
+
+  const leftText = makeText({
+    x: position.x + 10,
+    y: position.y + 10,
+    text: leftContent,
+    width: columnWidth - 20,
+    height: height - 20,
+    fontSize: 14,
+    color: COLORS.BLACK,
+  });
+  elements.push(leftText);
+
+  // Right column
+  const rightBox = makeRectangle(position.x + columnWidth + 20, position.y, columnWidth, height, {
+    backgroundColor: '#fff3e0',
+    strokeColor: '#ff9800',
+    strokeWidth: 2,
+  });
+  elements.push(rightBox);
+
+  const rightText = makeText({
+    x: position.x + columnWidth + 30,
+    y: position.y + 10,
+    text: rightContent,
+    width: columnWidth - 20,
+    height: height - 20,
+    fontSize: 14,
+    color: COLORS.BLACK,
+  });
+  elements.push(rightText);
+
+  // VS indicator
+  const vsText = makeText({
+    x: position.x + columnWidth - 10,
+    y: position.y + height/2 - 15,
+    text: 'VS',
+    width: 40,
+    fontSize: 16,
+    textAlign: 'center',
+    color: '#666',
+  });
+  elements.push(vsText);
+
+  return elements;
+}
+
+/**
+ * Create timeline-aware concept map elements
+ */
+export function makeTimelineConceptMap(options: {
+  centralConcept: string;
+  relatedConcepts: string[];
+  position: { x: number; y: number };
+  radius?: number;
+  canvasSize?: { width: number; height: number };
+}): ExcalidrawElement[] {
+  const { centralConcept, relatedConcepts, position, canvasSize } = options;
+  const elements: ExcalidrawElement[] = [];
+  
+  const radius = Math.min(200, (canvasSize?.width || 1200) * 0.15);
+  const centerX = position.x + radius;
+  const centerY = position.y + radius;
+
+  // Central concept
+  const centralNode = makeEllipse(centerX - 80, centerY - 40, 160, 80, {
+    backgroundColor: '#e8f5e8',
+    strokeColor: '#4caf50',
+    strokeWidth: 3,
+  });
+  elements.push(centralNode);
+
+  const centralText = makeText({
+    x: centerX - 70,
+    y: centerY - 10,
+    text: centralConcept,
+    width: 140,
+    fontSize: 16,
+    textAlign: 'center',
+    color: COLORS.BLACK,
+  });
+  elements.push(centralText);
+
+  // Related concepts in circle
+  relatedConcepts.forEach((concept, index) => {
+    const angle = (index / relatedConcepts.length) * 2 * Math.PI;
+    const x = centerX + Math.cos(angle) * radius - 60;
+    const y = centerY + Math.sin(angle) * radius - 30;
+
+    // Concept node
+    const conceptNode = makeEllipse(x, y, 120, 60, {
+      backgroundColor: '#fff3e0',
+      strokeColor: '#ff9800',
+      strokeWidth: 2,
+    });
+    elements.push(conceptNode);
+
+    const conceptText = makeText({
+      x: x + 10,
+      y: y + 20,
+      text: concept,
+      width: 100,
+      fontSize: 12,
+      textAlign: 'center',
+      color: COLORS.BLACK,
+    });
+    elements.push(conceptText);
+
+    // Connection line
+    const lineStartX = centerX + Math.cos(angle) * 80;
+    const lineStartY = centerY + Math.sin(angle) * 40;
+    const lineEndX = x + 60;
+    const lineEndY = y + 30;
+
+    const connectionLine = {
+      ...makeBase(),
+      type: 'line',
+      x: Math.min(lineStartX, lineEndX),
+      y: Math.min(lineStartY, lineEndY),
+      width: Math.abs(lineEndX - lineStartX),
+      height: Math.abs(lineEndY - lineStartY),
+      strokeColor: '#4caf50',
+      strokeWidth: 1,
+      strokeStyle: 'dashed',
+      points: [[0, 0], [lineEndX - lineStartX, lineEndY - lineStartY]],
+      lastCommittedPoint: [lineEndX - lineStartX, lineEndY - lineStartY],
+    } as ExcalidrawElement;
+    
+    elements.push(connectionLine);
+  });
+
+  return elements;
+}
+
+/**
+ * Create timeline-aware callout elements
+ */
+export function makeTimelineCallout(options: {
+  content: string;
+  type: 'info' | 'warning' | 'success' | 'error';
+  position: { x: number; y: number };
+  width?: number;
+}): ExcalidrawElement[] {
+  const { content, type, position, width = 300 } = options;
+  const elements: ExcalidrawElement[] = [];
+  const height = Math.max(80, content.length / 40 * 20);
+  
+  const colors = {
+    info: { bg: '#e3f2fd', border: '#2196f3', icon: 'ℹ️' },
+    warning: { bg: '#fff3e0', border: '#ff9800', icon: '⚠️' },
+    success: { bg: '#e8f5e8', border: '#4caf50', icon: '✅' },
+    error: { bg: '#ffebee', border: '#f44336', icon: '❌' }
+  };
+
+  const colorScheme = colors[type];
+
+  // Callout box
+  const calloutBox = makeRectangle(position.x, position.y, width, height, {
+    backgroundColor: colorScheme.bg,
+    strokeColor: colorScheme.border,
+    strokeWidth: 2,
+  });
+  elements.push(calloutBox);
+
+  // Icon
+  const iconText = makeText({
+    x: position.x + 10,
+    y: position.y + 10,
+    text: colorScheme.icon,
+    fontSize: 20,
+    color: colorScheme.border,
+  });
+  elements.push(iconText);
+
+  // Content text
+  const contentText = makeText({
+    x: position.x + 40,
+    y: position.y + 15,
+    text: content,
+    width: width - 50,
+    height: height - 30,
+    fontSize: 14,
+    color: COLORS.BLACK,
+  });
+  elements.push(contentText);
+
+  return elements;
+}
+
+// Helper functions for timeline elements
+
+function getSemanticColor(semanticType: string): string {
+  const colorMap: Record<string, string> = {
+    definition: COLORS.primary,
+    process: '#1976d2',
+    comparison: '#ff9800',
+    example: '#4caf50',
+    list: '#9c27b0',
+    concept_map: '#4caf50',
+    formula: '#f44336',
+    story: '#795548'
+  };
+  return colorMap[semanticType] || COLORS.BLACK;
+}
+
+function getProcessStepColor(index: number): string {
+  const colors = ['#e3f2fd', '#f3e5f5', '#e8f5e8', '#fff3e0', '#ffebee'];
+  return colors[index % colors.length];
+}
+
+/**
+ * Enhanced element positioning with timeline context
+ */
+export function positionTimelineElements(
+  elements: ExcalidrawElement[],
+  options: {
+    canvasSize: { width: number; height: number };
+    semanticType?: string;
+    timestamp?: number;
+    avoidOverlap?: boolean;
+  }
+): ExcalidrawElement[] {
+  const { canvasSize, semanticType, avoidOverlap = true } = options;
+  
+  if (!avoidOverlap || elements.length <= 1) {
+    return elements;
+  }
+
+  // Simple collision avoidance
+  const positioned = [...elements];
+  const margin = 20;
+
+  for (let i = 1; i < positioned.length; i++) {
+    const current = positioned[i];
+    let hasCollision = true;
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (hasCollision && attempts < maxAttempts) {
+      hasCollision = false;
+
+      for (let j = 0; j < i; j++) {
+        const previous = positioned[j];
+        
+        if (elementsOverlap(current, previous, margin)) {
+          // Move current element to avoid collision
+          current.y += (previous.height || 50) + margin;
+          
+          // Keep within canvas bounds
+          if (current.y + (current.height || 50) > canvasSize.height) {
+            current.x += (current.width || 100) + margin;
+            current.y = previous.y;
+            
+            // If still out of bounds horizontally, wrap to next "row"
+            if (current.x + (current.width || 100) > canvasSize.width) {
+              current.x = margin;
+              current.y = findLowestY(positioned.slice(0, i)) + margin;
+            }
+          }
+          
+          hasCollision = true;
+          break;
+        }
+      }
+      attempts++;
+    }
+  }
+
+  return positioned;
+}
+
+function elementsOverlap(el1: ExcalidrawElement, el2: ExcalidrawElement, margin: number = 0): boolean {
+  const el1Right = el1.x + (el1.width || 0) + margin;
+  const el1Bottom = el1.y + (el1.height || 0) + margin;
+  const el2Right = el2.x + (el2.width || 0) + margin;
+  const el2Bottom = el2.y + (el2.height || 0) + margin;
+
+  return !(el1Right <= el2.x || el2Right <= el1.x || el1Bottom <= el2.y || el2Bottom <= el1.y);
+}
+
+function findLowestY(elements: ExcalidrawElement[]): number {
+  let lowestY = 0;
+  
+  for (const element of elements) {
+    const bottomY = element.y + (element.height || 0);
+    if (bottomY > lowestY) {
+      lowestY = bottomY;
+    }
+  }
+  
+  return lowestY;
+}
+
+/**
+ * Convert timeline events to excalidraw elements using smart factories
+ */
+export function convertTimelineEventsToElements(
+  timelineEvents: Array<{
+    id: string;
+    content: string;
+    semanticType?: string;
+    timestamp?: number;
+    duration?: number;
+  }>,
+  canvasSize: { width: number; height: number }
+): ExcalidrawElement[] {
+  const elements: ExcalidrawElement[] = [];
+  const regionHeight = canvasSize.height / Math.ceil(timelineEvents.length / 2);
+  
+  timelineEvents.forEach((event, index) => {
+    const x = (index % 2) * (canvasSize.width / 2) + 20;
+    const y = Math.floor(index / 2) * regionHeight + 20;
+    
+    switch (event.semanticType) {
+      case 'process':
+        if (event.content.includes('->') || event.content.includes('→')) {
+          const steps = event.content.split(/->|→/).map(s => s.trim());
+          elements.push(...makeTimelineProcessFlow({
+            steps,
+            startPosition: { x, y },
+            direction: 'horizontal',
+            canvasSize
+          }));
+        } else {
+          elements.push(makeTimelineText({
+            content: event.content,
+            position: { x, y },
+            semanticType: 'process',
+            canvasSize
+          }));
+        }
+        break;
+        
+      case 'comparison':
+        if (event.content.includes(' vs ') || event.content.includes(' versus ')) {
+          const parts = event.content.split(/ vs | versus /i);
+          elements.push(...makeTimelineComparison({
+            leftContent: parts[0] || '',
+            rightContent: parts[1] || '',
+            position: { x, y },
+            canvasSize
+          }));
+        } else {
+          elements.push(makeTimelineText({
+            content: event.content,
+            position: { x, y },
+            semanticType: 'comparison',
+            canvasSize
+          }));
+        }
+        break;
+        
+      case 'concept_map':
+        if (event.content.includes(':')) {
+          const parts = event.content.split(':');
+          const central = parts[0].trim();
+          const related = parts[1].split(',').map(s => s.trim());
+          elements.push(...makeTimelineConceptMap({
+            centralConcept: central,
+            relatedConcepts: related,
+            position: { x, y },
+            canvasSize
+          }));
+        } else {
+          elements.push(makeTimelineText({
+            content: event.content,
+            position: { x, y },
+            semanticType: 'concept_map',
+            canvasSize
+          }));
+        }
+        break;
+        
+      default:
+        elements.push(makeTimelineText({
+          content: event.content,
+          position: { x, y },
+          semanticType: event.semanticType as any,
+          canvasSize
+        }));
+    }
+  });
+  
+  return positionTimelineElements(elements, {
+    canvasSize,
+    semanticType: 'mixed',
+    avoidOverlap: true
+  });
+}
 export { makeLabeledRectanglePOC as makeLabeledRectangle };
 export const GRID = GRID_CONFIG;

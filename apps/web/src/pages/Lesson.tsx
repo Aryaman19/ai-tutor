@@ -85,6 +85,21 @@ const Lesson: React.FC = () => {
   const isGeneratingContent = generateContentMutation.isPending || (lesson && lesson.steps.length === 0);
   const isGeneratingScript = generateScriptMutation.isPending;
   const hasNarrationContent = lesson?.steps?.some(step => step.narration);
+  
+  // Debug logging to understand lesson state
+  console.log('🎯 Lesson Debug Info:', {
+    lessonExists: !!lesson,
+    stepsCount: lesson?.steps?.length || 0,
+    hasNarrationContent,
+    isGeneratingContent,
+    firstStepStructure: lesson?.steps?.[0] ? {
+      hasNarration: !!lesson.steps[0].narration,
+      hasVisualElements: !!lesson.steps[0].visual_elements,
+      hasInstructions: !!lesson.steps[0].content,
+      stepType: typeof lesson.steps[0],
+      stepKeys: Object.keys(lesson.steps[0])
+    } : null
+  });
 
   // Check if lesson was deleted or not found
   const isLessonNotFound = (lessonError as any)?.response?.status === 404;
@@ -245,7 +260,7 @@ const Lesson: React.FC = () => {
                     </div>
                   </CardContent>
                 </Card>
-              ) : hasNarrationContent && lesson?.steps ? (
+              ) : lesson?.steps && lesson.steps.length > 0 ? (
                 <div className="space-y-4">
                   <Card className="border-border">
                     <CardHeader>
@@ -261,7 +276,7 @@ const Lesson: React.FC = () => {
                         speechRate={1}
                         speechVolume={0.8}
                         userId="default"
-                        onStepChange={(stepIndex) => {
+                        onStepChange={(stepIndex: number) => {
                         }}
                         onComplete={() => {
                           logger.info('Lesson completed!');

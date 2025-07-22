@@ -10,11 +10,11 @@ import type {
   StreamingTimelineChunk,
   StreamingTimelineLesson,
   ChunkStatus,
-} from '@ai-tutor/types/timeline/StreamingTimelineChunk';
+} from '@ai-tutor/types';
 
-import type { TimelineEvent } from '@ai-tutor/types/timeline/TimelineEvent';
+import type { TimelineEvent } from '@ai-tutor/types';
 
-import { createUtilLogger } from '@ai-tutor/utils';
+import { createUtilLogger } from '../logger';
 
 const logger = createUtilLogger('ChunkStorage');
 
@@ -359,7 +359,7 @@ export class ChunkStorage {
     for (const [chunkId] of this.storage) {
       const chunk = await this.retrieve(chunkId);
       if (chunk) {
-        const chunkStart = chunk.startTimeOffset;
+        const chunkStart = chunk.timestampOffset;
         const chunkEnd = chunkStart + chunk.duration;
         
         // Check if chunk overlaps with time range
@@ -370,7 +370,7 @@ export class ChunkStorage {
     }
     
     // Sort by start time
-    chunks.sort((a, b) => a.startTimeOffset - b.startTimeOffset);
+    chunks.sort((a, b) => a.timestampOffset - b.timestampOffset);
     
     return chunks;
   }

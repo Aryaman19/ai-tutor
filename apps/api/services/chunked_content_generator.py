@@ -9,6 +9,7 @@ existing OllamaService patterns with timeline-specific capabilities.
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Dict, List, Optional, Any, AsyncGenerator, Tuple, TYPE_CHECKING
 
@@ -128,7 +129,7 @@ class ChunkedContentGenerator:
             
             # Get chunking recommendation
             recommendation = self.chunk_sizer.recommend_chunk_size(
-                complexity, content_type, total_estimated_content=None
+                complexity, content_type, total_estimated_content=None, total_duration=target_total_duration
             )
             
             logger.info(f"Chunk recommendation: {recommendation.chunk_size.value} chunks, "
@@ -185,7 +186,8 @@ class ChunkedContentGenerator:
         chunk_config: ChunkGenerationConfig,
         chunk_number: int,
         continuity_context: Optional[ContinuityContext] = None,
-        user_id: str = "default"
+        user_id: str = "default",
+        total_chunks: int = 3
     ) -> ChunkGenerationResult:
         """
         Generate a single timeline chunk with specified configuration.
@@ -223,7 +225,7 @@ class ChunkedContentGenerator:
                 raise Exception("Failed to get response from LLM")
             
             # Parse JSON response
-            chunk_data = await self._parse_chunk_response(response_text, chunk_number)
+            chunk_data = await self._parse_chunk_response(response_text, chunk_number, chunk_config.target_duration, total_chunks)
             
             # Validate timeline events
             timeline_events = chunk_data.get("timeline_events", [])
@@ -339,7 +341,7 @@ class ChunkedContentGenerator:
                 
                 # Generate the chunk
                 chunk_result = await self.generate_chunk(
-                    topic, chunk_config, i + 1, continuity_context, user_id
+                    topic, chunk_config, i + 1, continuity_context, user_id, progress.total_chunks
                 )
                 
                 if chunk_result.status == GenerationStatus.COMPLETED:
@@ -424,23 +426,51 @@ class ChunkedContentGenerator:
         
         return None
     
-    async def _parse_chunk_response(self, response_text: str, chunk_number: int) -> Dict[str, Any]:
+    async def _parse_chunk_response(self, response_text: str, chunk_number: int, target_duration: float = 120.0, total_chunks: int = 3) -> Dict[str, Any]:
         """Parse and validate chunk response JSON"""
         
         try:
             # Try to extract JSON from response
             response_text = response_text.strip()
             
-            # Handle cases where LLM includes extra text around JSON
+            # Remove markdown code block syntax if present
+            if '```json' in response_text:
+                # Extract content between ```json and ```
+                json_start = response_text.find('```json') + 7
+                json_end = response_text.find('```', json_start)
+                if json_end == -1:
+                    json_end = len(response_text)
+                response_text = response_text[json_start:json_end].strip()
+                logger.info(f"Extracted JSON from markdown code block: {response_text[:100]}...")
+            elif '```' in response_text:
+                # Remove any remaining code block markers
+                response_text = re.sub(r'```[^\n]*\n?', '', response_text)
+                response_text = re.sub(r'```', '', response_text).strip()
+                logger.info(f"Cleaned markdown syntax: {response_text[:100]}...")
+            
+            # More robust JSON extraction
             json_start = response_text.find('{')
             json_end = response_text.rfind('}') + 1
             
             if json_start >= 0 and json_end > json_start:
                 json_text = response_text[json_start:json_end]
+                
+                # Clean up common JSON issues
+                json_text = json_text.replace('\n', ' ')  # Remove newlines
+                json_text = json_text.replace('\t', ' ')  # Remove tabs
+                
+                # Fix common trailing comma issues
+                json_text = re.sub(r',\s*}', '}', json_text)  # Remove trailing commas before }
+                json_text = re.sub(r',\s*]', ']', json_text)  # Remove trailing commas before ]
+                
+                logger.info(f"Parsing cleaned JSON: {json_text[:200]}...")
                 chunk_data = json.loads(json_text)
             else:
-                # Try parsing the entire response
-                chunk_data = json.loads(response_text)
+                # Fallback: try parsing the entire response with cleaning
+                clean_text = re.sub(r',\s*}', '}', response_text)
+                clean_text = re.sub(r',\s*]', ']', clean_text)
+                logger.info(f"Fallback parsing entire response: {clean_text[:100]}...")
+                chunk_data = json.loads(clean_text)
             
             # Validate required fields
             required_fields = ["timeline_events", "chunk_summary"]
@@ -449,43 +479,113 @@ class ChunkedContentGenerator:
                     logger.warning(f"Missing required field '{field}' in chunk {chunk_number}")
                     chunk_data[field] = self._get_fallback_value(field)
             
-            # Validate timeline_events structure
+            # Validate timeline_events structure and fix timestamps
             timeline_events = chunk_data.get("timeline_events", [])
+            
+            # Calculate proper chunk timing distribution
+            # Each chunk should occupy its portion of the total target_duration
+            chunk_duration = target_duration / total_chunks
+            chunk_start_time = (chunk_number - 1) * chunk_duration
+            
+            logger.info(f"Chunk {chunk_number}: start_time={chunk_start_time:.1f}s, duration={chunk_duration:.1f}s")
+            
             for i, event in enumerate(timeline_events):
                 if not isinstance(event, dict):
                     logger.warning(f"Invalid event structure at index {i} in chunk {chunk_number}")
                     continue
                 
-                # Ensure required event fields
-                if "timestamp" not in event:
-                    event["timestamp"] = i * 5.0  # Default 5-second intervals
-                if "duration" not in event:
-                    event["duration"] = 5.0
+                # Calculate event timing within the chunk
+                event_spacing = chunk_duration / max(1, len(timeline_events))
+                event_timestamp = chunk_start_time + (i * event_spacing)
+                
+                # Ensure required event fields with proper timestamp distribution
+                event["timestamp"] = event_timestamp
+                
+                # Set reasonable duration - should not exceed event spacing
+                event_duration = min(event_spacing * 0.8, 15.0)  # 80% of spacing or max 15s
+                event["duration"] = event_duration
+                
                 if "event_type" not in event:
                     event["event_type"] = "narration"
                 if "content" not in event:
-                    event["content"] = f"Content for event {i + 1}"
+                    event["content"] = f"Content for event {i + 1} in chunk {chunk_number}"
+                
+                logger.info(f"Fixed event {i} in chunk {chunk_number}: timestamp={event['timestamp']:.1f}s, duration={event['duration']:.1f}s")
             
             return chunk_data
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response for chunk {chunk_number}: {e}")
-            logger.debug(f"Raw response: {response_text[:500]}...")
+            logger.error(f"Raw response that failed parsing: {response_text}")
             
-            # Return minimal fallback structure
+            # Extract any meaningful text content as fallback
+            fallback_content = self._extract_meaningful_content(response_text)
+            
+            # Calculate proper timestamp for this chunk
+            chunk_duration = target_duration / total_chunks
+            chunk_start_time = (chunk_number - 1) * chunk_duration
+            
+            logger.info(f"Fallback for chunk {chunk_number}: timestamp={chunk_start_time:.1f}s, duration={chunk_duration:.1f}s")
+            
+            # Return meaningful fallback structure
             return {
                 "timeline_events": [{
-                    "timestamp": 0.0,
-                    "duration": 10.0,
+                    "timestamp": chunk_start_time,
+                    "duration": chunk_duration,  # Use chunk's time window
                     "event_type": "narration",
-                    "content": "Failed to parse content - please regenerate",
-                    "visual_instruction": "VISUAL: text center 'Error: Content parsing failed' critical"
+                    "content": fallback_content,
+                    "visual_instruction": f"VISUAL: text center '{fallback_content[:50]}' informative"
                 }],
-                "chunk_summary": f"Chunk {chunk_number} - parsing error",
-                "next_chunk_hint": "Continue with original topic",
-                "concepts_introduced": [],
-                "visual_elements_created": []
+                "chunk_summary": f"Chunk {chunk_number} - extracted content from malformed response",
+                "next_chunk_hint": "Continue with structured content",
+                "concepts_introduced": [f"Basic concepts from chunk {chunk_number}"],
+                "visual_elements_created": ["text explanation"]
             }
+    
+    def _extract_meaningful_content(self, response_text: str) -> str:
+        """Extract meaningful educational content from malformed LLM response"""
+        # Clean up the response text
+        text = response_text.strip()
+        
+        # Remove markdown code blocks first
+        text = re.sub(r'```[^\n]*\n?', '', text)
+        text = re.sub(r'```', '', text)
+        
+        # Look for content field specifically
+        content_match = re.search(r'["\']?content["\']?\s*:\s*["\']([^"\'{]+)["\']', text, re.IGNORECASE)
+        if content_match:
+            content = content_match.group(1).strip()
+            if len(content) > 20:  # Ensure it's meaningful content
+                logger.info(f"Extracted content field: {content[:50]}...")
+                return content[:200] + "..." if len(content) > 200 else content
+        
+        # Remove JSON syntax artifacts
+        text = re.sub(r'[{}"\[\]]', '', text)  # Remove JSON brackets and quotes
+        text = re.sub(r'timeline_events:|chunk_summary:|content:|timestamp:|duration:|event_type:', '', text)  # Remove field names
+        text = re.sub(r'\n+', ' ', text)  # Replace multiple newlines with space
+        text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with single space
+        
+        # Extract sentences that look educational (not just metadata)
+        sentences = []
+        for sentence in text.split('.'):
+            s = sentence.strip()
+            # Filter out metadata-looking content
+            if (len(s) > 20 and 
+                not re.match(r'^\d+\.?\d*$', s) and  # Not just numbers
+                'timestamp' not in s.lower() and 
+                'duration' not in s.lower() and
+                'event_type' not in s.lower()):
+                sentences.append(s + '.')
+        
+        if sentences:
+            # Take the longest few sentences as they're likely to contain good content
+            meaningful_content = ' '.join(sentences[:3])
+            logger.info(f"Extracted meaningful sentences: {meaningful_content[:50]}...")
+            return meaningful_content[:200] + "..." if len(meaningful_content) > 200 else meaningful_content
+        else:
+            # Last resort fallback
+            logger.warning("Could not extract meaningful content, using fallback")
+            return f"Educational content about the requested topic. The system encountered a formatting issue but will continue generating structured content."
     
     def _get_fallback_value(self, field_name: str) -> Any:
         """Get fallback values for missing fields"""

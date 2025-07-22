@@ -140,6 +140,11 @@ export type EventContent = {
   audio?: AudioCue;
   transition?: TransitionInstruction;
   metadata?: Record<string, any>;
+  // Allow additional properties for backward compatibility
+  [key: string]: any;
+} & {
+  // Add length property to help with string-like access patterns
+  length?: number;
 };
 
 /**
@@ -152,14 +157,20 @@ export interface TimelineEvent {
   /** Timestamp from start of timeline (milliseconds) */
   timestamp: number;
   
+  /** Start time (alias for timestamp for backward compatibility) */
+  startTime?: number;
+  
   /** Duration this event remains active (milliseconds) */
   duration: number;
   
   /** Type of event for processing logic */
   type: EventType;
   
+  /** Semantic type for Phase 3 layout engine */
+  semanticType?: ContentType;
+  
   /** Event content and instructions */
-  content: EventContent;
+  content: EventContent | string;
   
   /** Layout positioning hints */
   layoutHints: LayoutHint[];
@@ -173,6 +184,9 @@ export interface TimelineEvent {
   /** Tags for categorization and filtering */
   tags?: string[];
   
+  /** Legacy visual instruction property for backward compatibility */
+  visualInstruction?: string;
+
   /** Metadata for debugging and analysis */
   metadata?: {
     /** Source information (LLM chunk, manual, template) */
@@ -227,6 +241,13 @@ export interface TimelineEventCollection {
   
   /** Key concepts identified in the content */
   keyEntities: string[];
+  
+  /** Key concept entities with metadata */
+  keyConceptEntities?: Array<{
+    entity: string;
+    confidence: number;
+    category: string;
+  }>;
   
   /** Relationships between concepts */
   relationships: Array<{

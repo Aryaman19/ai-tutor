@@ -127,6 +127,18 @@ const Home: React.FC = () => {
           </CardContent>
         </Card>
 
+        {/* Timeline Testing Link */}
+        <div className="text-center">
+          <Button
+            onClick={() => navigate('/timeline-test')}
+            variant="outline"
+            className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 hover:border-blue-300 hover:bg-gradient-to-r hover:from-blue-100 hover:to-indigo-100 text-blue-700 font-semibold px-6 py-3"
+          >
+            <SparklesIcon className="h-5 w-5 mr-2" />
+            Test Timeline Integration (Phase 3)
+          </Button>
+        </div>
+
         {/* Example Topics */}
         <div className="space-y-6">
           <h3 className="text-2xl font-bold text-foreground text-center">

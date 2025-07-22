@@ -11,15 +11,16 @@ import type {
   ChunkContext,
   ContinuityHint,
   ChunkTransition,
-} from '@ai-tutor/types/timeline/StreamingTimelineChunk';
+} from '@ai-tutor/types';
 
 import type {
   TimelineEvent,
   VisualInstruction,
   LayoutHint,
-} from '@ai-tutor/types/timeline/TimelineEvent';
+} from '@ai-tutor/types';
 
-import { createUtilLogger } from '@ai-tutor/utils';
+import { createUtilLogger } from '../logger';
+import { asContentObject, asString } from '../type-utils';
 
 const logger = createUtilLogger('ContinuityManager');
 
@@ -318,7 +319,7 @@ export class ContinuityManager {
       for (const event of chunk.events) {
         if (event.content) {
           // Simple concept extraction from content
-          const eventConcepts = this.extractConceptsFromText(event.content);
+          const eventConcepts = this.extractConceptsFromText(asString(event.content));
           concepts.push(...eventConcepts);
         }
       }
@@ -378,8 +379,9 @@ export class ContinuityManager {
     
     for (const chunk of chunks) {
       for (const event of chunk.events) {
-        if (event.visualInstruction) {
-          visualRefs.push(event.visualInstruction);
+        const content = asContentObject(event.content);
+        if (content.visual) {
+          visualRefs.push(content.visual);
         }
       }
     }
@@ -406,7 +408,7 @@ export class ContinuityManager {
     // Extract narrative from last few events
     const recentEvents = lastChunk.events.slice(-2);
     const narrativeTexts = recentEvents
-      .map(event => event.content)
+      .map(event => asString(event.content))
       .filter(content => content && content.length > 10);
     
     return narrativeTexts.join(' ').slice(0, 200); // Limit length
@@ -512,8 +514,12 @@ export class ContinuityManager {
     previous: StreamingTimelineChunk,
     current: StreamingTimelineChunk
   ): number {
-    const prevVisuals = previous.events.map(e => e.visualInstruction?.elementType).filter(Boolean);
-    const currVisuals = current.events.map(e => e.visualInstruction?.elementType).filter(Boolean);
+    const prevVisuals = previous.events
+      .map(e => asContentObject(e.content).visual?.elementType)
+      .filter((type): type is NonNullable<typeof type> => type !== undefined) as string[];
+    const currVisuals = current.events
+      .map(e => asContentObject(e.content).visual?.elementType)
+      .filter((type): type is NonNullable<typeof type> => type !== undefined) as string[];
     
     if (prevVisuals.length === 0 && currVisuals.length === 0) return 1.0;
     

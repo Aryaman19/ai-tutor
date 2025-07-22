@@ -237,6 +237,9 @@ export interface StreamingTimelineChunk {
   /** Start time offset for this chunk (milliseconds from lesson start) */
   startTimeOffset: number;
   
+  /** Timestamp offset (alias for startTimeOffset for backward compatibility) */
+  timestampOffset?: number;
+  
   /** Duration of this chunk (milliseconds) */
   duration: number;
   

@@ -9,9 +9,9 @@ import type {
   StreamingTimelineChunk,
   ChunkContext,
   ChunkGenerationRequest,
-} from '@ai-tutor/types/timeline/StreamingTimelineChunk';
+} from '@ai-tutor/types';
 
-import { createUtilLogger } from '@ai-tutor/utils';
+import { createUtilLogger } from '../logger';
 
 const logger = createUtilLogger('PreGenerationPipeline');
 
@@ -55,7 +55,7 @@ export enum GenerationPriority {
 /**
  * Generation request with priority and timing
  */
-export interface PriorityGenerationRequest extends ChunkGenerationRequest {
+export interface PriorityGenerationRequest extends Omit<ChunkGenerationRequest, 'priority'> {
   /** Priority level for generation */
   priority: GenerationPriority;
   
@@ -141,6 +141,7 @@ interface GenerationWorker {
   isActive: boolean;
   currentRequest?: PriorityGenerationRequest;
   startTime?: number;
+  timestamp: number;
   performance: {
     totalGenerations: number;
     avgTime: number;
@@ -183,6 +184,7 @@ export class PreGenerationPipeline {
       this.workers.set(workerId, {
         id: workerId,
         isActive: false,
+        timestamp: Date.now(),
         performance: {
           totalGenerations: 0,
           avgTime: 0,
@@ -331,6 +333,8 @@ export class PreGenerationPipeline {
         {
           chunkId,
           topic: 'predicted-content',
+          chunkNumber: 1,
+          totalChunks: 1,
           config: {}, // This would be filled by the caller
         },
         priority,
@@ -406,7 +410,7 @@ export class PreGenerationPipeline {
   ): Promise<void> {
     worker.isActive = true;
     worker.currentRequest = request;
-    worker.startTime = Date.now();
+    worker.timestamp = Date.now();
     
     logger.debug('Assigning generation to worker', {
       workerId: worker.id,
@@ -425,7 +429,7 @@ export class PreGenerationPipeline {
         
         logger.debug('Chunk generation completed', {
           chunkId: request.chunkId,
-          duration: Date.now() - (worker.startTime || 0),
+          duration: Date.now() - (worker.timestamp || 0),
         });
       } else {
         throw new Error('Generation returned null');
@@ -451,7 +455,7 @@ export class PreGenerationPipeline {
     } finally {
       worker.isActive = false;
       worker.currentRequest = undefined;
-      worker.startTime = undefined;
+      worker.timestamp = Date.now();
     }
   }
   
@@ -465,15 +469,48 @@ export class PreGenerationPipeline {
     return new Promise((resolve) => {
       setTimeout(() => {
         // Mock generation
-        resolve({
-          id: request.chunkId,
+        const fakeChunk: StreamingTimelineChunk = {
+          chunkId: request.chunkId,
+          chunkNumber: request.chunkNumber || 1,
+          totalChunks: request.totalChunks || 1,
+          status: 'ready',
+          contentType: 'definition',
+          duration: 5000,
           events: [],
-          metadata: {
-            generatedAt: Date.now(),
-            topic: request.topic,
+          startTimeOffset: 0,
+          timestampOffset: 0,
+          generationParams: {
+            targetDuration: 5000,
+            maxEvents: 10,
+            complexity: 'medium',
+            layoutConstraints: {
+              maxSimultaneousElements: 5,
+              preferredStyle: 'balanced',
+            },
+            audioConstraints: {
+              speakingRate: 160,
+              pauseFrequency: 'normal',
+            },
+            contentFocus: {
+              primaryObjective: 'Generated content',
+              keyConceptsToEmphasize: [],
+            },
           },
-        } as StreamingTimelineChunk);
-      }, request.estimatedDuration);
+          nextChunkHints: [],
+          metadata: {
+            model: 'gemma3n',
+            generatedAt: Date.now(),
+            sourcePrompt: request.topic,
+            timing: {
+              llmGeneration: 50,
+              postProcessing: 25,
+              validation: 25,
+              total: 100,
+            },
+          },
+        };
+        resolve(fakeChunk);
+      }, request.estimatedDuration || 1000);
     });
   }
   
@@ -598,7 +635,7 @@ export class PreGenerationPipeline {
   }
   
   private updateWorkerPerformance(worker: GenerationWorker, success: boolean): void {
-    const duration = Date.now() - (worker.startTime || Date.now());
+    const duration = Date.now() - (worker.timestamp || Date.now());
     
     worker.performance.totalGenerations++;
     worker.performance.avgTime = this.updateMetricAverage(

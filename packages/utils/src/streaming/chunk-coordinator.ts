@@ -13,12 +13,12 @@ import type {
   ChunkProcessingOptions,
   ChunkContext,
   ContinuityHint,
-} from '@ai-tutor/types/timeline/StreamingTimelineChunk';
+} from '@ai-tutor/types';
 
 import type {
   TimelineEvent,
   TimelineEventCollection,
-} from '@ai-tutor/types/timeline/TimelineEvent';
+} from '@ai-tutor/types';
 
 import {
   validateStreamingTimelineChunk,
@@ -30,7 +30,8 @@ import { ContextExtractor } from './context-extractor';
 import { PreGenerationPipeline } from './pre-generation-pipeline';
 import { PriorityQueue, ContentGenerationQueue, Priority } from './priority-queue';
 
-import { createUtilLogger } from '@ai-tutor/utils';
+import { createUtilLogger } from '../logger';
+import { asContentObject } from '../type-utils';
 
 const logger = createUtilLogger('ChunkCoordinator');
 
@@ -149,6 +150,7 @@ export class ChunkCoordinator {
   private coordinationState: TimelineCoordinationState;
   private readonly options: ChunkCoordinationOptions;
   private readonly eventHandlers = new Map<string, Array<(data: any) => void>>();
+  private activeRequests = 0;
   
   // Phase 2 components
   private continuityManager: ContinuityManager;
@@ -323,6 +325,7 @@ export class ChunkCoordinator {
         contentType: adjustedChunk.contentType,
         complexity: 'medium', // Will be determined by content analysis
         keyEntities: [],
+      keyConceptEntities: [],
         relationships: [],
         qualityMetrics: {
           timingConsistency: 1,
@@ -531,7 +534,7 @@ export class ChunkCoordinator {
   private adjustChunkTimestamps(chunk: StreamingTimelineChunk): StreamingTimelineChunk {
     const adjustedEvents = chunk.events.map(event => ({
       ...event,
-      timestamp: event.timestamp + chunk.startTimeOffset,
+      timestamp: event.timestamp + (chunk.timestampOffset || chunk.startTimeOffset || 0),
     }));
 
     return {
@@ -552,7 +555,7 @@ export class ChunkCoordinator {
 
     chunks.forEach(chunk => {
       // Calculate chunk boundaries
-      const startTime = chunk.startTimeOffset;
+      const startTime = chunk.timestampOffset || chunk.startTimeOffset || 0;
       const endTime = startTime + chunk.duration;
       chunkBoundaries.push({
         chunkId: chunk.chunkId,
@@ -602,16 +605,24 @@ export class ChunkCoordinator {
 
     // Extract context from previous chunk
     const lastVisualElements = previousChunk.events
-      .filter(e => e.type === 'visual' && e.content.visual)
-      .map(e => ({
-        id: e.id,
-        type: e.content.visual!.elementType,
-        description: e.content.visual!.properties.text || '',
-      }));
+      .filter(e => e.type === 'visual')
+      .map(e => {
+        const content = asContentObject(e.content);
+        return {
+          id: e.id,
+          type: content.visual?.elementType || 'unknown',
+          description: content.visual?.properties?.text || '',
+        };
+      })
+      .filter(el => el.description); // Only include elements with descriptions
 
     const narrativeThread = previousChunk.events
-      .filter(e => e.type === 'narration' && e.content.audio)
-      .map(e => e.content.audio!.text)
+      .filter(e => e.type === 'narration')
+      .map(e => {
+        const content = asContentObject(e.content);
+        return content.audio?.text || '';
+      })
+      .filter(text => text)
       .join(' ');
 
     return {
@@ -643,7 +654,7 @@ export class ChunkCoordinator {
     
     // Remove chunks that are far behind current position
     const chunksToRemove = chunks.filter(chunk => {
-      const chunkEndTime = chunk.startTimeOffset + chunk.duration;
+      const chunkEndTime = (chunk.timestampOffset || chunk.startTimeOffset || 0) + chunk.duration;
       return chunkEndTime < currentPosition - 300000; // 5 minutes behind
     });
 
@@ -831,6 +842,25 @@ export class ChunkCoordinator {
       logger.error('Error requesting immediate generation', { error });
       return false;
     }
+  }
+
+  /**
+   * Get basic coordination status
+   */
+  getStatus(): {
+    totalChunks: number;
+    processedChunks: number;
+    pendingChunks: number;
+    activeRequests: number;
+    cacheSize: number;
+  } {
+    return {
+      totalChunks: this.chunks.size,
+      processedChunks: Array.from(this.chunks.values()).filter(c => c.status === 'ready').length,
+      pendingChunks: Array.from(this.chunks.values()).filter(c => c.status === 'pending' || c.status === 'generating').length,
+      activeRequests: this.activeRequests,
+      cacheSize: this.chunks.size,
+    };
   }
 
   /**

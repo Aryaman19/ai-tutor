@@ -15,16 +15,17 @@ import type {
   VisualInstruction,
   AudioCue,
   TransitionInstruction,
-} from '@ai-tutor/types/timeline/TimelineEvent';
+} from '@ai-tutor/types';
 
 import type {
   StreamingTimelineChunk,
   ChunkValidationResult,
   ContinuityHint,
   ChunkContext,
-} from '@ai-tutor/types/timeline/StreamingTimelineChunk';
+} from '@ai-tutor/types';
 
-import { createUtilLogger } from '@ai-tutor/utils';
+import { createUtilLogger } from '../logger';
+import { asContentObject, asString } from '../type-utils';
 
 const logger = createUtilLogger('TimelineEventValidation');
 
@@ -131,8 +132,8 @@ function validateEventStructure(event: TimelineEvent, errors: string[]): void {
     errors.push(`Event type must be one of: visual, narration, transition, emphasis, layout_change`);
   }
   
-  if (!event.content || typeof event.content !== 'object') {
-    errors.push('Event must have valid content object');
+  if (!event.content) {
+    errors.push('Event must have valid content');
   }
   
   if (!Array.isArray(event.layoutHints)) {
@@ -158,8 +159,9 @@ function validateEventTiming(
   }
   
   // Validate animation timing consistency
-  if (event.content.visual?.animationType && event.content.visual.animationType !== 'none') {
-    const animDuration = event.content.visual.animationDuration || 500;
+  const contentObj = asContentObject(event.content);
+  if (contentObj.visual?.animationType && contentObj.visual.animationType !== 'none') {
+    const animDuration = contentObj.visual.animationDuration || 500;
     if (animDuration > event.duration) {
       warnings.push('Animation duration longer than event duration may cause timing issues');
     }
@@ -175,7 +177,7 @@ function validateEventContent(
   errors: string[],
   warnings: string[]
 ): void {
-  const { content } = event;
+  const content = asContentObject(event.content);
   
   if (event.type === 'visual' && !content.visual) {
     errors.push('Visual event must have visual content');
@@ -372,22 +374,24 @@ function validateEventTypeSpecific(
   warnings: string[],
   suggestions: string[]
 ): void {
+  const content = asContentObject(event.content);
+  
   switch (event.type) {
     case 'visual':
-      if (!event.content.visual) {
+      if (!content.visual) {
         errors.push('Visual event must have visual content');
-      } else if (event.content.visual.action === 'create' && event.layoutHints.length === 0) {
+      } else if (content.visual.action === 'create' && event.layoutHints.length === 0) {
         warnings.push('Visual creation without layout hints may result in poor positioning');
         suggestions.push('Add layout hints to guide element positioning');
       }
       break;
       
     case 'narration':
-      if (!event.content.audio) {
+      if (!content.audio) {
         errors.push('Narration event must have audio content');
       } else {
         // Estimate speaking time and compare with event duration
-        const words = event.content.audio.text.split(/\s+/).length;
+        const words = content.audio.text.split(/\s+/).length;
         const estimatedDuration = (words / 2.5) * 1000; // ~150 WPM
         if (Math.abs(estimatedDuration - event.duration) > event.duration * 0.3) {
           warnings.push('Event duration may not match estimated speaking time');
@@ -397,13 +401,13 @@ function validateEventTypeSpecific(
       break;
       
     case 'transition':
-      if (!event.content.transition) {
+      if (!content.transition) {
         errors.push('Transition event must have transition content');
       }
       break;
       
     case 'emphasis':
-      if (!event.content.visual && !event.content.audio) {
+      if (!content.visual && !content.audio) {
         errors.push('Emphasis event must have visual or audio content');
       }
       break;
@@ -554,6 +558,7 @@ export function validateStreamingTimelineChunk(
     contentType: chunk.contentType,
     complexity: 'medium', // Default
     keyEntities: [],
+    keyConceptEntities: [],
     relationships: [],
     qualityMetrics: {
       timingConsistency: 1,
@@ -618,12 +623,13 @@ function validateChunkContinuity(
 
   // Check visual element continuity
   if (previousContext.lastVisualElements.length > 0) {
-    const hasVisualReference = chunk.events.some(event => 
-      previousContext.lastVisualElements.some(lastEl => 
-        event.content.visual?.properties.text?.includes(lastEl.description) ||
+    const hasVisualReference = chunk.events.some(event => {
+      const content = asContentObject(event.content);
+      return previousContext.lastVisualElements.some(lastEl => 
+        content.visual?.properties.text?.includes(lastEl.description) ||
         event.dependencies?.includes(lastEl.id)
-      )
-    );
+      );
+    });
     
     if (!hasVisualReference) {
       issues.push('Chunk does not reference previous visual elements');
@@ -634,10 +640,11 @@ function validateChunkContinuity(
   // Check concept continuity
   if (previousContext.pendingConnections.length > 0) {
     const addressedConnections = previousContext.pendingConnections.filter(connection =>
-      chunk.events.some(event => 
-        event.content.audio?.text.includes(connection.concept) ||
-        event.content.visual?.properties.text?.includes(connection.concept)
-      )
+      chunk.events.some(event => {
+        const content = asContentObject(event.content);
+        return content.audio?.text.includes(connection.concept) ||
+               content.visual?.properties.text?.includes(connection.concept);
+      })
     );
     
     if (addressedConnections.length === 0) {

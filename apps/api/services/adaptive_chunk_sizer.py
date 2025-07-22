@@ -265,7 +265,8 @@ class AdaptiveChunkSizer:
         self,
         complexity: ComplexityMetrics,
         content_type: ContentType,
-        total_estimated_content: Optional[int] = None
+        total_estimated_content: Optional[int] = None,
+        total_duration: Optional[float] = None
     ) -> ChunkRecommendation:
         """
         Recommend optimal chunk size based on complexity analysis.
@@ -314,6 +315,10 @@ class AdaptiveChunkSizer:
         # Estimate number of chunks needed
         if total_estimated_content:
             estimated_chunks = max(1, total_estimated_content // target_tokens)
+        elif total_duration:
+            # Calculate chunks based on total duration and target chunk duration
+            estimated_chunks = max(1, int(total_duration / target_duration))
+            logger.info(f"Calculated {estimated_chunks} chunks based on {total_duration}s duration and {target_duration}s per chunk")
         else:
             # Default estimation based on complexity
             if complexity_score > 0.7:
@@ -322,6 +327,7 @@ class AdaptiveChunkSizer:
                 estimated_chunks = 3  # Medium topics
             else:
                 estimated_chunks = 2  # Simple topics
+            logger.info(f"Using complexity-based chunks: {estimated_chunks} (complexity={complexity_score:.2f})")
         
         # Generate break points based on content type
         break_points = self._generate_break_points(content_type, estimated_chunks)

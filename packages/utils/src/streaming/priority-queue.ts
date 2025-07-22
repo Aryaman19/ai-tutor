@@ -5,7 +5,7 @@
  * resource management, and adaptive timing based on user behavior patterns.
  */
 
-import { createUtilLogger } from '@ai-tutor/utils';
+import { createUtilLogger } from '../logger';
 
 const logger = createUtilLogger('PriorityQueue');
 
