@@ -119,7 +119,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <Link to="/">
             <Button className="w-full mb-6 font-medium" variant="default">
               <PlusIcon className="h-4 w-4 mr-2" />
-              New Lesson
+              New AI Lesson
             </Button>
           </Link>
 
@@ -187,7 +187,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
 
           {/* Settings Link */}
-          <div className="mt-4 pt-4 border-t flex-shrink-0">
+          <div className="mt-4 pt-4 border-t flex-shrink-0 space-y-2">
             <Link
               to="/settings"
               className={cn(
@@ -201,6 +201,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <SettingsIcon className="h-4 w-4 flex-shrink-0" />
               <span className="font-medium text-sm">Settings</span>
             </Link>
+            
+            {/* Developer/Testing Links */}
+            <details className="text-xs">
+              <summary className="text-muted-foreground hover:text-foreground cursor-pointer p-2">
+                🔧 Developer Tools
+              </summary>
+              <div className="ml-2 mt-1 space-y-1">
+                <Link
+                  to="/timeline-test"
+                  className="block p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded"
+                >
+                  Timeline Testing
+                </Link>
+                <Link
+                  to="/home"
+                  className="block p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded"
+                >
+                  Legacy Home
+                </Link>
+              </div>
+            </details>
           </div>
         </div>
       </div>

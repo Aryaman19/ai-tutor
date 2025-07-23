@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@ai-tutor/ui';
 import ExcalidrawPlayer from '../components/ExcalidrawPlayer';
-import type { TimelineEvent } from '@ai-tutor/types';
+import { StreamingComparisonDemo } from '../components/StreamingComparisonDemo';
+import { ExcalidrawPlayerProgressive } from '../components/ExcalidrawPlayerProgressive';
+import type { TimelineEvent, StreamingTimelineChunk } from '@ai-tutor/types';
 
 // API response interface
 interface APITimelineEvent {
@@ -47,7 +49,7 @@ export default function TimelineTesting() {
   const [currentStep, setCurrentStep] = useState(0);
   
   // Timeline testing state - consolidated for Phase 5
-  const [playbackMode, setPlaybackMode] = useState<'legacy' | 'phase4' | 'phase5'>('phase5');
+  const [playbackMode, setPlaybackMode] = useState<'legacy' | 'phase4' | 'phase5' | 'progressive'>('progressive');
   const [currentPosition, setCurrentPosition] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -64,7 +66,84 @@ export default function TimelineTesting() {
   const [audioChunkEvents, setAudioChunkEvents] = useState<any[]>([]);
   const [coordinationEvents, setCoordinationEvents] = useState<any[]>([]);
   
+  // Progressive streaming state
+  const [streamingChunks, setStreamingChunks] = useState<StreamingTimelineChunk[]>([]);
+  const [showComparisonDemo, setShowComparisonDemo] = useState(false);
+  const [progressiveMode, setProgressiveMode] = useState<'traditional' | 'progressive'>('progressive');
+  
   const playerRef = useRef<any>(null);
+
+  // Convert timeline events to streaming chunks for progressive player
+  const convertToStreamingChunks = (events: TimelineEvent[]): StreamingTimelineChunk[] => {
+    if (events.length === 0) return [];
+    
+    // Group events into chunks of 2-3 events each
+    const chunkSize = 2;
+    const chunks: StreamingTimelineChunk[] = [];
+    
+    for (let i = 0; i < events.length; i += chunkSize) {
+      const chunkEvents = events.slice(i, i + chunkSize);
+      const chunkNumber = Math.floor(i / chunkSize) + 1;
+      
+      // Calculate chunk timing
+      const startTime = Math.min(...chunkEvents.map(e => e.timestamp));
+      const endTime = Math.max(...chunkEvents.map(e => e.timestamp + e.duration));
+      const duration = endTime - startTime;
+      
+      const chunk: StreamingTimelineChunk = {
+        chunkId: `streaming-chunk-${chunkNumber}`,
+        chunkNumber,
+        totalChunks: Math.ceil(events.length / chunkSize),
+        status: 'ready',
+        contentType: 'process',
+        duration,
+        timestampOffset: startTime,
+        startTimeOffset: startTime,
+        events: chunkEvents,
+        generationParams: {
+          targetDuration: duration / 1000,
+          maxEvents: chunkSize,
+          complexity: 'simple',
+          layoutConstraints: {
+            maxSimultaneousElements: 3,
+            preferredStyle: 'minimal',
+          },
+          audioConstraints: {
+            speakingRate: 150,
+            pauseFrequency: 'normal',
+          },
+          contentFocus: {
+            primaryObjective: 'Explain concept clearly',
+            keyConceptsToEmphasize: [],
+          },
+        },
+        nextChunkHints: [],
+        metadata: {
+          model: 'test-model',
+          generatedAt: Date.now(),
+          timing: {
+            llmGeneration: Math.floor(50 + Math.random() * 100),
+            postProcessing: Math.floor(25 + Math.random() * 50),
+            validation: Math.floor(10 + Math.random() * 25),
+            total: Math.floor(100 + Math.random() * 200),
+          },
+        },
+      };
+      
+      chunks.push(chunk);
+    }
+    
+    console.log(`🎯 Converted ${events.length} events to ${chunks.length} streaming chunks:`, 
+      chunks.map(c => ({
+        id: c.chunkId,
+        startTime: c.timestampOffset,
+        duration: c.duration,
+        eventCount: c.events.length
+      }))
+    );
+    
+    return chunks;
+  };
 
   // Convert API timeline event to shared type
   const convertAPIEventToTimelineEvent = (apiEvent: APITimelineEvent, index: number): TimelineEvent => {
@@ -202,6 +281,11 @@ export default function TimelineTesting() {
                   );
                   setTimelineEvents(allEvents);
                   console.log(`📋 setTimelineEvents called with ${allEvents.length} events`);
+                  
+                  // Also convert to streaming chunks for progressive player
+                  const chunks = convertToStreamingChunks(allEvents);
+                  setStreamingChunks(chunks);
+                  console.log(`📦 Created ${chunks.length} streaming chunks`);
                   
                   // Clear loading state as soon as we have timeline events
                   if (allEvents.length > 0 && loading) {
@@ -776,6 +860,14 @@ export default function TimelineTesting() {
               </label>
               <div className="flex gap-2">
                 <Button 
+                  onClick={() => setPlaybackMode('progressive')}
+                  variant={playbackMode === 'progressive' ? 'default' : 'outline'}
+                  size="sm"
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  Progressive 🚀
+                </Button>
+                <Button 
                   onClick={() => setPlaybackMode('phase5')}
                   variant={playbackMode === 'phase5' ? 'default' : 'outline'}
                   size="sm"
@@ -799,6 +891,7 @@ export default function TimelineTesting() {
                 </Button>
               </div>
               <p className="text-xs text-gray-600 mt-1">
+                {playbackMode === 'progressive' && 'YouTube-style Progressive Streaming (NEW!)'}
                 {playbackMode === 'phase5' && 'Latest: Audio + Visual Synchronization'}
                 {playbackMode === 'phase4' && 'Timeline Control & Playback'}
                 {playbackMode === 'legacy' && 'Basic Timeline Display'}
@@ -833,6 +926,14 @@ export default function TimelineTesting() {
                 </Button>
                 <Button onClick={resetTimeline} variant="outline" size="sm">
                   🔄 Reset
+                </Button>
+                <Button 
+                  onClick={() => setShowComparisonDemo(!showComparisonDemo)} 
+                  variant="outline" 
+                  size="sm"
+                  className="bg-green-50 hover:bg-green-100 text-green-700"
+                >
+                  📊 Compare
                 </Button>
               </div>
             </div>
@@ -1151,44 +1252,79 @@ export default function TimelineTesting() {
               </div>
             )}
             
-            {/* ExcalidrawPlayer - Always render but conditionally show */}
+            {/* Player Selection */}
             <div className={`w-full h-full ${timelineEvents.length === 0 ? 'invisible' : 'visible'}`}>
-              <ExcalidrawPlayer
-                ref={playerRef}
-                mode={playbackMode}
-                enableTimelineLayout={true}
-                timelineEvents={timelineEvents}
-                canvasSize={{ width: 1200, height: 600 }}
-                enablePhase4Timeline={playbackMode === 'phase4' || playbackMode === 'phase5'}
-                enableAdvancedSeek={true}
-                enableContentBuffering={true}
-                enableMemoryOptimization={true}
-                seekResponseTarget={100}
-                // Phase 5 Audio Integration & Synchronization props
-                enablePhase5Audio={playbackMode === 'phase5'}
-                enableTimelineAudioSync={true}
-                enableStreamingAudioBuffer={true}
-                enableAudioVisualCoordination={true}
-                audioCoordinationMode={audioCoordinationMode}
-                audioSyncTolerance={audioSyncTolerance}
-                audioBufferAheadTime={2000}
-                audioSeekResponseTarget={100}
-                enableAudioScrubbing={true}
-                audioFadeDuration={150}
-                // Phase 5 Audio callbacks
-                onAudioSyncStateChange={handleAudioSyncStateChange}
-                onAudioProcessingMetrics={handleAudioProcessingMetrics}
-                onCoordinationEvent={handleCoordinationEvent}
-                onAudioChunkReady={handleAudioChunkReady}
-                bufferSize={15000}
-                onTimelineSeek={(timestamp: number) => {
-                  setCurrentPosition(timestamp);
-                  console.log(`Seeked to: ${timestamp}ms`);
-                }}
-                onPlaybackStateChange={handlePlaybackStateChange}
-                onSeekComplete={handleSeekComplete}
-                className="w-full h-full"
-              />
+              {playbackMode === 'progressive' ? (
+                // Progressive Streaming Player
+                <ExcalidrawPlayerProgressive
+                  chunks={streamingChunks}
+                  autoPlay={false}
+                  showControls={true}
+                  showBufferBar={true}
+                  showLoadingIndicators={true}
+                  streamingConfig={{
+                    minStartBuffer: 2000,    // Start with 2 seconds
+                    targetBuffer: 8000,      // Maintain 8 seconds ahead
+                    autoStart: false
+                  }}
+                  width={1200}
+                  height={600}
+                  onPlaybackStart={() => {
+                    console.log('🚀 Progressive playback started');
+                    setIsPlaying(true);
+                  }}
+                  onPlaybackEnd={() => {
+                    console.log('✅ Progressive playback ended');
+                    setIsPlaying(false);
+                  }}
+                  onSeek={(position) => {
+                    console.log(`🎯 Progressive seek to: ${position}ms`);
+                    setCurrentPosition(position);
+                  }}
+                  onError={(error) => {
+                    console.error('❌ Progressive player error:', error);
+                  }}
+                  className="w-full h-full"
+                />
+              ) : (
+                // Legacy ExcalidrawPlayer
+                <ExcalidrawPlayer
+                  ref={playerRef}
+                  mode={playbackMode}
+                  enableTimelineLayout={true}
+                  timelineEvents={timelineEvents}
+                  canvasSize={{ width: 1200, height: 600 }}
+                  enablePhase4Timeline={playbackMode === 'phase4' || playbackMode === 'phase5'}
+                  enableAdvancedSeek={true}
+                  enableContentBuffering={true}
+                  enableMemoryOptimization={true}
+                  seekResponseTarget={100}
+                  // Phase 5 Audio Integration & Synchronization props
+                  enablePhase5Audio={playbackMode === 'phase5'}
+                  enableTimelineAudioSync={true}
+                  enableStreamingAudioBuffer={true}
+                  enableAudioVisualCoordination={true}
+                  audioCoordinationMode={audioCoordinationMode}
+                  audioSyncTolerance={audioSyncTolerance}
+                  audioBufferAheadTime={2000}
+                  audioSeekResponseTarget={100}
+                  enableAudioScrubbing={true}
+                  audioFadeDuration={150}
+                  // Phase 5 Audio callbacks
+                  onAudioSyncStateChange={handleAudioSyncStateChange}
+                  onAudioProcessingMetrics={handleAudioProcessingMetrics}
+                  onCoordinationEvent={handleCoordinationEvent}
+                  onAudioChunkReady={handleAudioChunkReady}
+                  bufferSize={15000}
+                  onTimelineSeek={(timestamp: number) => {
+                    setCurrentPosition(timestamp);
+                    console.log(`Seeked to: ${timestamp}ms`);
+                  }}
+                  onPlaybackStateChange={handlePlaybackStateChange}
+                  onSeekComplete={handleSeekComplete}
+                  className="w-full h-full"
+                />
+              )}
             </div>
           </div>
         </div>
@@ -1326,6 +1462,32 @@ export default function TimelineTesting() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Progressive Streaming Comparison Demo */}
+        {showComparisonDemo && (
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-gray-900">🚀 Progressive Streaming Comparison Demo</h2>
+              <Button 
+                onClick={() => setShowComparisonDemo(false)} 
+                variant="outline" 
+                size="sm"
+              >
+                ✕ Close Demo
+              </Button>
+            </div>
+            
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <p className="text-green-800 text-sm">
+                <strong>Interactive Demo:</strong> Compare traditional "wait for all chunks" loading vs 
+                YouTube-style progressive streaming. The progressive system starts playing immediately 
+                when minimum content is ready, while the traditional system waits for everything to load.
+              </p>
+            </div>
+            
+            <StreamingComparisonDemo />
           </div>
         )}
 
