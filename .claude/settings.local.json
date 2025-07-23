@@ -6,7 +6,8 @@
       "Bash(pnpm build:*)",
       "Bash(find:*)",
       "Bash(grep:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

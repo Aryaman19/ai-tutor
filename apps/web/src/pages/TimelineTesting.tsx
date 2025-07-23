@@ -39,15 +39,15 @@ export default function TimelineTesting() {
   const [difficulty, setDifficulty] = useState('intermediate');
   const [targetDuration, setTargetDuration] = useState(120);
   const [loading, setLoading] = useState(false);
+  const [integrationLoading, setIntegrationLoading] = useState(false);
   
   const [streamingData, setStreamingData] = useState<StreamingData[]>([]);
   const [integrationResult, setIntegrationResult] = useState<FullIntegrationResult | null>(null);
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
   
-  // Phase 4 testing state
-  const [phase4Enabled, setPhase4Enabled] = useState(true);
-  const [playbackMode, setPlaybackMode] = useState<'legacy' | 'phase4'>('phase4');
+  // Timeline testing state - consolidated for Phase 5
+  const [playbackMode, setPlaybackMode] = useState<'legacy' | 'phase4' | 'phase5'>('phase5');
   const [currentPosition, setCurrentPosition] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -55,6 +55,14 @@ export default function TimelineTesting() {
   const [seekPerformance, setSeekPerformance] = useState<any>(null);
   const [bufferLevel, setBufferLevel] = useState(0);
   const [processingState, setProcessingState] = useState<string>('idle');
+  const [audioSyncState, setAudioSyncState] = useState<any>(null);
+  const [audioProcessingMetrics, setAudioProcessingMetrics] = useState<any>(null);
+  const [coordinationMetrics, setCoordinationMetrics] = useState<any>(null);
+  const [audioBufferStatus, setAudioBufferStatus] = useState<any>(null);
+  const [audioCoordinationMode, setAudioCoordinationMode] = useState<'audio_driven' | 'visual_driven' | 'synchronized' | 'independent'>('synchronized');
+  const [audioSyncTolerance, setAudioSyncTolerance] = useState(50);
+  const [audioChunkEvents, setAudioChunkEvents] = useState<any[]>([]);
+  const [coordinationEvents, setCoordinationEvents] = useState<any[]>([]);
   
   const playerRef = useRef<any>(null);
 
@@ -116,7 +124,13 @@ export default function TimelineTesting() {
       });
 
       if (!streamResponse.ok) {
-        throw new Error(`Streaming failed: ${streamResponse.status}`);
+        const errorText = await streamResponse.text();
+        console.error('❌ Streaming API failed:', {
+          status: streamResponse.status,
+          statusText: streamResponse.statusText,
+          body: errorText
+        });
+        throw new Error(`Streaming failed (${streamResponse.status}): ${streamResponse.statusText}. ${errorText}`);
       }
 
       const reader = streamResponse.body?.getReader();
@@ -126,7 +140,10 @@ export default function TimelineTesting() {
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            console.log(`✅ Streaming complete. Final timeline events: ${allEvents.length}`);
+            break;
+          }
 
           const chunk = decoder.decode(value, { stream: true });
           const lines = chunk.split('\n');
@@ -138,7 +155,7 @@ export default function TimelineTesting() {
                 setStreamingData(prev => [...prev, data]);
 
                 if (data.type === 'chunk' && data.data.timeline_events) {
-                  console.log(`🔍 Processing chunk ${data.data.chunk_number} with events:`, data.data.timeline_events);
+                  console.log(`🔍 Processing chunk ${data.data.chunk_number} with ${data.data.timeline_events.length} events:`, data.data.timeline_events);
                   
                   // Add new timeline events as they arrive and convert them
                   const newAPIEvents: APITimelineEvent[] = data.data.timeline_events.map((event: any, index: number) => {
@@ -179,18 +196,37 @@ export default function TimelineTesting() {
                       timestamp: e.timestamp,
                       timestampSeconds: (e.timestamp / 1000).toFixed(1),
                       duration: e.duration,
-                      durationSeconds: (e.duration / 1000).toFixed(1)
+                      durationSeconds: (e.duration / 1000).toFixed(1),
+                      content: typeof e.content === 'string' ? e.content.substring(0, 30) + '...' : 'object'
                     }))
                   );
                   setTimelineEvents(allEvents);
+                  console.log(`📋 setTimelineEvents called with ${allEvents.length} events`);
+                  
+                  // Clear loading state as soon as we have timeline events
+                  if (allEvents.length > 0 && loading) {
+                    console.log(`🎯 Clearing loading state - timeline events are ready`);
+                    setLoading(false);
+                  }
 
                   // Update ExcalidrawPlayer with new timeline data
                   if (playerRef.current) {
+                    console.log(`🎮 Calling playerRef.current.updateTimelineData with ${allEvents.length} events`);
                     playerRef.current.updateTimelineData(allEvents);
+                  } else {
+                    console.warn(`⚠️ playerRef.current is not available yet`);
                   }
                 }
               } catch (e) {
-                console.warn('Failed to parse streaming data:', line);
+                console.warn('❌ Failed to parse streaming data:', {
+                  line: line.substring(0, 100),
+                  error: e instanceof Error ? e.message : String(e)
+                });
+                // Add to streaming data as error for user feedback
+                setStreamingData(prev => [...prev, {
+                  type: 'error',
+                  data: { error: `Parse error: ${line.substring(0, 50)}...` }
+                }]);
               }
             }
           }
@@ -199,6 +235,7 @@ export default function TimelineTesting() {
 
       // Step 2: Run full integration test
       console.log('📊 Running full integration test...');
+      setIntegrationLoading(true);
       const integrationResponse = await fetch('/api/integration/full-timeline', {
         method: 'POST',
         headers: {
@@ -231,16 +268,59 @@ export default function TimelineTesting() {
       } catch (parseError) {
         console.error('Failed to parse integration response:', responseText);
         throw new Error(`Invalid JSON response from integration API: ${parseError}`);
+      } finally {
+        setIntegrationLoading(false);
       }
       
     } catch (error) {
       console.error('❌ Integration test failed:', error);
+      
+      // Determine error type for better user feedback
+      let errorMessage = 'Unknown error occurred';
+      let errorDetails = '';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        if (error.message.includes('Failed to fetch')) {
+          errorDetails = 'Check if the backend server is running on port 8000';
+        } else if (error.message.includes('Streaming failed')) {
+          errorDetails = 'The lesson generation API returned an error. Check the backend logs.';
+        } else if (error.message.includes('Parse error')) {
+          errorDetails = 'Received invalid data from the API. The response format may have changed.';
+        }
+      }
+      
       setStreamingData(prev => [...prev, {
         type: 'error',
-        data: { error: error instanceof Error ? error.message : 'Unknown error' }
+        data: { 
+          error: errorMessage,
+          details: errorDetails,
+          timestamp: new Date().toISOString()
+        }
       }]);
+      
+      // Also add to integration result for user visibility
+      setIntegrationResult({
+        success: false,
+        topic,
+        timeline_events_count: 0,
+        chunks_generated: 0,
+        elements_generated: 0,
+        timeline_events: [],
+        performance: {
+          total_time_s: 0,
+          memory_usage_bytes: 0,
+          cache_hit_rate: 0
+        },
+        error: `${errorMessage}${errorDetails ? ` (${errorDetails})` : ''}`
+      });
     } finally {
-      setLoading(false);
+      // Only reset loading if we don't have timeline events yet
+      // If we have events, loading was already cleared earlier
+      if (timelineEvents.length === 0) {
+        setLoading(false);
+      }
+      setIntegrationLoading(false);
     }
   };
 
@@ -300,7 +380,7 @@ export default function TimelineTesting() {
   };
 
   const refreshMetrics = () => {
-    if (playerRef.current && phase4Enabled) {
+    if (playerRef.current && (playbackMode === 'phase4' || playbackMode === 'phase5')) {
       if (playerRef.current.getPlaybackMetrics) {
         const metrics = playerRef.current.getPlaybackMetrics();
         setPlaybackMetrics(metrics);
@@ -375,6 +455,161 @@ export default function TimelineTesting() {
     refreshMetrics();
   };
 
+  // Phase 5 Audio Synchronization Functions
+  const updateAudioCoordinationMode = (mode: 'audio_driven' | 'visual_driven' | 'synchronized' | 'independent') => {
+    console.log(`🎵 Changing audio coordination mode to: ${mode}`);
+    
+    if (playerRef.current && playerRef.current.setAudioCoordinationMode) {
+      playerRef.current.setAudioCoordinationMode(mode);
+      setAudioCoordinationMode(mode);
+      console.log(`✅ Audio coordination mode changed successfully`);
+    } else {
+      console.warn('⚠️ Phase 5 audio coordination mode control not available');
+    }
+  };
+
+  const refreshAudioMetrics = () => {
+    if (playerRef.current && playbackMode === 'phase5') {
+      if (playerRef.current.getAudioSyncMetrics) {
+        const metrics = playerRef.current.getAudioSyncMetrics();
+        setAudioSyncState(metrics);
+        console.log('🎵 Audio sync metrics updated:', metrics);
+      }
+      
+      if (playerRef.current.getAudioProcessingMetrics) {
+        const metrics = playerRef.current.getAudioProcessingMetrics();
+        setAudioProcessingMetrics(metrics);
+        console.log('🎛️ Audio processing metrics updated:', metrics);
+      }
+      
+      if (playerRef.current.getCoordinationMetrics) {
+        const metrics = playerRef.current.getCoordinationMetrics();
+        setCoordinationMetrics(metrics);
+        console.log('🤝 Coordination metrics updated:', metrics);
+      }
+      
+      if (playerRef.current.getAudioBufferStatus) {
+        const status = playerRef.current.getAudioBufferStatus();
+        setAudioBufferStatus(status);
+        console.log('📊 Audio buffer status updated:', status);
+      }
+    }
+  };
+
+  const testAudioSynchronization = () => {
+    if (!timelineEvents.length) {
+      console.warn('⚠️ No timeline events available for audio sync testing');
+      return;
+    }
+    
+    console.log('🎵 Testing audio synchronization...');
+    
+    // Test sync at different positions
+    const totalDuration = Math.max(...timelineEvents.map(e => e.timestamp + e.duration));
+    const testPositions = [0, totalDuration * 0.25, totalDuration * 0.5, totalDuration * 0.75];
+    
+    let positionIndex = 0;
+    const testInterval = setInterval(() => {
+      if (positionIndex >= testPositions.length) {
+        clearInterval(testInterval);
+        console.log('✅ Audio synchronization test completed');
+        return;
+      }
+      
+      const position = testPositions[positionIndex];
+      console.log(`🎯 Testing audio sync at position: ${(position/1000).toFixed(1)}s`);
+      
+      if (playerRef.current && playerRef.current.syncAudioToPosition) {
+        const syncResult = playerRef.current.syncAudioToPosition(position);
+        console.log('🎵 Audio sync result:', syncResult);
+      }
+      
+      positionIndex++;
+    }, 2000); // Test every 2 seconds
+  };
+
+  const requestAudioGeneration = async () => {
+    if (!timelineEvents.length) {
+      console.warn('⚠️ No timeline events available for audio generation');
+      return;
+    }
+    
+    console.log('🎤 Requesting immediate audio generation...');
+    
+    const audioEvents = timelineEvents.filter(e => e.type === 'narration').slice(0, 3); // First 3 audio events
+    const chunkIds = audioEvents.map(e => `audio_${e.id}`);
+    
+    if (playerRef.current && playerRef.current.requestAudioChunkGeneration) {
+      try {
+        const results = await playerRef.current.requestAudioChunkGeneration(chunkIds);
+        console.log('✅ Audio generation results:', results);
+        
+        // Update metrics after generation
+        setTimeout(refreshAudioMetrics, 1000);
+      } catch (error) {
+        console.error('❌ Audio generation failed:', error);
+      }
+    } else {
+      console.warn('⚠️ Audio chunk generation not available');
+    }
+  };
+
+  const clearAudioBuffer = () => {
+    console.log('🧹 Clearing audio buffer...');
+    
+    if (playerRef.current && playerRef.current.clearAudioBuffer) {
+      playerRef.current.clearAudioBuffer();
+      setAudioBufferStatus({
+        totalChunks: 0,
+        bufferedChunks: 0,
+        processingChunks: 0,
+        pendingChunks: 0,
+        memoryUsage: 0,
+        bufferUtilization: 0,
+      });
+      console.log('✅ Audio buffer cleared');
+    } else {
+      console.warn('⚠️ Audio buffer clearing not available');
+    }
+  };
+
+  const resetAudioCoordination = () => {
+    console.log('🔄 Resetting audio coordination...');
+    
+    if (playerRef.current && playerRef.current.resetAudioCoordination) {
+      playerRef.current.resetAudioCoordination();
+      setAudioSyncState(null);
+      setAudioProcessingMetrics(null);
+      setCoordinationMetrics(null);
+      setAudioChunkEvents([]);
+      setCoordinationEvents([]);
+      console.log('✅ Audio coordination reset completed');
+    } else {
+      console.warn('⚠️ Audio coordination reset not available');
+    }
+  };
+
+  // Phase 5 Event Handlers
+  const handleAudioSyncStateChange = (state: any) => {
+    setAudioSyncState(state);
+    console.log('🎵 Audio sync state changed:', state);
+  };
+
+  const handleAudioProcessingMetrics = (metrics: any) => {
+    setAudioProcessingMetrics(metrics);
+    console.log('🎛️ Audio processing metrics updated:', metrics);
+  };
+
+  const handleCoordinationEvent = (event: any) => {
+    setCoordinationEvents(prev => [...prev.slice(-9), event]); // Keep last 10 events
+    console.log('🤝 Coordination event:', event);
+  };
+
+  const handleAudioChunkReady = (chunk: any) => {
+    setAudioChunkEvents(prev => [...prev.slice(-9), chunk]); // Keep last 10 chunks
+    console.log('🎤 Audio chunk ready:', chunk);
+  };
+
   const testRandomSeeks = async () => {
     if (!timelineEvents.length) {
       console.warn('⚠️ No timeline events available for seek testing');
@@ -400,13 +635,13 @@ export default function TimelineTesting() {
     console.log(`📈 Average seek time: ${(totalTime / positions.length).toFixed(1)}ms per seek`);
   };
 
-  // Auto-refresh metrics when Phase 4 is enabled
+  // Auto-refresh metrics when Phase 4 or 5 is enabled
   useEffect(() => {
-    if (phase4Enabled && timelineEvents.length > 0) {
+    if ((playbackMode === 'phase4' || playbackMode === 'phase5') && timelineEvents.length > 0) {
       const interval = setInterval(refreshMetrics, 1000);
       return () => clearInterval(interval);
     }
-  }, [phase4Enabled, timelineEvents.length]);
+  }, [playbackMode, timelineEvents.length]);
 
   const playTimeline = () => {
     if (playerRef.current) {
@@ -420,6 +655,20 @@ export default function TimelineTesting() {
     }
   };
 
+  // Phase 5 metrics refresh effect
+  useEffect(() => {
+    if (playbackMode !== 'phase5') {
+      return;
+    }
+    
+    // Refresh metrics every 2 seconds when Phase 5 is active
+    const metricsInterval = setInterval(() => {
+      refreshAudioMetrics();
+    }, 2000);
+    
+    return () => clearInterval(metricsInterval);
+  }, [playbackMode]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6 pb-12">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -432,10 +681,10 @@ export default function TimelineTesting() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                Timeline Integration Testing
+                Comprehensive Timeline Testing - Phase 5 ⭐
               </h1>
               <p className="text-gray-600">
-                Test the complete flow: Topic → Chunked Generation → Timeline Layout → Visual Display
+                Complete AI Tutor testing: Topic → Chunked Generation → Timeline Layout → Visual Display → Audio Synchronization
               </p>
             </div>
           </div>
@@ -499,13 +748,15 @@ export default function TimelineTesting() {
           <div className="mt-6">
             <Button
               onClick={startFullIntegrationTest}
-              disabled={loading}
+              disabled={loading || integrationLoading}
               className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium py-3 px-6 rounded-lg transition-all duration-200 disabled:opacity-50"
             >
-              {loading ? (
+              {(loading || integrationLoading) ? (
                 <div className="flex items-center justify-center space-x-2">
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Testing Full Integration...</span>
+                  <span>
+                    {loading ? 'Generating Content...' : 'Running Integration Test...'}
+                  </span>
                 </div>
               ) : (
                 <span>🚀 Start Full Timeline Integration Test</span>
@@ -514,37 +765,44 @@ export default function TimelineTesting() {
           </div>
         </div>
 
-        {/* Phase 4 Configuration Panel */}
+        {/* Timeline Mode Configuration Panel */}
         <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">🚀 Phase 4: Timeline Control & Playback</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">🎯 Timeline Mode Configuration</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phase 4 Mode
+                Timeline Mode
               </label>
               <div className="flex gap-2">
                 <Button 
-                  onClick={() => {
-                    setPhase4Enabled(true);
-                    setPlaybackMode('phase4');
-                  }}
-                  variant={phase4Enabled ? 'default' : 'outline'}
+                  onClick={() => setPlaybackMode('phase5')}
+                  variant={playbackMode === 'phase5' ? 'default' : 'outline'}
+                  size="sm"
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  Phase 5 ⭐
+                </Button>
+                <Button 
+                  onClick={() => setPlaybackMode('phase4')}
+                  variant={playbackMode === 'phase4' ? 'default' : 'outline'}
                   size="sm"
                 >
                   Phase 4
                 </Button>
                 <Button 
-                  onClick={() => {
-                    setPhase4Enabled(false);
-                    setPlaybackMode('legacy');
-                  }}
-                  variant={!phase4Enabled ? 'default' : 'outline'}
+                  onClick={() => setPlaybackMode('legacy')}
+                  variant={playbackMode === 'legacy' ? 'default' : 'outline'}
                   size="sm"
                 >
                   Legacy
                 </Button>
               </div>
+              <p className="text-xs text-gray-600 mt-1">
+                {playbackMode === 'phase5' && 'Latest: Audio + Visual Synchronization'}
+                {playbackMode === 'phase4' && 'Timeline Control & Playback'}
+                {playbackMode === 'legacy' && 'Basic Timeline Display'}
+              </p>
             </div>
             
             <div>
@@ -580,10 +838,10 @@ export default function TimelineTesting() {
             </div>
           </div>
           
-          {/* Phase 4 Metrics Display */}
-          {phase4Enabled && (playbackMetrics || seekPerformance) && (
+          {/* Timeline Metrics Display */}
+          {(playbackMode === 'phase4' || playbackMode === 'phase5') && (playbackMetrics || seekPerformance) && (
             <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-              <h3 className="text-sm font-semibold text-blue-800 mb-2">📊 Phase 4 Metrics</h3>
+              <h3 className="text-sm font-semibold text-blue-800 mb-2">📊 Timeline Metrics ({playbackMode})</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                 <div>
                   <p className="text-blue-600">Position</p>
@@ -617,10 +875,10 @@ export default function TimelineTesting() {
               <Button onClick={togglePlayback} className={isPlaying ? "bg-orange-600 hover:bg-orange-700" : "bg-green-600 hover:bg-green-700"}>
                 {isPlaying ? "⏸️ Pause" : "▶️ Play"}
               </Button>
-              <Button onClick={() => phase4Enabled ? seekToPosition(0) : seekToTimestamp(0)} className="bg-blue-600 hover:bg-blue-700">
+              <Button onClick={() => (playbackMode === 'phase4' || playbackMode === 'phase5') ? seekToPosition(0) : seekToTimestamp(0)} className="bg-blue-600 hover:bg-blue-700">
                 ⏮️ Start
               </Button>
-              {phase4Enabled && (
+              {(playbackMode === 'phase4' || playbackMode === 'phase5') && (
                 <Button onClick={testRandomSeeks} className="bg-purple-600 hover:bg-purple-700">
                   🎯 Test Seeks
                 </Button>
@@ -643,7 +901,7 @@ export default function TimelineTesting() {
                           key={event.id}
                           onClick={() => {
                             console.log(`🎯 Clicked seek button: ${timestampSeconds}s (${event.timestamp}ms)`);
-                            phase4Enabled ? seekToPosition(event.timestamp) : seekToTimestamp(event.timestamp);
+                            (playbackMode === 'phase4' || playbackMode === 'phase5') ? seekToPosition(event.timestamp) : seekToTimestamp(event.timestamp);
                           }}
                           variant="outline"
                           size="sm"
@@ -668,36 +926,270 @@ export default function TimelineTesting() {
           </div>
         )}
 
+        {/* Phase 5 Audio Integration & Synchronization Panel */}
+        {playbackMode === 'phase5' && (
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">🎵 Phase 5: Audio Integration & Synchronization</h2>
+            
+            {/* Audio Explanation */}
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+              <p className="text-purple-800 text-sm">
+                <strong>Phase 5 Features:</strong> Real-time audio generation synchronized with visual timeline events. 
+                Test audio-visual coordination, sync tolerance, and streaming audio buffer performance.
+              </p>
+            </div>
+            
+            {/* Basic Audio Settings */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-800 text-sm">🎛️ Audio Settings</h3>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Coordination Mode
+                    <span className="text-gray-500 text-xs ml-1">(How audio & visuals sync)</span>
+                  </label>
+                  <select
+                    value={audioCoordinationMode}
+                    onChange={(e) => updateAudioCoordinationMode(e.target.value as any)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="synchronized">Synchronized (Recommended)</option>
+                    <option value="audio_driven">Audio Driven</option>
+                    <option value="visual_driven">Visual Driven</option>
+                    <option value="independent">Independent</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Sync Tolerance: {audioSyncTolerance}ms
+                    <span className="text-gray-500 text-xs ml-1">(Acceptable timing difference)</span>
+                  </label>
+                  <div className="flex gap-1">
+                    {[25, 50, 100, 200].map(tolerance => (
+                      <Button
+                        key={tolerance}
+                        onClick={() => setAudioSyncTolerance(tolerance)}
+                        variant={audioSyncTolerance === tolerance ? 'default' : 'outline'}
+                        size="sm"
+                      >
+                        {tolerance}ms
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-800 text-sm">🧪 Audio Testing</h3>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Quick Tests</label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={testAudioSynchronization} variant="outline" size="sm">
+                      🎵 Sync Test
+                    </Button>
+                    <Button onClick={requestAudioGeneration} variant="outline" size="sm">
+                      🎤 Generate Audio
+                    </Button>
+                    <Button onClick={refreshAudioMetrics} variant="outline" size="sm">
+                      📊 Refresh Metrics
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">System Controls</label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={resetAudioCoordination} variant="outline" size="sm">
+                      🔄 Reset Audio
+                    </Button>
+                    <Button onClick={clearAudioBuffer} variant="outline" size="sm">
+                      🧹 Clear Buffer
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Phase 5 Metrics Display */}
+            {playbackMode === 'phase5' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Audio Sync Metrics */}
+                  {audioSyncState && (
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-sm text-gray-700 mb-2">🎵 Audio Sync State</h4>
+                      <div className="space-y-1 text-xs text-gray-600">
+                        <div>Timeline: {Math.round(audioSyncState.timelinePosition)}ms</div>
+                        <div>Audio: {Math.round(audioSyncState.audioPosition)}ms</div>
+                        <div>Offset: {Math.round(audioSyncState.syncOffset)}ms</div>
+                        <div>State: <span className={audioSyncState.state === 'synced' ? 'text-green-600' : 'text-amber-600'}>{audioSyncState.state}</span></div>
+                        <div>Confidence: {Math.round(audioSyncState.confidence * 100)}%</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Audio Buffer Status */}
+                  {audioBufferStatus && (
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-sm text-gray-700 mb-2">📊 Buffer Status</h4>
+                      <div className="space-y-1 text-xs text-gray-600">
+                        <div>Total Chunks: {audioBufferStatus.totalChunks}</div>
+                        <div>Buffered: {audioBufferStatus.bufferedChunks}</div>
+                        <div>Processing: {audioBufferStatus.processingChunks}</div>
+                        <div>Memory: {Math.round(audioBufferStatus.memoryUsage / 1024)}KB</div>
+                        <div>Utilization: {Math.round(audioBufferStatus.bufferUtilization * 100)}%</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Coordination Metrics */}
+                  {coordinationMetrics && (
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <h4 className="font-semibold text-sm text-gray-700 mb-2">🤝 Coordination</h4>
+                      <div className="space-y-1 text-xs text-gray-600">
+                        <div>Sync Events: {coordinationMetrics.totalSyncEvents}</div>
+                        <div>Success Rate: {Math.round(coordinationMetrics.successfulSyncs / Math.max(1, coordinationMetrics.totalSyncEvents) * 100)}%</div>
+                        <div>Avg Accuracy: {Math.round(coordinationMetrics.averageSyncAccuracy)}ms</div>
+                        <div>Mode: {audioCoordinationMode}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Recent Events */}
+                {(audioChunkEvents.length > 0 || coordinationEvents.length > 0) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {audioChunkEvents.length > 0 && (
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <h4 className="font-semibold text-sm text-gray-700 mb-2">🎤 Recent Audio Chunks</h4>
+                        <div className="space-y-1 text-xs text-gray-600 max-h-32 overflow-y-auto">
+                          {audioChunkEvents.slice(-5).map((chunk, i) => (
+                            <div key={i}>
+                              <span className="text-blue-600">Chunk {i + 1}:</span> {chunk.id || 'Generated'}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {coordinationEvents.length > 0 && (
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <h4 className="font-semibold text-sm text-gray-700 mb-2">🤝 Coordination Events</h4>
+                        <div className="space-y-1 text-xs text-gray-600 max-h-32 overflow-y-auto">
+                          {coordinationEvents.slice(-5).map((event, i) => (
+                            <div key={i}>
+                              <span className="text-green-600">{event.type}:</span> {Math.round(event.position)}ms
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ExcalidrawPlayer - Main Visualization */}
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
           <div className="bg-gray-50 px-6 py-4 border-b">
             <h2 className="text-xl font-semibold text-gray-900">📊 Timeline Visualization</h2>
             <p className="text-gray-600 text-sm mt-1">
-              Real-time visualization of timeline events with Phase 3 layout engine
+              Real-time visualization of timeline events with {playbackMode} layout engine
             </p>
+            {/* Status indicator */}
+            <div className="mt-2">
+              {loading && (
+                <div className="flex items-center gap-2 text-blue-600 text-sm">
+                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Generating lesson content...</span>
+                </div>
+              )}
+              {!loading && timelineEvents.length === 0 && (
+                <div className="text-amber-600 text-sm">
+                  📝 Click "Start Full Timeline Integration Test" to generate content
+                </div>
+              )}
+              {!loading && timelineEvents.length > 0 && !integrationLoading && (
+                <div className="text-green-600 text-sm">
+                  ✅ {timelineEvents.length} timeline events loaded ({playbackMode} mode)
+                </div>
+              )}
+              {integrationLoading && (
+                <div className="flex items-center gap-2 text-purple-600 text-sm">
+                  <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Running integration test...</span>
+                </div>
+              )}
+            </div>
           </div>
           
-          <div className="h-[600px]">
-            <ExcalidrawPlayer
-              ref={playerRef}
-              mode={playbackMode}
-              enableTimelineLayout={true}
-              timelineEvents={timelineEvents}
-              canvasSize={{ width: 1200, height: 600 }}
-              enablePhase4Timeline={phase4Enabled}
-              enableAdvancedSeek={true}
-              enableContentBuffering={true}
-              enableMemoryOptimization={true}
-              seekResponseTarget={100}
-              bufferSize={15000}
-              onTimelineSeek={(timestamp: number) => {
-                setCurrentPosition(timestamp);
-                console.log(`Seeked to: ${timestamp}ms`);
-              }}
-              onPlaybackStateChange={handlePlaybackStateChange}
-              onSeekComplete={handleSeekComplete}
-              className="w-full h-full"
-            />
+          <div className="h-[600px] relative">
+            {/* Loading overlay */}
+            {loading && (
+              <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center z-10">
+                <div className="text-center">
+                  <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-gray-700 font-medium">Generating Timeline Content</p>
+                  <p className="text-gray-500 text-sm mt-1">This may take a few moments...</p>
+                </div>
+              </div>
+            )}
+            
+            {/* Empty state */}
+            {!loading && timelineEvents.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center text-gray-500">
+                  <div className="text-6xl mb-4">🎥</div>
+                  <h3 className="text-lg font-medium text-gray-700 mb-2">No Timeline Content Yet</h3>
+                  <p className="text-sm">Generate a lesson above to see the interactive timeline visualization</p>
+                </div>
+              </div>
+            )}
+            
+            {/* ExcalidrawPlayer - Always render but conditionally show */}
+            <div className={`w-full h-full ${timelineEvents.length === 0 ? 'invisible' : 'visible'}`}>
+              <ExcalidrawPlayer
+                ref={playerRef}
+                mode={playbackMode}
+                enableTimelineLayout={true}
+                timelineEvents={timelineEvents}
+                canvasSize={{ width: 1200, height: 600 }}
+                enablePhase4Timeline={playbackMode === 'phase4' || playbackMode === 'phase5'}
+                enableAdvancedSeek={true}
+                enableContentBuffering={true}
+                enableMemoryOptimization={true}
+                seekResponseTarget={100}
+                // Phase 5 Audio Integration & Synchronization props
+                enablePhase5Audio={playbackMode === 'phase5'}
+                enableTimelineAudioSync={true}
+                enableStreamingAudioBuffer={true}
+                enableAudioVisualCoordination={true}
+                audioCoordinationMode={audioCoordinationMode}
+                audioSyncTolerance={audioSyncTolerance}
+                audioBufferAheadTime={2000}
+                audioSeekResponseTarget={100}
+                enableAudioScrubbing={true}
+                audioFadeDuration={150}
+                // Phase 5 Audio callbacks
+                onAudioSyncStateChange={handleAudioSyncStateChange}
+                onAudioProcessingMetrics={handleAudioProcessingMetrics}
+                onCoordinationEvent={handleCoordinationEvent}
+                onAudioChunkReady={handleAudioChunkReady}
+                bufferSize={15000}
+                onTimelineSeek={(timestamp: number) => {
+                  setCurrentPosition(timestamp);
+                  console.log(`Seeked to: ${timestamp}ms`);
+                }}
+                onPlaybackStateChange={handlePlaybackStateChange}
+                onSeekComplete={handleSeekComplete}
+                className="w-full h-full"
+              />
+            </div>
           </div>
         </div>
 
@@ -725,7 +1217,12 @@ export default function TimelineTesting() {
                     <span> {data.data.completed_chunks}/{data.data.total_chunks} chunks</span>
                   )}
                   {data.type === 'error' && (
-                    <span> {data.data.error}</span>
+                    <div className="mt-2">
+                      <span className="block">{data.data.error}</span>
+                      {data.data.details && (
+                        <span className="text-xs block mt-1 opacity-80">{data.data.details}</span>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
@@ -808,7 +1305,7 @@ export default function TimelineTesting() {
                 <div
                   key={event.id}
                   className="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer"
-                  onClick={() => phase4Enabled ? seekToPosition(event.timestamp) : seekToTimestamp(event.timestamp)}
+                  onClick={() => (playbackMode === 'phase4' || playbackMode === 'phase5') ? seekToPosition(event.timestamp) : seekToTimestamp(event.timestamp)}
                 >
                   <div>
                     <p className="font-medium text-gray-900">
