@@ -5,7 +5,6 @@ import {
   SettingsIcon, 
   BrainIcon, 
   VolumeIcon, 
-  MicIcon, 
   PaletteIcon, 
   ServerIcon,
   SaveIcon,
@@ -33,7 +32,6 @@ const SettingsLayoutComponent: React.FC<SettingsLayoutProps> = ({
   const tabs = [
     { id: "llm", label: "Models", icon: BrainIcon },
     { id: "tts", label: "Voice", icon: VolumeIcon },
-    { id: "stt", label: "Transcriber", icon: MicIcon },
     { id: "appearance", label: "Appearance", icon: PaletteIcon },
     { id: "system", label: "System Status", icon: ServerIcon },
   ];

@@ -10,7 +10,6 @@ import type {
 import { SettingsLayout } from "@/components/settings/SettingsLayout";
 import { ModelsSettings } from "@/components/settings/ModelsSettings";
 import { VoiceSettings } from "@/components/settings/VoiceSettings";
-import { TranscriberSettings } from "@/components/settings/TranscriberSettings";
 import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
 import { SystemStatusSettings } from "@/components/settings/SystemStatusSettings";
 
@@ -78,13 +77,6 @@ const Settings: React.FC = () => {
             data={formData.tts}
             browserVoices={browserVoices}
             onChange={(data) => updateFormData("tts", data)}
-          />
-        );
-      case "stt":
-        return (
-          <TranscriberSettings
-            data={formData.stt}
-            onChange={(data) => updateFormData("stt", data)}
           />
         );
       case "appearance":

@@ -14,7 +14,6 @@ import Home from "./pages/Home";
 import Lesson from "./pages/Lesson";
 import Settings from "./pages/Settings";
 import { SystemStatus } from "./pages/SystemStatus";
-import TimelineTesting from "./pages/TimelineTesting";
 import AITutor from "./pages/AITutor";
 
 const queryClient = new QueryClient();
@@ -42,7 +41,6 @@ function App() {
                 <Route path="home" element={<Home />} />
                 <Route path="lesson/:id" element={<Lesson />} />
                 <Route path="settings" element={<Settings />} />
-                <Route path="timeline-test" element={<TimelineTesting />} />
                     </Route>
             </Routes>
             <Toaster />

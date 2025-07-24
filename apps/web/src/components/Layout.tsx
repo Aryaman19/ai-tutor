@@ -202,26 +202,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <span className="font-medium text-sm">Settings</span>
             </Link>
             
-            {/* Developer/Testing Links */}
-            <details className="text-xs">
-              <summary className="text-muted-foreground hover:text-foreground cursor-pointer p-2">
-                🔧 Developer Tools
-              </summary>
-              <div className="ml-2 mt-1 space-y-1">
-                <Link
-                  to="/timeline-test"
-                  className="block p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded"
-                >
-                  Timeline Testing
-                </Link>
-                <Link
-                  to="/home"
-                  className="block p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded"
-                >
-                  Legacy Home
-                </Link>
-              </div>
-            </details>
           </div>
         </div>
       </div>

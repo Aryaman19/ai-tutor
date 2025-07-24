@@ -1,7 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@ai-tutor/ui';
 import { ExcalidrawPlayerProgressive } from '../components/ExcalidrawPlayerProgressive';
+import { lessonsApi } from '@ai-tutor/api-client';
+import { createComponentLogger } from '@ai-tutor/utils';
 import type { TimelineEvent, StreamingTimelineChunk } from '@ai-tutor/types';
+
+const logger = createComponentLogger('AITutor');
 
 // Error Boundary Component for Production
 class ErrorBoundary extends React.Component<
@@ -58,6 +64,13 @@ interface StreamingData {
 }
 
 function AITutorContent() {
+  // Navigation and API
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  
+  // Mode Selection State
+  const [mode, setMode] = useState<'interactive' | 'create'>('interactive');
+  
   // Core AI Tutor State
   const [topic, setTopic] = useState('');
   const [difficulty, setDifficulty] = useState('intermediate');
@@ -69,12 +82,36 @@ function AITutorContent() {
   const [streamingChunks, setStreamingChunks] = useState<StreamingTimelineChunk[]>([]);
   const [generationProgress, setGenerationProgress] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [isStreamingComplete, setIsStreamingComplete] = useState(false);
   
   // Playback State
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(0);
   
   const playerRef = useRef<any>(null);
+  
+  // Example topics for inspiration
+  const exampleTopics = [
+    "How do computers work?",
+    "Why is the sky blue?",
+    "What is photosynthesis?",
+    "How do airplanes fly?",
+    "What are black holes?",
+    "How does the internet work?",
+  ];
+  
+  // Lesson creation mutation
+  const createLessonMutation = useMutation({
+    mutationFn: (topic: string) => lessonsApi.createLesson(topic),
+    onSuccess: (lesson) => {
+      queryClient.invalidateQueries({ queryKey: ["lessons"] });
+      navigate(`/lesson/${lesson.id}`);
+    },
+    onError: (error) => {
+      logger.error("Error creating lesson:", error);
+      setError(`Failed to create lesson: ${error}`);
+    },
+  });
 
   // Convert timeline events to streaming chunks for progressive player
   const convertToStreamingChunks = (events: TimelineEvent[]): StreamingTimelineChunk[] => {
@@ -182,6 +219,7 @@ function AITutorContent() {
     setError('');
     setTimelineEvents([]);
     setStreamingChunks([]);
+    setIsStreamingComplete(false);
     setGenerationProgress('Starting lesson generation...');
     
     try {
@@ -213,6 +251,7 @@ function AITutorContent() {
           const { done, value } = await reader.read();
           if (done) {
             setGenerationProgress('Lesson generation complete!');
+            setIsStreamingComplete(true);
             setTimeout(() => setGenerationProgress(''), 2000);
             break;
           }
@@ -294,6 +333,7 @@ function AITutorContent() {
   const resetLesson = () => {
     setTimelineEvents([]);
     setStreamingChunks([]);
+    setIsStreamingComplete(false);
     setIsPlaying(false);
     setCurrentPosition(0);
     setError('');
@@ -347,8 +387,25 @@ function AITutorContent() {
                 onChange={(e) => setTopic(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
                 placeholder="e.g., Photosynthesis, Solar System, Democracy..."
-                disabled={isGenerating}
+                disabled={isGenerating || createLessonMutation.isPending}
               />
+              
+              {/* Example topics */}
+              <div className="mt-3">
+                <p className="text-sm text-gray-600 mb-2">💡 Try these examples:</p>
+                <div className="flex flex-wrap gap-2">
+                  {exampleTopics.map((example, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setTopic(example)}
+                      className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full transition-colors duration-200 disabled:opacity-50"
+                      disabled={isGenerating || createLessonMutation.isPending}
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             
             {/* Difficulty Level */}
@@ -360,7 +417,7 @@ function AITutorContent() {
                 value={difficulty}
                 onChange={(e) => setDifficulty(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
-                disabled={isGenerating}
+                disabled={isGenerating || createLessonMutation.isPending}
               >
                 <option value="beginner">🟢 Beginner (Simple explanation)</option>
                 <option value="intermediate">🟡 Intermediate (Balanced detail)</option>
@@ -377,7 +434,7 @@ function AITutorContent() {
                 value={targetDuration}
                 onChange={(e) => setTargetDuration(Number(e.target.value))}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
-                disabled={isGenerating}
+                disabled={isGenerating || createLessonMutation.isPending}
               >
                 <option value={60}>⚡ Quick (1 minute)</option>
                 <option value={120}>📖 Standard (2 minutes)</option>
@@ -387,29 +444,80 @@ function AITutorContent() {
             </div>
           </div>
 
+          {/* Mode Selection */}
+          <div className="mb-6">
+            <div className="flex items-center justify-center space-x-1 bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setMode('interactive')}
+                className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 ${
+                  mode === 'interactive'
+                    ? 'bg-white shadow-sm text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                disabled={isGenerating || createLessonMutation.isPending}
+              >
+                🎮 Play Now
+              </button>
+              <button
+                onClick={() => setMode('create')}
+                className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 ${
+                  mode === 'create'
+                    ? 'bg-white shadow-sm text-green-600'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+                disabled={isGenerating || createLessonMutation.isPending}
+              >
+                📚 Save Lesson
+              </button>
+            </div>
+          </div>
+
           {/* Action buttons */}
           <div className="flex gap-4">
-            <Button
-              onClick={generateLesson}
-              disabled={isGenerating || !topic.trim()}
-              className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 text-lg"
-            >
-              {isGenerating ? (
-                <div className="flex items-center justify-center space-x-3">
-                  <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Generating Your Lesson...</span>
-                </div>
-              ) : (
-                <span>🚀 Generate AI Lesson</span>
-              )}
-            </Button>
+            {mode === 'interactive' ? (
+              <Button
+                onClick={generateLesson}
+                disabled={isGenerating || !topic.trim()}
+                className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 text-lg"
+              >
+                {isGenerating ? (
+                  <div className="flex items-center justify-center space-x-3">
+                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Generating Interactive Content...</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center space-x-3">
+                    <span className="text-xl">🎮</span>
+                    <span>Generate & Play Now</span>
+                  </div>
+                )}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => createLessonMutation.mutate(topic.trim())}
+                disabled={createLessonMutation.isPending || !topic.trim()}
+                className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 text-lg"
+              >
+                {createLessonMutation.isPending ? (
+                  <div className="flex items-center justify-center space-x-3">
+                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Creating Lesson...</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center space-x-3">
+                    <span className="text-xl">📚</span>
+                    <span>Create & Save Lesson</span>
+                  </div>
+                )}
+              </Button>
+            )}
             
             {(timelineEvents.length > 0 || error) && (
               <Button
                 onClick={resetLesson}
                 variant="outline"
                 className="px-6 py-4 text-lg"
-                disabled={isGenerating}
+                disabled={isGenerating || createLessonMutation.isPending}
               >
                 🔄 New Lesson
               </Button>
@@ -469,7 +577,8 @@ function AITutorContent() {
                 showControls={true}
                 showBufferBar={true}
                 showLoadingIndicators={true}
-                useSimpleAudioMode={true}  // Enable simple audio mode for testing
+                useSimpleAudioMode={false}  // Use podcast-style player with canvas
+                isStreamingComplete={isStreamingComplete}
                 streamingConfig={{
                   minStartBuffer: 2000,    // Start playing with 2 seconds buffered
                   targetBuffer: 8000,      // Maintain 8 seconds ahead

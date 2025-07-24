@@ -39,6 +39,8 @@ interface AudioChunk {
   isLoaded: boolean;
   hasPlayed: boolean;
   playCount: number; // Track how many times this chunk has been played
+  actualDuration?: number; // Measured duration of audio playback
+  estimatedDuration?: number; // Estimated duration for timing calculations
 }
 
 export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {}) => {

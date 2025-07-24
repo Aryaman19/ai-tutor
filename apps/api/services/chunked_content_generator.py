@@ -427,7 +427,7 @@ class ChunkedContentGenerator:
         return None
     
     async def _parse_chunk_response(self, response_text: str, chunk_number: int, target_duration: float = 120.0, total_chunks: int = 3) -> Dict[str, Any]:
-        """Parse and validate chunk response JSON"""
+        """Parse and validate chunk response JSON with robust error handling"""
         
         try:
             # Try to extract JSON from response
@@ -448,29 +448,12 @@ class ChunkedContentGenerator:
                 response_text = re.sub(r'```', '', response_text).strip()
                 logger.info(f"Cleaned markdown syntax: {response_text[:100]}...")
             
-            # More robust JSON extraction
-            json_start = response_text.find('{')
-            json_end = response_text.rfind('}') + 1
+            # More robust JSON extraction with multiple strategies
+            chunk_data = await self._try_parse_json_multiple_strategies(response_text, chunk_number)
             
-            if json_start >= 0 and json_end > json_start:
-                json_text = response_text[json_start:json_end]
-                
-                # Clean up common JSON issues
-                json_text = json_text.replace('\n', ' ')  # Remove newlines
-                json_text = json_text.replace('\t', ' ')  # Remove tabs
-                
-                # Fix common trailing comma issues
-                json_text = re.sub(r',\s*}', '}', json_text)  # Remove trailing commas before }
-                json_text = re.sub(r',\s*]', ']', json_text)  # Remove trailing commas before ]
-                
-                logger.info(f"Parsing cleaned JSON: {json_text[:200]}...")
-                chunk_data = json.loads(json_text)
-            else:
-                # Fallback: try parsing the entire response with cleaning
-                clean_text = re.sub(r',\s*}', '}', response_text)
-                clean_text = re.sub(r',\s*]', ']', clean_text)
-                logger.info(f"Fallback parsing entire response: {clean_text[:100]}...")
-                chunk_data = json.loads(clean_text)
+            if chunk_data is None:
+                # If all parsing strategies failed, use fallback
+                raise json.JSONDecodeError("All JSON parsing strategies failed", response_text, 0)
             
             # Validate required fields
             required_fields = ["timeline_events", "chunk_summary"]
@@ -516,7 +499,18 @@ class ChunkedContentGenerator:
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response for chunk {chunk_number}: {e}")
-            logger.error(f"Raw response that failed parsing: {response_text}")
+            logger.error(f"Error position: character {e.pos if hasattr(e, 'pos') else 'unknown'}")
+            logger.error(f"Error details: {e.msg if hasattr(e, 'msg') else str(e)}")
+            
+            # Log the problematic text around the error position for debugging
+            if hasattr(e, 'pos') and e.pos is not None:
+                start_pos = max(0, e.pos - 100)
+                end_pos = min(len(response_text), e.pos + 100)
+                context = response_text[start_pos:end_pos]
+                logger.error(f"Context around error position {e.pos}: ...{context}...")
+            
+            logger.error(f"Raw response that failed parsing (first 500 chars): {response_text[:500]}...")
+            logger.error(f"Raw response that failed parsing (last 500 chars): ...{response_text[-500:]}")
             
             # Extract any meaningful text content as fallback
             fallback_content = self._extract_meaningful_content(response_text)
@@ -541,6 +535,214 @@ class ChunkedContentGenerator:
                 "concepts_introduced": [f"Basic concepts from chunk {chunk_number}"],
                 "visual_elements_created": ["text explanation"]
             }
+    
+    async def _try_parse_json_multiple_strategies(self, response_text: str, chunk_number: int) -> Optional[Dict[str, Any]]:
+        """Try multiple JSON parsing strategies to handle malformed responses"""
+        
+        strategies = [
+            ("direct_parse", self._strategy_direct_parse),
+            ("boundary_extraction", self._strategy_boundary_extraction),
+            ("progressive_truncation", self._strategy_progressive_truncation),
+            ("bracket_repair", self._strategy_bracket_repair),
+            ("field_by_field", self._strategy_field_by_field),
+        ]
+        
+        for strategy_name, strategy_func in strategies:
+            try:
+                logger.info(f"Trying JSON parsing strategy '{strategy_name}' for chunk {chunk_number}")
+                result = await strategy_func(response_text)
+                if result is not None:
+                    logger.info(f"Successfully parsed JSON using strategy '{strategy_name}'")
+                    return result
+            except Exception as e:
+                logger.debug(f"Strategy '{strategy_name}' failed: {e}")
+                continue
+        
+        logger.warning(f"All JSON parsing strategies failed for chunk {chunk_number}")
+        return None
+    
+    async def _strategy_direct_parse(self, response_text: str) -> Optional[Dict[str, Any]]:
+        """Strategy 1: Direct parsing with basic cleanup"""
+        # Clean up common JSON issues
+        clean_text = response_text.replace('\n', ' ').replace('\t', ' ')
+        clean_text = re.sub(r',\s*}', '}', clean_text)  # Remove trailing commas before }
+        clean_text = re.sub(r',\s*]', ']', clean_text)  # Remove trailing commas before ]
+        clean_text = re.sub(r'\s+', ' ', clean_text)  # Normalize whitespace
+        
+        return json.loads(clean_text)
+    
+    async def _strategy_boundary_extraction(self, response_text: str) -> Optional[Dict[str, Any]]:
+        """Strategy 2: Extract content between first { and last }"""
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        
+        if json_start >= 0 and json_end > json_start:
+            json_text = response_text[json_start:json_end]
+            
+            # Clean up common JSON issues
+            json_text = json_text.replace('\n', ' ').replace('\t', ' ')
+            json_text = re.sub(r',\s*}', '}', json_text)
+            json_text = re.sub(r',\s*]', ']', json_text)
+            
+            return json.loads(json_text)
+        
+        return None
+    
+    async def _strategy_progressive_truncation(self, response_text: str) -> Optional[Dict[str, Any]]:
+        """Strategy 3: Try parsing by progressively truncating from the end"""
+        json_start = response_text.find('{')
+        if json_start < 0:
+            return None
+        
+        # Start from the full text and work backwards
+        text_to_parse = response_text[json_start:]
+        
+        # Try to find the last complete JSON structure
+        for i in range(len(text_to_parse), json_start, -50):  # Step back in chunks of 50 chars
+            candidate = text_to_parse[:i-json_start]
+            
+            # Ensure it ends with }
+            last_brace = candidate.rfind('}')
+            if last_brace > 0:
+                candidate = candidate[:last_brace + 1]
+                
+                try:
+                    # Clean and try to parse
+                    clean_candidate = re.sub(r',\s*}', '}', candidate)
+                    clean_candidate = re.sub(r',\s*]', ']', clean_candidate)
+                    return json.loads(clean_candidate)
+                except json.JSONDecodeError:
+                    continue
+        
+        return None
+    
+    async def _strategy_bracket_repair(self, response_text: str) -> Optional[Dict[str, Any]]:
+        """Strategy 4: Attempt to repair incomplete JSON structures"""
+        json_start = response_text.find('{')
+        if json_start < 0:
+            return None
+        
+        json_text = response_text[json_start:]
+        
+        # Count braces and brackets to detect incomplete structures
+        brace_count = 0
+        bracket_count = 0
+        in_string = False
+        escape_next = False
+        
+        repaired_text = ""
+        
+        for i, char in enumerate(json_text):
+            if escape_next:
+                escape_next = False
+                repaired_text += char
+                continue
+            
+            if char == '\\':
+                escape_next = True
+                repaired_text += char
+                continue
+            
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                repaired_text += char
+                continue
+            
+            if not in_string:
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                elif char == '[':
+                    bracket_count += 1
+                elif char == ']':
+                    bracket_count -= 1
+            
+            repaired_text += char
+            
+            # If we have balanced braces and brackets, try parsing
+            if brace_count == 0 and bracket_count == 0 and repaired_text.strip().endswith('}'):
+                try:
+                    clean_text = re.sub(r',\s*}', '}', repaired_text)
+                    clean_text = re.sub(r',\s*]', ']', clean_text)
+                    return json.loads(clean_text)
+                except json.JSONDecodeError:
+                    continue
+        
+        # If we ended with unbalanced structures, try to close them
+        while brace_count > 0:
+            repaired_text += '}'
+            brace_count -= 1
+        
+        while bracket_count > 0:
+            repaired_text += ']'
+            bracket_count -= 1
+        
+        try:
+            clean_text = re.sub(r',\s*}', '}', repaired_text)
+            clean_text = re.sub(r',\s*]', ']', clean_text)
+            return json.loads(clean_text)
+        except json.JSONDecodeError:
+            return None
+    
+    async def _strategy_field_by_field(self, response_text: str) -> Optional[Dict[str, Any]]:
+        """Strategy 5: Extract individual fields when full JSON parsing fails"""
+        
+        # Try to extract timeline_events array
+        timeline_events = []
+        timeline_match = re.search(r'"timeline_events"\s*:\s*\[(.*?)\]', response_text, re.DOTALL)
+        if timeline_match:
+            try:
+                events_text = f"[{timeline_match.group(1)}]"
+                # Clean up common issues
+                events_text = re.sub(r',\s*]', ']', events_text)
+                timeline_events = json.loads(events_text)
+            except json.JSONDecodeError:
+                logger.debug("Failed to parse timeline_events array")
+        
+        # Try to extract chunk_summary
+        chunk_summary = ""
+        summary_match = re.search(r'"chunk_summary"\s*:\s*"([^"]*)"', response_text)
+        if summary_match:
+            chunk_summary = summary_match.group(1)
+        
+        # Try to extract other fields
+        next_chunk_hint = ""
+        hint_match = re.search(r'"next_chunk_hint"\s*:\s*"([^"]*)"', response_text)
+        if hint_match:
+            next_chunk_hint = hint_match.group(1)
+        
+        concepts_introduced = []
+        concepts_match = re.search(r'"concepts_introduced"\s*:\s*\[(.*?)\]', response_text, re.DOTALL)
+        if concepts_match:
+            try:
+                concepts_text = f"[{concepts_match.group(1)}]"
+                concepts_text = re.sub(r',\s*]', ']', concepts_text)
+                concepts_introduced = json.loads(concepts_text)
+            except json.JSONDecodeError:
+                logger.debug("Failed to parse concepts_introduced array")
+        
+        visual_elements_created = []
+        visual_match = re.search(r'"visual_elements_created"\s*:\s*\[(.*?)\]', response_text, re.DOTALL)
+        if visual_match:
+            try:
+                visual_text = f"[{visual_match.group(1)}]"
+                visual_text = re.sub(r',\s*]', ']', visual_text)
+                visual_elements_created = json.loads(visual_text)
+            except json.JSONDecodeError:
+                logger.debug("Failed to parse visual_elements_created array")
+        
+        # Return reconstructed object if we found at least timeline_events
+        if timeline_events or chunk_summary:
+            return {
+                "timeline_events": timeline_events,
+                "chunk_summary": chunk_summary,
+                "next_chunk_hint": next_chunk_hint,
+                "concepts_introduced": concepts_introduced,
+                "visual_elements_created": visual_elements_created
+            }
+        
+        return None
     
     def _extract_meaningful_content(self, response_text: str) -> str:
         """Extract meaningful educational content from malformed LLM response"""

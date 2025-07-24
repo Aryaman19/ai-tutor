@@ -113,6 +113,9 @@ export interface ExcalidrawPlayerProgressiveProps {
   /** Timeline chunks to stream */
   chunks?: StreamingTimelineChunk[];
   
+  /** Whether streaming is complete */
+  isStreamingComplete?: boolean;
+  
   /** Auto-start playback when ready */
   autoPlay?: boolean;
   
@@ -168,6 +171,7 @@ export interface ExcalidrawPlayerProgressiveProps {
  */
 export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressiveProps> = ({
   chunks = [],
+  isStreamingComplete = false,
   autoPlay = false,
   showControls = true,
   showBufferBar = true,
@@ -202,12 +206,16 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
   const [expectedDataPosition, setExpectedDataPosition] = useState(0);
   const [shouldAutoPlay, setShouldAutoPlay] = useState(false);
   
-  // Enhanced audio state
-  const [currentNarrationText, setCurrentNarrationText] = useState('');
-  const [audioQueue, setAudioQueue] = useState<Array<{id: string; text: string; startTime: number; duration: number}>>([]);
+  // Podcast-style audio state
+  const [completeNarrationText, setCompleteNarrationText] = useState('');
   const [audioSyncStatus, setAudioSyncStatus] = useState<AudioTimelinePosition | null>(null);
   const [coordinationMode, setCoordinationMode] = useState<CoordinationMode>('synchronized');
-  const [completedAudioSegments, setCompletedAudioSegments] = useState<Set<string>>(new Set());
+  
+  // Podcast preparation states
+  const [podcastStatus, setPodcastStatus] = useState<'preparing' | 'recording' | 'ready' | 'error'>('preparing');
+  const [podcastProgress, setPodcastProgress] = useState(0);
+  const [totalExpectedSegments, setTotalExpectedSegments] = useState(0);
+  const [processedSegments, setProcessedSegments] = useState(0);
   
   // Advanced timeline state
   const [seekPerformance, setSeekPerformance] = useState({ averageTime: 0, lastSeekTime: 0 });
@@ -239,8 +247,8 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
   
   const currentVoiceId = getCurrentVoiceId();
   
-  // TTS Audio Hook for current narration
-  const ttsAudio = useTTSAudio(currentNarrationText, {
+  // TTS Audio Hook for complete narration
+  const ttsAudio = useTTSAudio(completeNarrationText, {
     voice: currentVoiceId,
     autoPlay: false, // We'll control playback manually
     onPlay: () => {
@@ -249,15 +257,8 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
     },
     onEnd: () => {
       logger.debug("TTS audio finished playing");
-      // Mark current audio segment as completed to prevent repetition
-      const currentAudio = audioQueue.find(audio => 
-        currentPosition >= audio.startTime && 
-        currentPosition < (audio.startTime + audio.duration)
-      );
-      if (currentAudio) {
-        logger.debug(`Marking audio segment as completed: ${currentAudio.id}`);
-        setCompletedAudioSegments(prev => new Set([...prev, currentAudio.id]));
-      }
+      setIsPlaying(false);
+      onPlaybackEnd?.();
     },
     onError: (error) => {
       logger.error("TTS audio error:", error);
@@ -267,22 +268,7 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
     },
   });
   
-  // Streaming TTS Hook for progressive audio generation
-  const streamingTTS = useStreamingTTS('', {
-    voice: currentVoiceId,
-    autoPlay: false,
-    onPlay: () => {
-      logger.debug("Streaming TTS started playing");
-    },
-    onEnd: () => {
-      logger.debug("Streaming TTS finished playing");
-    },
-    onError: (error) => {
-      logger.error("Streaming TTS error:", error);
-      // Don't propagate streaming TTS errors as fatal - continue with visual-only mode
-      logger.warn("Continuing in visual-only mode due to streaming audio error");
-    },
-  });
+  // Note: Streaming TTS removed in favor of continuous single audio generation
   
   // Initialize Phase 5 Audio Components
   useEffect(() => {
@@ -409,9 +395,24 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
     };
   }, [config, coordinationMode, onSyncStatusChange, onError]);
   
-  // Initialize with chunks (Enhanced Version)
+  // Initialize with chunks (Enhanced Version) - Podcast Style
   useEffect(() => {
     if (chunks.length > 0) {
+      // Update podcast preparation progress
+      setProcessedSegments(chunks.length);
+      
+      // Calculate progress (assuming we don't know total until streaming is complete)
+      if (!isStreamingComplete) {
+        setPodcastStatus('recording');
+        // Progressive progress during content generation
+        setPodcastProgress(Math.min(chunks.length * 10, 90)); // Cap at 90% until complete
+        
+        logger.debug('Podcast recording in progress', { 
+          segmentsReceived: chunks.length, 
+          progress: Math.min(chunks.length * 10, 90) 
+        });
+      }
+      
       // Convert chunks to timeline events for Phase 5 processing
       const timelineEvents: TimelineEvent[] = chunks.flatMap(chunk => 
         chunk.events.map(event => ({
@@ -450,17 +451,40 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
         audioProcessorRef.current.processTimelineEvents(timelineEvents);
       }
       
-      // Create enhanced audio queue with Phase 5 integration
-      const audioItems = timelineEvents.map(event => ({
-        id: event.id,
-        text: typeof event.content === 'string' ? event.content : 'Audio content',
-        startTime: event.timestamp,
-        duration: event.duration
-      }));
-      setAudioQueue(audioItems);
-      
-      // Reset completed audio segments when new content is loaded
-      setCompletedAudioSegments(new Set());
+      // Podcast is ready when streaming is complete - like finishing recording
+      if (isStreamingComplete) {
+        const allNarrationTexts = timelineEvents
+          .map(event => typeof event.content === 'string' ? event.content : '')
+          .filter(text => text.trim().length > 0);
+        
+        const completeText = allNarrationTexts.join(' ');
+        
+        // Only set if we don't already have the complete text (avoid unnecessary updates)
+        if (completeText !== completeNarrationText && completeText.length > 0) {
+          setCompleteNarrationText(completeText);
+          
+          // Podcast is now ready for playback!
+          setTotalExpectedSegments(chunks.length);
+          setPodcastProgress(100);
+          setPodcastStatus('ready');
+          
+          logger.debug('🎙️ Podcast ready for playback!', { 
+            totalEvents: timelineEvents.length,
+            textSegments: allNarrationTexts.length,
+            totalCharacters: completeText.length,
+            podcastDuration: `${Math.round(estimatedDuration / 1000)}s`,
+            isStreamingComplete
+          });
+        }
+      } else {
+        // Podcast recording still in progress - content being generated
+        logger.debug('🎙️ Podcast recording in progress...', { 
+          chunksReceived: chunks.length,
+          eventsReceived: timelineEvents.length,
+          progress: `${Math.min(chunks.length * 10, 90)}%`,
+          isStreamingComplete
+        });
+      }
       
       // Create buffered regions based on timeline events
       const regions = chunks.map((chunk, index) => {
@@ -478,12 +502,13 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
       logger.debug('Enhanced chunks loaded', { 
         chunkCount: chunks.length, 
         timelineEvents: timelineEvents.length,
-        estimatedDuration, 
-        audioQueueSize: audioItems.length,
-        phase5Enabled: config.audioSync.enabled
+        estimatedDuration,
+        completeNarrationLength: completeNarrationText.length,
+        phase5Enabled: config.audioSync.enabled,
+        isStreamingComplete
       });
     }
-  }, [chunks, config, ttsSettings]);
+  }, [chunks, isStreamingComplete, completeNarrationText.length]); // Fixed dependencies to prevent re-render loops
   
   // Helper functions
   const extractAudioText = useCallback((event: any) => {
@@ -543,12 +568,7 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
   useEffect(() => {
     if (!isPlayerReady) return;
     
-    logger.debug('Updating elements for position', { 
-      currentPosition, 
-      isPlaying, 
-      chunksCount: chunks.length,
-      audioQueueSize: audioQueue.length
-    });
+    // Removed debug log - was causing performance issues with continuous logging
     
     // Note: Current narration text is now handled by the sequential audio effect below
     // to prevent duplicate audio generation and ensure proper timeline progression
@@ -561,16 +581,20 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
     const visibleEventTexts: string[] = [];
     
     for (const chunk of chunks) {
-      // Calculate chunk timing based on audio queue
-      const chunkAudioItems = audioQueue.filter(audio => audio.id.startsWith(chunk.chunkId));
-      const chunkStartTime = chunkAudioItems.length > 0 ? Math.min(...chunkAudioItems.map(a => a.startTime)) : accumulatedTime;
-      const chunkEndTime = chunkAudioItems.length > 0 ? Math.max(...chunkAudioItems.map(a => a.startTime + a.duration)) : chunkStartTime + chunk.duration;
+      // Calculate chunk timing based on estimated durations
+      const chunkStartTime = accumulatedTime;
+      const chunkDuration = chunk.events.reduce((sum, event) => {
+        const text = extractAudioText(event);
+        return text ? sum + estimateTextDuration(text) : sum;
+      }, 0);
+      const chunkEndTime = chunkStartTime + chunkDuration;
       
       // Show content progressively - only show events that have started
       chunk.events.forEach((event, eventIndex) => {
-        const eventAudio = audioQueue.find(audio => audio.id === `${chunk.chunkId}-${eventIndex}`);
-        const eventStartTime = eventAudio?.startTime || chunkStartTime;
-        const eventEndTime = eventAudio ? eventStartTime + eventAudio.duration : eventStartTime + 3000; // 3s default
+        const text = extractAudioText(event);
+        const eventDuration = text ? estimateTextDuration(text) : 3000;
+        const eventStartTime = chunkStartTime + (eventIndex * eventDuration / chunk.events.length);
+        const eventEndTime = eventStartTime + eventDuration;
         
         // Show event if its time has come (with small lookahead for smooth transitions)
         const shouldShowEvent = currentPosition >= eventStartTime - 500; // 500ms lookahead
@@ -588,6 +612,9 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
           const elementId = `element-${chunk.chunkId}-${eventIndex}`;
           const elementY = 100 + (allElements.length * 80); // More spacing between elements
           
+          // Check if this element is currently being narrated (based on timeline position)
+          const isCurrentlyNarrated = currentPosition >= eventStartTime && currentPosition < eventEndTime;
+          
           // Create properly formatted Excalidraw element
           const element = {
             id: elementId,
@@ -597,13 +624,13 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
             width: 700,
             height: 60,
             angle: 0,
-            strokeColor: eventAudio && currentPosition >= eventStartTime && currentPosition < eventEndTime ? '#2563eb' : '#374151', // Blue if currently speaking
+            strokeColor: isCurrentlyNarrated ? '#2563eb' : '#374151', // Blue if currently being narrated
             backgroundColor: 'transparent',
             fillStyle: 'solid' as const,
             strokeWidth: 1,
             strokeStyle: 'solid' as const,
             roughness: 1,
-            opacity: eventAudio && currentPosition >= eventStartTime && currentPosition < eventEndTime ? 100 : 70, // Highlight current
+            opacity: isCurrentlyNarrated ? 100 : 70, // Highlight current
             strokeSharpness: 'sharp' as const,
             seed: Math.floor(Math.random() * 1000000),
             groupIds: [],
@@ -613,7 +640,7 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
             link: null,
             locked: false,
             text: elementText,
-            fontSize: eventAudio && currentPosition >= eventStartTime && currentPosition < eventEndTime ? 20 : 16, // Larger if current
+            fontSize: isCurrentlyNarrated ? 20 : 16, // Larger if current
             fontFamily: 1,
             textAlign: 'left' as const,
             verticalAlign: 'top' as const,
@@ -626,67 +653,48 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
         }
       });
       
-      accumulatedTime = chunkEndTime;
+      accumulatedTime += chunkDuration;
     }
     
-    // Find current audio for logging purposes
-    const currentAudioForLogging = audioQueue.find(audio => 
-      currentPosition >= audio.startTime && 
-      currentPosition < (audio.startTime + audio.duration)
-    );
-    
-    logger.debug('Generated elements', { 
-      elementCount: allElements.length, 
-      visibleEventCount: visibleEventTexts.length,
-      currentAudioId: currentAudioForLogging?.id,
-      position: currentPosition
-    });
+    // Removed debug log - was causing performance issues
     
     setCurrentElements(allElements);
-  }, [currentPosition, isPlayerReady, isPlaying, chunks, audioQueue, currentNarrationText, extractAudioText]);
+  }, [currentPosition, isPlayerReady, isPlaying, chunks, completeNarrationText, extractAudioText, estimateTextDuration]);
   
   // Enhanced Excalidraw scene update with Phase 5 integration
   useEffect(() => {
-    logger.debug('Enhanced elements changed', { 
-      elementCount: currentElements.length,
-      phase5Enabled: config.audioSync.enabled,
-      hasLayoutEngine: !!layoutEngine
-    });
+    // Removed debug log - was causing performance issues on every render
     
     // Trigger element change callback for parent component integration
     onElementsChange?.(currentElements);
-  }, [currentElements, config.audioSync.enabled, layoutEngine, onElementsChange]);
+  }, [currentElements, onElementsChange]);
   
   // Progressive loading detection - check if we need more data
   useEffect(() => {
-    if (!isPlaying || !audioQueue.length) return;
+    if (!isPlaying || !completeNarrationText) return;
     
     // Check if we're approaching the end of available data
-    const currentChunkEndTime = Math.max(...audioQueue.map(a => a.startTime + a.duration));
-    const timeToEndOfData = currentChunkEndTime - currentPosition;
+    const timeToEndOfData = duration - currentPosition;
     const needsMoreData = timeToEndOfData < 2000; // Need more data if less than 2 seconds remaining
     
-    // Check if current position exceeds available data
-    const hasDataForPosition = audioQueue.some(audio => 
-      currentPosition >= audio.startTime && 
-      currentPosition < (audio.startTime + audio.duration)
-    );
+    // For continuous audio, we only wait if we exceed the known duration
+    const hasDataForPosition = currentPosition < duration;
     
-    if (!hasDataForPosition && isPlaying && currentPosition > 0) {
-      logger.debug('Waiting for data at position', { currentPosition, currentChunkEndTime });
+    if (currentPosition >= duration && isPlaying) {
+      // Removed debug log - was causing performance issues
       setIsWaitingForData(true);
       setExpectedDataPosition(currentPosition);
       setIsPlaying(false);
       setShouldAutoPlay(true);
-    } else if (isWaitingForData && hasDataForPosition) {
-      logger.debug('Data became available, resuming playback');
+    } else if (isWaitingForData && currentPosition < duration) {
+      // Removed debug log - was causing performance issues
       setIsWaitingForData(false);
       if (shouldAutoPlay) {
         setIsPlaying(true);
         setShouldAutoPlay(false);
       }
     }
-  }, [currentPosition, audioQueue, isPlaying, isWaitingForData, shouldAutoPlay]);
+  }, [currentPosition, duration, isPlaying, isWaitingForData, shouldAutoPlay, completeNarrationText]);
 
   // Intelligent timeline progression
   useEffect(() => {
@@ -694,24 +702,25 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
     
     const interval = setInterval(() => {
       setCurrentPosition(prev => {
-        // Find current audio segment
-        const currentAudio = audioQueue.find(audio => 
-          prev >= audio.startTime && 
-          prev < (audio.startTime + audio.duration)
-        );
+        // Continuous audio playback - no segments to find
         
         let increment = 100; // Default 100ms increments
         
-        // If we have audio playing, sync with audio progress
-        if (currentAudio && usePiperTTS && ttsAudio.status?.isPlaying) {
-          // Audio is playing, advance more naturally
-          increment = 200; // Slightly faster when audio is active
-        } else if (currentAudio && usePiperTTS && ttsAudio.status?.isGenerating) {
-          // Audio is loading, slow down timeline
-          increment = 50;
-        } else if (!currentAudio) {
-          // No audio for this segment, advance faster through visual-only content
-          increment = 300;
+        // Sync with audio if available and playing
+        if (completeNarrationText && usePiperTTS && ttsAudio.status?.isPlaying) {
+          // Use audio currentTime if available for better sync
+          if (ttsAudio.audioElement?.currentTime) {
+            const audioTimeMs = ttsAudio.audioElement.currentTime * 1000;
+            // Smooth transition to audio time to avoid jumps
+            return Math.max(prev, audioTimeMs);
+          }
+          increment = 100; // Standard increment when audio is playing
+        } else if (completeNarrationText && usePiperTTS && ttsAudio.status?.isGenerating) {
+          // Audio is loading, slow down timeline slightly
+          increment = 75;
+        } else {
+          // Visual-only mode, standard progression
+          increment = 100;
         }
         
         const newPosition = prev + increment;
@@ -727,60 +736,24 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
     }, 100); // Check every 100ms but vary the increment
     
     return () => clearInterval(interval);
-  }, [isPlaying, isWaitingForData, duration, audioQueue, usePiperTTS, ttsAudio.status, onPlaybackEnd]);
+  }, [isPlaying, isWaitingForData, duration, completeNarrationText, usePiperTTS, ttsAudio.status, ttsAudio.audioElement, onPlaybackEnd]);
   
   // Sequential audio playback - find and play the correct audio segment
   useEffect(() => {
     if (!isPlaying || !usePiperTTS) return;
     
-    // Find the current audio segment that should be playing
-    const currentAudio = audioQueue.find(audio => 
-      currentPosition >= audio.startTime && 
-      currentPosition < (audio.startTime + audio.duration)
-    );
-    
-    if (currentAudio && currentAudio.text !== currentNarrationText) {
-      // Check if this audio segment has already been completed
-      if (completedAudioSegments.has(currentAudio.id)) {
-        logger.debug('Sequential audio: Skipping already completed segment', { 
-          audioId: currentAudio.id, 
-          position: currentPosition,
-          text: currentAudio.text.substring(0, 50) + '...' 
-        });
-        // Don't retrigger completed audio - just clear current narration
-        setCurrentNarrationText('');
-        return;
-      }
-      
-      logger.debug('Sequential audio: Moving to next audio segment', { 
-        audioId: currentAudio.id, 
-        position: currentPosition,
-        startTime: currentAudio.startTime,
-        text: currentAudio.text.substring(0, 50) + '...' 
-      });
-      
-      // Update narration text - this will trigger TTS generation
-      setCurrentNarrationText(currentAudio.text);
-      
-      // Once TTS is ready, it will auto-play due to the next effect
-    } else if (!currentAudio && currentNarrationText) {
-      logger.debug('Sequential audio: No audio for current position, stopping');
-      setCurrentNarrationText('');
-    }
-  }, [isPlaying, currentPosition, audioQueue, usePiperTTS, currentNarrationText, completedAudioSegments]);
+    // Continuous audio is already playing - no segments to manage
+    // Removed debug log - was causing performance issues
+  }, [isPlaying, completeNarrationText, currentPosition, usePiperTTS, ttsAudio]);
 
-  // Control TTS playback based on timeline state
+  // Control continuous TTS playback based on timeline state
   useEffect(() => {
-    if (!currentNarrationText || !usePiperTTS) return;
+    if (!completeNarrationText || !usePiperTTS) return;
     
     // Wait for TTS audio to be ready before trying to play
     if (isPlaying && ttsAudio.controls.play && ttsAudio.status && !ttsAudio.status.isGenerating && !ttsAudio.status.error) {
       if (!ttsAudio.status.isPlaying) {
-        logger.debug('Starting TTS audio playback for current segment', {
-          text: currentNarrationText.substring(0, 30) + '...',
-          position: currentPosition,
-          status: ttsAudio.status
-        });
+        // Removed debug log - was causing performance issues
         try {
           ttsAudio.controls.play();
         } catch (error) {
@@ -788,50 +761,53 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
         }
       }
     } else if (!isPlaying && ttsAudio.controls.pause && ttsAudio.status?.isPlaying) {
-      logger.debug('Pausing TTS audio playback');
+      // Removed debug log - was causing performance issues
       try {
         ttsAudio.controls.pause();
       } catch (error) {
         logger.warn('Failed to pause TTS audio playback:', error);
       }
     }
-  }, [isPlaying, currentNarrationText, currentPosition, usePiperTTS, ttsAudio]);
+  }, [isPlaying, completeNarrationText, currentPosition, usePiperTTS, ttsAudio]);
 
-  // Player control handlers
+  // Podcast control handlers
   const handlePlay = useCallback(async () => {
-    logger.debug('Starting playback', { 
-      hasNarration: !!currentNarrationText,
+    logger.debug('🎙️ Starting podcast playback', { 
+      podcastStatus,
+      hasCompleteNarration: !!completeNarrationText,
       piperEnabled: usePiperTTS,
       hasAudioControls: !!ttsAudio.controls.play,
-      audioStatus: ttsAudio.status
+      audioStatus: ttsAudio.status,
+      totalSegments: chunks.length
     });
     
-    // Reset completed audio segments when starting fresh playback
-    if (currentPosition === 0) {
-      setCompletedAudioSegments(new Set());
+    // Only allow play if podcast is ready
+    if (podcastStatus !== 'ready') {
+      logger.warn('🚫 Cannot play podcast - not ready yet', { podcastStatus });
+      return;
     }
     
     setIsPlaying(true);
     onPlaybackStart?.();
     
-    // Start audio playback if available, but don't fail if audio doesn't work
-    if (currentNarrationText && usePiperTTS && ttsAudio.controls.play) {
+    // Start podcast audio playback
+    if (completeNarrationText && usePiperTTS && ttsAudio.controls.play) {
       try {
-        logger.debug('Attempting to start TTS audio playback');
+        logger.debug('🎧 Starting podcast audio playback');
         await ttsAudio.controls.play();
-        logger.debug('TTS audio playback started successfully');
+        logger.debug('✅ Podcast audio started successfully');
       } catch (error) {
-        logger.warn('Audio playback failed, continuing in visual-only mode:', error);
+        logger.warn('⚠️ Podcast audio failed, continuing in visual-only mode:', error);
         // Continue with visual playback even if audio fails
       }
     } else {
-      logger.debug('No audio available, starting visual-only playback', {
-        noNarration: !currentNarrationText,
+      logger.debug('📺 Starting podcast in visual-only mode', {
+        noCompleteNarration: !completeNarrationText,
         piperDisabled: !usePiperTTS,
         noControls: !ttsAudio.controls.play
       });
     }
-  }, [onPlaybackStart, currentNarrationText, usePiperTTS, ttsAudio]);
+  }, [onPlaybackStart, completeNarrationText, usePiperTTS, ttsAudio, podcastStatus, chunks.length]);
   
   const handlePause = useCallback(() => {
     setIsPlaying(false);
@@ -951,18 +927,21 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }, []);
   
-  // Enhanced playability check
+  // Podcast playability check - only allow play when podcast is fully ready
   const canPlay = useMemo(() => {
     const basicReady = isPlayerReady && chunks.length > 0;
     
+    // Podcast must be in 'ready' state - like a completed podcast recording
+    const podcastReady = podcastStatus === 'ready' && completeNarrationText.length > 0;
+    
     if (!config.audioSync.enabled) {
-      return basicReady;
+      return basicReady && podcastReady;
     }
     
     // Phase 5 readiness check
     const phase5Ready = audioSyncRef.current && audioProcessorRef.current && coordinatorRef.current;
-    return basicReady && phase5Ready;
-  }, [isPlayerReady, chunks.length, config.audioSync.enabled]);
+    return basicReady && podcastReady && phase5Ready;
+  }, [isPlayerReady, chunks.length, config.audioSync.enabled, podcastStatus, completeNarrationText]);
   
   // Performance and status indicators
   const performanceStats = useMemo(() => {
@@ -988,14 +967,14 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
         id: c.chunkId, 
         contentType: c.contentType,
         eventsCount: c.events?.length || 0,
-        events: c.events?.map(e => ({ type: e.event_type, hasContent: !!e.content })) || []
+        events: c.events?.map(e => ({ type: e.type, hasContent: !!e.content })) || []
       }))
     });
     
     // First try to extract from events with narration type
     let segments = chunks.flatMap((chunk, chunkIndex) => 
       (chunk.events || [])
-        .filter(event => event.event_type === 'narration' && event.content)
+        .filter(event => event.type === 'narration' && event.content)
         .map((event, eventIndex) => ({
           id: `${chunk.chunkId}-${eventIndex}`,
           text: typeof event.content === 'string' ? event.content : 'Audio content',
@@ -1010,7 +989,7 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
       segments = chunks.map((chunk, chunkIndex) => {
         // Try to extract text from the chunk
         let text = '';
-        if (chunk.content) {
+        if ('content' in chunk && chunk.content) {
           text = typeof chunk.content === 'string' ? chunk.content : JSON.stringify(chunk.content);
         } else if (chunk.events && chunk.events.length > 0) {
           // Use first event with content
@@ -1197,6 +1176,66 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
         </div>
       )}
       
+      {/* Podcast Preparation Overlay */}
+      {podcastStatus !== 'ready' && (
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/95 to-indigo-900/95 flex items-center justify-center z-60">
+          <div className="text-center text-white max-w-md">
+            {/* Podcast Icon */}
+            <div className="w-20 h-20 mx-auto mb-6 relative">
+              <div className="w-full h-full bg-white/20 rounded-full flex items-center justify-center">
+                <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10a7 7 0 11-14 0 7 7 0 0114 0z" clipRule="evenodd" />
+                </svg>
+              </div>
+              {podcastStatus === 'recording' && (
+                <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center animate-pulse">
+                  <div className="w-3 h-3 bg-white rounded-full"></div>
+                </div>
+              )}
+            </div>
+
+            {/* Status Messages */}
+            {podcastStatus === 'preparing' && (
+              <div>
+                <h3 className="text-2xl font-bold mb-2">🎙️ Preparing Your Podcast</h3>
+                <p className="text-purple-200 mb-6">
+                  Setting up AI-generated educational content...
+                </p>
+              </div>
+            )}
+
+            {podcastStatus === 'recording' && (
+              <div>
+                <h3 className="text-2xl font-bold mb-2">🔴 Recording Podcast</h3>
+                <p className="text-purple-200 mb-2">
+                  AI is generating your educational content...
+                </p>
+                <p className="text-sm text-purple-300 mb-6">
+                  Segments completed: {processedSegments} • Progress: {podcastProgress.toFixed(0)}%
+                </p>
+              </div>
+            )}
+
+            {/* Progress Bar */}
+            <div className="w-full bg-white/20 rounded-full h-3 mb-6 overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-purple-400 to-pink-400 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${podcastProgress}%` }}
+              />
+            </div>
+
+            {/* Additional Info */}
+            <div className="text-sm text-purple-200 space-y-1">
+              <div>🤖 AI-powered educational content</div>
+              <div>⏱️ Estimated duration: {formatTime(duration)}</div>
+              {podcastStatus === 'recording' && (
+                <div className="animate-pulse">✨ Please wait while we finish recording...</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Player Controls */}
       {showControls && (
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent z-50">
@@ -1239,18 +1278,29 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
             {/* Control Buttons and Time Display */}
             <div className="flex items-center justify-between px-2">
               <div className="flex items-center space-x-4">
-                {/* Play/Pause Button */}
+                {/* Podcast Play/Pause Button */}
                 <button
                   onClick={isPlaying ? handlePause : handlePlay}
                   disabled={!canPlay}
-                  className="flex items-center justify-center w-10 h-10 bg-white/20 hover:bg-white/30 disabled:bg-white/10 disabled:cursor-not-allowed rounded-full transition-colors"
+                  className={`flex items-center justify-center w-12 h-12 rounded-full transition-all duration-200 ${
+                    canPlay 
+                      ? 'bg-purple-600 hover:bg-purple-700 shadow-lg hover:shadow-purple-500/25' 
+                      : 'bg-gray-600 cursor-not-allowed opacity-50'
+                  }`}
+                  title={
+                    !canPlay 
+                      ? `Podcast ${podcastStatus === 'recording' ? 'recording' : 'preparing'}... Please wait`
+                      : isPlaying ? 'Pause podcast' : 'Play podcast'
+                  }
                 >
-                  {isPlaying ? (
-                    <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  {!canPlay ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : isPlaying ? (
+                    <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
                     </svg>
                   ) : (
-                    <svg className="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="w-6 h-6 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
                     </svg>
                   )}
@@ -1281,11 +1331,19 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
                 </div>
               </div>
               
-              {/* Enhanced Status Indicator */}
+              {/* Podcast Status Indicator */}
               <div className="flex items-center space-x-3 text-white text-sm">
-                <div className="flex items-center space-x-1">
-                  <span>Segments:</span>
-                  <span className="font-medium">{chunks.length}</span>
+                {/* Podcast Status */}
+                <div className="flex items-center space-x-2 bg-purple-900/50 px-3 py-1 rounded-full">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10a7 7 0 11-14 0 7 7 0 0114 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="font-medium">
+                    {podcastStatus === 'ready' ? '🎙️ Podcast Ready' : '🔴 Recording'}
+                  </span>
+                  <span className="text-xs text-purple-200">
+                    ({chunks.length} segments)
+                  </span>
                 </div>
                 
                 {config.audioSync.enabled && performanceStats && (
@@ -1327,12 +1385,12 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
                 {/* Audio Status Indicator */}
                 <div className="flex items-center space-x-1">
                   <div className={`w-2 h-2 rounded-full ${
-                    currentNarrationText && usePiperTTS && ttsAudio.status && !ttsAudio.status.error
+                    completeNarrationText && usePiperTTS && ttsAudio.status && !ttsAudio.status.error
                       ? 'bg-green-400' // Audio working
                       : 'bg-gray-400'   // Visual-only mode
                   }`}></div>
                   <span className="text-xs">
-                    {currentNarrationText && usePiperTTS && ttsAudio.status && !ttsAudio.status.error 
+                    {completeNarrationText && usePiperTTS && ttsAudio.status && !ttsAudio.status.error 
                       ? 'Audio' 
                       : 'Visual'}
                   </span>
