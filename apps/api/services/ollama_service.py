@@ -96,28 +96,36 @@ For each step, provide:
 3. A narration script for AI voice-over (conversational, engaging tone)
 4. Simple examples or analogies when possible
 
+TTS-AWARE NARRATION GUIDELINES:
+- Target 140-160 words per minute speaking rate
+- Write naturally for speech: use contractions, shorter sentences
+- Avoid complex punctuation that doesn't translate to speech
+- Include natural pauses with periods or commas
+- Consider pronunciation of technical terms
+- Each narration segment should be 15-30 seconds when spoken
+
 Format your response as follows:
 Step 1: [Title]
 EXPLANATION: [Detailed explanation for reading]
-NARRATION: [Script for voice-over, conversational tone]
+NARRATION: [Script for voice-over, conversational tone, 20-40 words for natural 15-30 second duration]
 
 Step 2: [Title]
 EXPLANATION: [Detailed explanation for reading]
-NARRATION: [Script for voice-over, conversational tone]
+NARRATION: [Script for voice-over, conversational tone, 20-40 words for natural 15-30 second duration]
 
 Step 3: [Title]
 EXPLANATION: [Detailed explanation for reading]
-NARRATION: [Script for voice-over, conversational tone]
+NARRATION: [Script for voice-over, conversational tone, 20-40 words for natural 15-30 second duration]
 
 Step 4: [Title]
 EXPLANATION: [Detailed explanation for reading]
-NARRATION: [Script for voice-over, conversational tone]
+NARRATION: [Script for voice-over, conversational tone, 20-40 words for natural 15-30 second duration]
 
 Step 5: [Title]
 EXPLANATION: [Detailed explanation for reading]
-NARRATION: [Script for voice-over, conversational tone]
+NARRATION: [Script for voice-over, conversational tone, 20-40 words for natural 15-30 second duration]
 
-Keep each step concise but informative, and make sure the progression is logical and easy to follow. The narration should be engaging and sound natural when spoken aloud.
+Keep each step concise but informative, and make sure the progression is logical and easy to follow. The narration should be engaging and sound natural when spoken aloud. Focus on natural speech patterns and comfortable pacing.
 """
         
         response = await self._make_request(prompt, user_id)
@@ -153,7 +161,7 @@ Keep each step concise but informative, and make sure the progression is logical
                         explanation=explanation_text,
                         content=explanation_text or narration_text,  # Legacy field for backward compatibility
                         narration=narration_text,
-                        duration=self._estimate_duration(narration_text) if narration_text else None
+                        duration=self._estimate_duration(narration_text, voice=None) if narration_text else None
                     ))
                 
                 # Start new step
@@ -206,25 +214,38 @@ Keep each step concise but informative, and make sure the progression is logical
                 explanation=response,
                 content=response,  # Legacy field for backward compatibility
                 narration=response,
-                duration=self._estimate_duration(response)
+                duration=self._estimate_duration(response, voice=None)
             ))
         
         return steps
     
-    def _estimate_duration(self, text: str) -> float:
-        """Estimate the duration of speech for given text in seconds"""
+    def _estimate_duration(self, text: str, voice: str = None) -> float:
+        """Estimate the duration of speech for given text in seconds using TTS calibration"""
         if not text:
             return 0.0
         
-        # Average speaking rate is about 150-200 words per minute
-        # We'll use 180 words per minute as a baseline
+        # Try to use TTS service calibration if available
+        try:
+            from services.tts_service import piper_tts_service
+            if hasattr(piper_tts_service, 'estimate_duration_with_calibration'):
+                return piper_tts_service.estimate_duration_with_calibration(text, voice)
+        except Exception as e:
+            logger.warning(f"Could not use TTS calibration for duration estimation: {e}")
+        
+        # Fallback to improved estimation
         words = len(text.split())
-        words_per_minute = 180
+        if words == 0:
+            return max(len(text) * 0.05, 1.0)  # 50ms per character, minimum 1 second
+        
+        # More conservative baseline (150 WPM instead of 180)
+        words_per_minute = 150
         duration_minutes = words / words_per_minute
         duration_seconds = duration_minutes * 60
         
-        # Add some buffer time for pauses and pacing
-        return max(duration_seconds * 1.2, 2.0)  # Minimum 2 seconds
+        # Add buffer time for pauses, punctuation, and TTS processing
+        buffer_factor = 1.3  # 30% buffer
+        
+        return max(duration_seconds * buffer_factor, 1.0)  # Minimum 1 second
     
     async def generate_doubt_answer(self, question: str, lesson_topic: str, user_id: str = "default") -> Optional[str]:
         """Generate an answer for a doubt/question about the lesson"""
@@ -263,6 +284,14 @@ Break this into exactly 5 sequential steps that build upon each other visually. 
 3. Write narration script that sounds natural when spoken (conversational, engaging)
 4. Describe what visual elements should be drawn (shapes, arrows, text, diagrams)
 
+TTS-AWARE NARRATION GUIDELINES:
+- Target 140-160 words per minute speaking rate
+- Write for natural speech: use contractions, shorter sentences
+- Each narration should be 20-40 words for 15-30 second duration
+- Avoid complex punctuation that doesn't translate to speech
+- Include natural pauses and emphasis points
+- Consider pronunciation of technical terms
+
 Think about visual concepts like:
 - Simple shapes (rectangles, circles, arrows)
 - Flow diagrams and connections
@@ -273,12 +302,12 @@ Think about visual concepts like:
 Format your response as follows:
 Step 1: [Title]
 EXPLANATION: [Detailed explanation for reading]
-NARRATION: [Script for voice-over - natural, conversational tone]
+NARRATION: [Script for voice-over - natural, conversational tone, 20-40 words]
 VISUAL_ELEMENTS: [Describe what to draw: shapes, text, arrows, positioning]
 
 Step 2: [Title]
 EXPLANATION: [Detailed explanation for reading]
-NARRATION: [Script for voice-over - natural, conversational tone]
+NARRATION: [Script for voice-over - natural, conversational tone, 20-40 words]
 VISUAL_ELEMENTS: [Describe what to draw: shapes, text, arrows, positioning]
 
 [Continue for all 5 steps...]
@@ -322,7 +351,7 @@ Focus on topics that can be effectively visualized through simple drawings. Make
                         content=explanation_text or narration_text,  # Legacy field for backward compatibility
                         narration=narration_text,
                         visual_elements=[{"description": visual_elements_text}] if visual_elements_text else [],
-                        duration=self._estimate_duration(narration_text) if narration_text else None
+                        duration=self._estimate_duration(narration_text, voice=None) if narration_text else None
                     ))
                 
                 # Start new step
@@ -387,7 +416,7 @@ Focus on topics that can be effectively visualized through simple drawings. Make
                 content=response,  # Legacy field for backward compatibility
                 narration=response,
                 visual_elements=[{"description": "Simple diagram or visual representation"}],
-                duration=self._estimate_duration(response)
+                duration=self._estimate_duration(response, voice=None)
             ))
         
         return steps

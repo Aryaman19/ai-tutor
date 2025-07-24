@@ -16,6 +16,8 @@ export interface StreamingTTSStatus {
   currentChunk: number;
   generatedChunks: number;
   playbackProgress: number;
+  hasCompleted: boolean; // Track if playback has completed naturally
+  totalPlayAttempts: number; // Track total play attempts for safety
 }
 
 export interface StreamingTTSOptions {
@@ -36,6 +38,7 @@ interface AudioChunk {
   audioElement: HTMLAudioElement | null;
   isLoaded: boolean;
   hasPlayed: boolean;
+  playCount: number; // Track how many times this chunk has been played
 }
 
 export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {}) => {
@@ -49,6 +52,8 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
     currentChunk: 0,
     generatedChunks: 0,
     playbackProgress: 0,
+    hasCompleted: false,
+    totalPlayAttempts: 0,
   });
 
   const audioChunksRef = useRef<AudioChunk[]>([]);
@@ -82,6 +87,8 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
         currentChunk: 0,
         generatedChunks: 0,
         playbackProgress: 0,
+        hasCompleted: false,
+        totalPlayAttempts: 0,
       }));
     }
   }, [text]);
@@ -164,14 +171,32 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
           });
 
           audioElement.addEventListener('ended', () => {
-            // Move to next chunk
-            playNextChunk();
+            logger.debug(`Audio chunk ${chunk.index} ended`);
+            
+            const chunks = audioChunksRef.current;
+            const currentIndex = currentPlayingIndexRef.current;
+            
+            // Always stop playback when audio ends naturally - no automatic progression
+            // This prevents the repetition issue where short audio tries to fill long timeline
+            logger.debug(`Audio chunk ${currentIndex} completed naturally - stopping playback`);
+            setStatus(prev => ({
+              ...prev,
+              isPlaying: false,
+              playbackProgress: 100,
+              hasCompleted: true,
+            }));
+            options.onEnd?.();
           });
 
           audioElement.addEventListener('error', (e) => {
             logger.error(`Audio error for chunk ${chunk.index}:`, e);
-            // Try to continue with next chunk
-            playNextChunk();
+            // Stop playback on error instead of trying to continue
+            setStatus(prev => ({
+              ...prev,
+              isPlaying: false,
+              error: `Audio playback error: ${e.message || 'Unknown error'}`,
+            }));
+            options.onError?.(new Error(`Audio playback failed: ${e.message || 'Unknown error'}`));
           });
 
           // Force load the audio
@@ -184,6 +209,9 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
           audioElement,
           isLoaded: false, // Will be set to true by canplaythrough event
           hasPlayed: false,
+          playCount: 0, // Initialize play count
+          actualDuration: undefined,
+          estimatedDuration: undefined,
         };
 
         audioChunksRef.current.push(audioChunk);
@@ -239,11 +267,38 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
       logger.debug("No chunks available to play");
       return;
     }
+    
+    // Safety check: prevent excessive play attempts
+    const maxTotalAttempts = 100; // Prevent runaway loops
+    if (status.totalPlayAttempts >= maxTotalAttempts) {
+      logger.error(`Maximum play attempts (${maxTotalAttempts}) exceeded - stopping to prevent infinite loop`);
+      setStatus(prev => ({
+        ...prev,
+        error: "Playback stopped due to excessive retry attempts",
+        isPlaying: false
+      }));
+      return;
+    }
+    
+    // Increment play attempt counter
+    setStatus(prev => ({
+      ...prev,
+      totalPlayAttempts: prev.totalPlayAttempts + 1
+    }));
 
     // Find the next chunk to play
     let nextIndex = currentPlayingIndexRef.current + 1;
     if (nextIndex >= chunks.length) {
-      nextIndex = 0; // Restart from beginning
+      // End of playback - don't restart automatically
+      logger.debug("Reached end of all chunks - stopping playback");
+      setStatus(prev => ({
+        ...prev,
+        isPlaying: false,
+        playbackProgress: 100,
+        hasCompleted: true,
+      }));
+      options.onEnd?.();
+      return;
     }
 
     const nextChunk = chunks[nextIndex];
@@ -252,24 +307,51 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
       isReady: nextChunk?.chunk.is_ready,
       hasAudioElement: !!nextChunk?.audioElement,
       isLoaded: nextChunk?.isLoaded,
+      playCount: nextChunk?.playCount || 0,
       audioSrc: nextChunk?.audioElement?.src
     });
 
     if (!nextChunk || !nextChunk.chunk.is_ready || !nextChunk.audioElement || !nextChunk.isLoaded) {
-      // Wait for chunk to be ready
-      if (nextChunk && nextChunk.chunk.is_ready && nextChunk.audioElement) {
+      // Wait for chunk to be ready, but with a limit to prevent infinite loops
+      const maxRetries = 50; // 5 seconds maximum wait (50 * 100ms)
+      const currentRetries = nextChunk?.playCount || 0;
+      
+      if (currentRetries < maxRetries && nextChunk && nextChunk.chunk.is_ready && nextChunk.audioElement) {
         // Audio is ready but not loaded yet, wait a bit
-        logger.debug(`Audio chunk ${nextIndex} is ready but not loaded, waiting...`);
+        logger.debug(`Audio chunk ${nextIndex} is ready but not loaded, waiting... (retry ${currentRetries + 1}/${maxRetries})`);
+        if (nextChunk) nextChunk.playCount = currentRetries + 1;
         setTimeout(() => playAudio(), 100);
       } else {
-        logger.debug(`Cannot play chunk ${nextIndex} - conditions not met`);
+        logger.warn(`Cannot play chunk ${nextIndex} - conditions not met or max retries exceeded`);
+        // End playback instead of trying to continue
+        setStatus(prev => ({
+          ...prev,
+          isPlaying: false,
+          error: "Audio chunk could not be loaded after maximum retries",
+          hasCompleted: true,
+        }));
+        options.onEnd?.();
       }
+      return;
+    }
+
+    // Prevent replay - if chunk has already been played, end playback instead of repeating
+    if (nextChunk.hasPlayed && (nextChunk.playCount || 0) > 0) {
+      logger.debug(`Chunk ${nextIndex} has already been played, ending playback to prevent repetition`);
+      setStatus(prev => ({
+        ...prev,
+        isPlaying: false,
+        playbackProgress: 100,
+        hasCompleted: true,
+      }));
+      options.onEnd?.();
       return;
     }
 
     logger.debug(`Playing chunk ${nextIndex}`);
     currentPlayingIndexRef.current = nextIndex;
     nextChunk.hasPlayed = true;
+    nextChunk.playCount = (nextChunk.playCount || 0) + 1;
 
     setStatus(prev => ({
       ...prev,
@@ -278,33 +360,44 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
       playbackProgress: chunks.length > 0 ? ((nextIndex + 1) / chunks.length) * 100 : 0,
     }));
 
+    // Reset audio to beginning before playing
+    nextChunk.audioElement.currentTime = 0;
+    
     nextChunk.audioElement.play().catch(error => {
       logger.error(`Failed to play chunk ${nextIndex}:`, error);
-      // Try next chunk
-      playNextChunk();
+      // End playback on play error instead of trying to continue
+      setStatus(prev => ({
+        ...prev,
+        isPlaying: false,
+        error: `Failed to play audio: ${error.message || 'Unknown error'}`,
+        hasCompleted: true,
+      }));
+      options.onError?.(error instanceof Error ? error : new Error(`Play failed: ${error}`));
     });
 
     options.onPlay?.();
   }, [options]);
 
-  // Play next chunk
+  // Play next chunk - but only if explicitly called, not automatically
   const playNextChunk = useCallback(() => {
     const chunks = audioChunksRef.current;
     const nextIndex = currentPlayingIndexRef.current + 1;
 
     if (nextIndex >= chunks.length) {
-      // Reached end of all chunks
+      // Reached end of all chunks - stop playback completely
+      logger.debug("All chunks have finished playing - ending playback");
       setStatus(prev => ({
         ...prev,
         isPlaying: false,
-        currentChunk: chunks.length - 1,
+        currentChunk: chunks.length > 0 ? chunks.length - 1 : 0,
         playbackProgress: 100,
+        hasCompleted: true,
       }));
       options.onEnd?.();
       return;
     }
 
-    // Continue with next chunk
+    // Continue with next chunk only if manually triggered
     playAudio();
   }, [playAudio, options]);
 
@@ -325,11 +418,15 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
 
   // Stop audio
   const stopAudio = useCallback(() => {
-    const currentChunk = audioChunksRef.current[currentPlayingIndexRef.current];
-    if (currentChunk?.audioElement) {
-      currentChunk.audioElement.pause();
-      currentChunk.audioElement.currentTime = 0;
-    }
+    const chunks = audioChunksRef.current;
+    
+    // Stop all audio elements
+    chunks.forEach(audioChunk => {
+      if (audioChunk.audioElement) {
+        audioChunk.audioElement.pause();
+        audioChunk.audioElement.currentTime = 0;
+      }
+    });
 
     currentPlayingIndexRef.current = -1;
     setStatus(prev => ({
@@ -338,6 +435,70 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
       currentChunk: 0,
       playbackProgress: 0,
     }));
+  }, []);
+  
+  // Restart playback from beginning (for manual restart)
+  const restartPlayback = useCallback(() => {
+    logger.debug("Restarting playback from beginning");
+    
+    // Stop all current audio
+    stopAudio();
+    
+    // Reset all chunk states
+    audioChunksRef.current.forEach(audioChunk => {
+      audioChunk.hasPlayed = false;
+      audioChunk.playCount = 0;
+      if (audioChunk.audioElement) {
+        audioChunk.audioElement.currentTime = 0;
+      }
+    });
+    
+    // Reset to beginning and clear safety counters
+    currentPlayingIndexRef.current = -1;
+    setStatus(prev => ({
+      ...prev,
+      hasCompleted: false,
+      totalPlayAttempts: 0,
+      error: null,
+      playbackProgress: 0,
+      currentChunk: 0
+    }));
+    
+    // Start playback
+    playAudio();
+  }, [stopAudio, playAudio]);
+  
+  // Get timing accuracy statistics
+  const getTimingStats = useCallback(() => {
+    const chunks = audioChunksRef.current;
+    const chunksWithDuration = chunks.filter(c => c.actualDuration && c.estimatedDuration);
+    
+    if (chunksWithDuration.length === 0) {
+      return {
+        averageAccuracy: 0.5,
+        totalChunks: chunks.length,
+        measuredChunks: 0,
+        totalActualDuration: 0,
+        totalEstimatedDuration: 0
+      };
+    }
+    
+    const accuracies = chunksWithDuration.map(c => 
+      Math.min(1.0, c.estimatedDuration! / c.actualDuration!)
+    );
+    
+    const averageAccuracy = accuracies.reduce((sum, acc) => sum + acc, 0) / accuracies.length;
+    const totalActualDuration = chunksWithDuration.reduce((sum, c) => sum + c.actualDuration!, 0);
+    const totalEstimatedDuration = chunksWithDuration.reduce((sum, c) => sum + c.estimatedDuration!, 0);
+    
+    return {
+      averageAccuracy,
+      totalChunks: chunks.length,
+      measuredChunks: chunksWithDuration.length,
+      totalActualDuration,
+      totalEstimatedDuration,
+      timingError: Math.abs(totalEstimatedDuration - totalActualDuration)
+    };
   }, []);
 
   // Cancel streaming
@@ -390,9 +551,11 @@ export const useStreamingTTS = (text: string, options: StreamingTTSOptions = {})
       play: playAudio,
       pause: pauseAudio,
       stop: stopAudio,
+      restart: restartPlayback,
       cancel: cancelStreaming,
       regenerate: generateStreamingAudio,
     },
+    timingStats: getTimingStats(),
     chunks: audioChunksRef.current,
     isStreaming: isStreamingRef.current,
   };

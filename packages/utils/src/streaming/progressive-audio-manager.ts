@@ -23,6 +23,11 @@ export interface AudioChunk {
   ssml?: string;
   status: 'loading' | 'ready' | 'error';
   priority: 'low' | 'medium' | 'high';
+  // TTS timing metadata
+  estimatedDuration?: number;
+  measuredDuration?: number;
+  voice?: string;
+  timingAccuracy?: number; // 0-1 confidence in timing accuracy
 }
 
 /**
@@ -120,6 +125,24 @@ export interface ProgressiveAudioEvents {
     error: Error; 
     chunk?: AudioChunk; 
   };
+  
+  'durationUpdated': {
+    chunk: AudioChunk;
+    oldDuration: number;
+    newDuration: number;
+    timingAccuracy: number;
+  };
+  
+  'timelineRecalibrated': {
+    adjustments: Array<{
+      chunkId: string;
+      oldStartTime: number;
+      newStartTime: number;
+      oldEndTime: number;
+      newEndTime: number;
+    }>;
+    totalDuration: number;
+  };
 }
 
 /**
@@ -207,6 +230,194 @@ export class ProgressiveAudioManager {
     this.emit('chunkLoaded', { 
       chunk, 
       totalLoaded: Array.from(this.audioChunks.values()).filter(c => c.status === 'ready').length 
+    });
+  }
+  
+  /**
+   * Update audio chunk with measured duration from TTS system
+   */
+  updateChunkDuration(chunkId: string, measuredDuration: number, voice?: string): void {
+    const chunk = this.audioChunks.get(chunkId);
+    if (!chunk) {
+      logger.warn(`Cannot update duration for unknown chunk: ${chunkId}`);
+      return;
+    }
+    
+    const oldDuration = chunk.endTime - chunk.startTime;
+    const durationDifference = Math.abs(measuredDuration - oldDuration);
+    const significantChange = durationDifference > oldDuration * 0.15; // 15% threshold
+    
+    // Update chunk metadata
+    chunk.measuredDuration = measuredDuration;
+    if (voice) chunk.voice = voice;
+    
+    // Calculate timing accuracy
+    const accuracy = chunk.estimatedDuration ? 
+      Math.min(1.0, chunk.estimatedDuration / measuredDuration) : 
+      0.5;
+    chunk.timingAccuracy = accuracy;
+    
+    logger.debug(`Updated chunk duration`, {
+      chunkId,
+      estimatedDuration: oldDuration,
+      measuredDuration,
+      accuracy,
+      significantChange
+    });
+    
+    this.emit('durationUpdated', {
+      chunk,
+      oldDuration,
+      newDuration: measuredDuration,
+      timingAccuracy: accuracy
+    });
+    
+    // Trigger timeline recalibration if significant change
+    if (significantChange) {
+      setTimeout(() => this.recalibrateTimeline(), 100);
+    }
+  }
+  
+  /**
+   * Recalibrate timeline with measured audio durations
+   * Adjusts chunk timing to prevent overlaps and gaps
+   */
+  recalibrateTimeline(): void {
+    logger.debug('Recalibrating timeline with measured durations');
+    
+    const chunks = Array.from(this.audioChunks.values())
+      .sort((a, b) => a.startTime - b.startTime);
+    
+    const adjustments: Array<{
+      chunkId: string;
+      oldStartTime: number;
+      newStartTime: number;
+      oldEndTime: number;
+      newEndTime: number;
+    }> = [];
+    
+    let currentTime = 0;
+    
+    for (const chunk of chunks) {
+      const originalStart = chunk.startTime;
+      const originalEnd = chunk.endTime;
+      const originalDuration = originalEnd - originalStart;
+      
+      // Use measured duration if available and significantly different
+      let adjustedDuration = originalDuration;
+      if (chunk.measuredDuration) {
+        const durationDifference = Math.abs(chunk.measuredDuration - originalDuration);
+        if (durationDifference > originalDuration * 0.2) { // 20% threshold
+          adjustedDuration = chunk.measuredDuration;
+        }
+      }
+      
+      // Adjust start time to prevent overlaps
+      const newStartTime = Math.max(chunk.startTime, currentTime);
+      const newEndTime = newStartTime + adjustedDuration;
+      
+      // Update chunk timing if changed
+      if (newStartTime !== originalStart || newEndTime !== originalEnd) {
+        chunk.startTime = newStartTime;
+        chunk.endTime = newEndTime;
+        
+        adjustments.push({
+          chunkId: chunk.id,
+          oldStartTime: originalStart,
+          newStartTime,
+          oldEndTime: originalEnd,
+          newEndTime
+        });
+        
+        logger.debug(`Adjusted chunk timing`, {
+          chunkId: chunk.id,
+          oldStart: originalStart,
+          newStart: newStartTime,
+          oldDuration: originalDuration,
+          newDuration: adjustedDuration
+        });
+      }
+      
+      currentTime = newEndTime;
+    }
+    
+    if (adjustments.length > 0) {
+      logger.info(`Timeline recalibrated with ${adjustments.length} adjustments`, {
+        totalDuration: currentTime
+      });
+      
+      this.emit('timelineRecalibrated', {
+        adjustments,
+        totalDuration: currentTime
+      });
+      
+      // If currently playing, we may need to reschedule chunks
+      if (this.isPlaying) {
+        this.rescheduleUpcomingChunks();
+      }
+    }
+  }
+  
+  /**
+   * Get timing accuracy statistics for all chunks
+   */
+  getTimingAccuracyStats(): {
+    averageAccuracy: number;
+    chunksWithMeasuredDuration: number;
+    totalChunks: number;
+    confidenceScore: number;
+  } {
+    const chunks = Array.from(this.audioChunks.values());
+    const chunksWithMeasured = chunks.filter(c => c.measuredDuration !== undefined);
+    
+    if (chunksWithMeasured.length === 0) {
+      return {
+        averageAccuracy: 0.5,
+        chunksWithMeasuredDuration: 0,
+        totalChunks: chunks.length,
+        confidenceScore: 0.0
+      };
+    }
+    
+    const totalAccuracy = chunksWithMeasured.reduce((sum, chunk) => sum + (chunk.timingAccuracy || 0.5), 0);
+    const averageAccuracy = totalAccuracy / chunksWithMeasured.length;
+    const confidenceScore = chunksWithMeasured.length / chunks.length;
+    
+    return {
+      averageAccuracy,
+      chunksWithMeasuredDuration: chunksWithMeasured.length,
+      totalChunks: chunks.length,
+      confidenceScore
+    };
+  }
+  
+  /**
+   * Reschedule upcoming chunks after timeline recalibration
+   */
+  private rescheduleUpcomingChunks(): void {
+    if (!this.isPlaying || !this.audioContext) return;
+    
+    const currentPosition = this.getCurrentPosition();
+    const upcomingChunks = Array.from(this.audioChunks.values())
+      .filter(chunk => chunk.startTime > currentPosition)
+      .sort((a, b) => a.startTime - b.startTime);
+    
+    // Stop any scheduled audio sources for upcoming chunks
+    for (const chunk of upcomingChunks) {
+      const source = this.audioSources.get(chunk.id);
+      if (source) {
+        try {
+          source.stop();
+        } catch (e) {
+          // Source might already be stopped
+        }
+        this.audioSources.delete(chunk.id);
+      }
+    }
+    
+    // Reschedule upcoming chunks with new timing
+    this.scheduleAudioChunks(currentPosition).catch(error => {
+      logger.error('Error rescheduling chunks after recalibration', { error });
     });
   }
 

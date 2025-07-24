@@ -10,6 +10,7 @@ from config import settings
 import wave
 import io
 import re
+import json
 from dataclasses import dataclass
 from .voice_repository import voice_repository_service
 
@@ -31,6 +32,17 @@ class StreamingAudioChunk:
     text: str
     is_ready: bool = False
     error: Optional[str] = None
+    actual_duration: Optional[float] = None  # Measured audio duration in seconds
+
+@dataclass
+class VoiceCalibrationData:
+    """Voice-specific calibration data for timing accuracy"""
+    voice_id: str
+    words_per_minute: float
+    characters_per_second: float
+    sample_count: int
+    last_updated: str
+    confidence_score: float = 0.0  # 0.0 to 1.0 based on sample count
 
 
 class PiperTTSService:
@@ -47,8 +59,15 @@ class PiperTTSService:
         self.default_voice = "en_US-lessac-medium"
         self.voice_configs = {}
         
+        # Voice calibration system
+        self.calibration_file = self.cache_dir / "voice_calibration.json"
+        self.voice_calibrations: Dict[str, VoiceCalibrationData] = {}
+        
         # Ensure cache directory exists
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Load existing calibration data
+        self._load_voice_calibrations()
         
         # Check if Piper TTS is available
         self._is_piper_available = None
@@ -124,6 +143,182 @@ class PiperTTSService:
         self._availability_checked = False
         await self._load_voice_configurations()
         logger.info(f"Voice configurations refreshed: {len(self.voice_configs)} voices loaded")
+        # Reload calibration data after voice refresh
+        self._load_voice_calibrations()
+    
+    def _load_voice_calibrations(self):
+        """Load voice calibration data from file"""
+        try:
+            if self.calibration_file.exists():
+                with open(self.calibration_file, 'r') as f:
+                    data = json.load(f)
+                    for voice_id, cal_data in data.items():
+                        self.voice_calibrations[voice_id] = VoiceCalibrationData(
+                            voice_id=cal_data['voice_id'],
+                            words_per_minute=cal_data['words_per_minute'],
+                            characters_per_second=cal_data['characters_per_second'],
+                            sample_count=cal_data['sample_count'],
+                            last_updated=cal_data['last_updated'],
+                            confidence_score=cal_data.get('confidence_score', 0.0)
+                        )
+                logger.info(f"Loaded calibration data for {len(self.voice_calibrations)} voices")
+            else:
+                logger.info("No existing voice calibration data found")
+        except Exception as e:
+            logger.error(f"Error loading voice calibrations: {e}")
+            self.voice_calibrations = {}
+    
+    def _save_voice_calibrations(self):
+        """Save voice calibration data to file"""
+        try:
+            data = {}
+            for voice_id, cal_data in self.voice_calibrations.items():
+                data[voice_id] = {
+                    'voice_id': cal_data.voice_id,
+                    'words_per_minute': cal_data.words_per_minute,
+                    'characters_per_second': cal_data.characters_per_second,
+                    'sample_count': cal_data.sample_count,
+                    'last_updated': cal_data.last_updated,
+                    'confidence_score': cal_data.confidence_score
+                }
+            
+            with open(self.calibration_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            logger.debug(f"Saved calibration data for {len(self.voice_calibrations)} voices")
+        except Exception as e:
+            logger.error(f"Error saving voice calibrations: {e}")
+    
+    def _measure_audio_duration(self, audio_path: Path) -> Optional[float]:
+        """Measure the actual duration of generated audio file"""
+        try:
+            with wave.open(str(audio_path), 'rb') as wav_file:
+                frames = wav_file.getnframes()
+                sample_rate = wav_file.getframerate()
+                duration = frames / float(sample_rate)
+                logger.debug(f"Measured audio duration: {duration:.2f}s for {audio_path.name}")
+                return duration
+        except Exception as e:
+            logger.error(f"Error measuring audio duration for {audio_path}: {e}")
+            return None
+    
+    def _update_voice_calibration(self, voice_id: str, text: str, actual_duration: float):
+        """Update voice calibration data with new measurement"""
+        try:
+            from datetime import datetime
+            
+            word_count = len(text.split())
+            char_count = len(text)
+            
+            if word_count == 0 or actual_duration <= 0:
+                logger.warning(f"Invalid calibration data: words={word_count}, duration={actual_duration}")
+                return
+            
+            current_wpm = (word_count / actual_duration) * 60
+            current_cps = char_count / actual_duration
+            
+            if voice_id in self.voice_calibrations:
+                # Update existing calibration with weighted average
+                cal = self.voice_calibrations[voice_id]
+                weight = min(0.2, 1.0 / (cal.sample_count + 1))  # Decreasing weight for stability
+                
+                cal.words_per_minute = cal.words_per_minute * (1 - weight) + current_wpm * weight
+                cal.characters_per_second = cal.characters_per_second * (1 - weight) + current_cps * weight
+                cal.sample_count += 1
+                cal.last_updated = datetime.now().isoformat()
+                cal.confidence_score = min(1.0, cal.sample_count / 10.0)  # Max confidence at 10 samples
+            else:
+                # Create new calibration
+                self.voice_calibrations[voice_id] = VoiceCalibrationData(
+                    voice_id=voice_id,
+                    words_per_minute=current_wpm,
+                    characters_per_second=current_cps,
+                    sample_count=1,
+                    last_updated=datetime.now().isoformat(),
+                    confidence_score=0.1
+                )
+            
+            # Save updated calibrations
+            self._save_voice_calibrations()
+            
+            logger.debug(f"Updated calibration for {voice_id}: {current_wpm:.1f} WPM (confidence: {self.voice_calibrations[voice_id].confidence_score:.2f})")
+            
+        except Exception as e:
+            logger.error(f"Error updating voice calibration: {e}")
+    
+    def get_voice_speaking_rate(self, voice_id: str) -> float:
+        """Get calibrated speaking rate for a voice (words per minute)"""
+        if voice_id in self.voice_calibrations:
+            cal = self.voice_calibrations[voice_id]
+            # Use calibrated rate if we have enough confidence
+            if cal.confidence_score >= 0.3:
+                return cal.words_per_minute
+        
+        # Fallback to default rate with voice-specific adjustments
+        base_rate = 150.0  # More conservative than original 180 WPM
+        
+        # Voice-specific adjustments based on common knowledge
+        if 'lessac' in voice_id.lower():
+            return base_rate * 0.95  # Slightly slower, more articulate
+        elif 'ryan' in voice_id.lower():
+            return base_rate * 1.05  # Slightly faster
+        elif 'jenny' in voice_id.lower():
+            return base_rate * 0.90  # Generally slower female voice
+        
+        return base_rate
+    
+    def get_calibration_stats(self) -> Dict[str, any]:
+        """Get voice calibration statistics"""
+        try:
+            stats = {
+                "total_calibrated_voices": len(self.voice_calibrations),
+                "voices": {},
+                "overall_confidence": 0.0
+            }
+            
+            total_confidence = 0.0
+            for voice_id, cal in self.voice_calibrations.items():
+                stats["voices"][voice_id] = {
+                    "words_per_minute": cal.words_per_minute,
+                    "characters_per_second": cal.characters_per_second,
+                    "sample_count": cal.sample_count,
+                    "confidence_score": cal.confidence_score,
+                    "last_updated": cal.last_updated
+                }
+                total_confidence += cal.confidence_score
+            
+            if len(self.voice_calibrations) > 0:
+                stats["overall_confidence"] = total_confidence / len(self.voice_calibrations)
+            
+            return stats
+        except Exception as e:
+            logger.error(f"Error getting calibration stats: {e}")
+            return {
+                "total_calibrated_voices": 0,
+                "voices": {},
+                "overall_confidence": 0.0,
+                "error": str(e)
+            }
+    
+    def estimate_duration_with_calibration(self, text: str, voice: str = None) -> float:
+        """Estimate duration using voice-specific calibration data"""
+        if not text.strip():
+            return 0.0
+        
+        voice = voice or self.default_voice
+        speaking_rate = self.get_voice_speaking_rate(voice)
+        
+        word_count = len(text.split())
+        base_duration = (word_count / speaking_rate) * 60
+        
+        # Add buffer time for pauses, punctuation, and TTS processing
+        # More conservative buffer than original
+        buffer_factor = 1.3  # 30% buffer instead of 20%
+        final_duration = base_duration * buffer_factor
+        
+        # Minimum duration based on character count for very short texts
+        min_duration = len(text) * 0.05  # 50ms per character minimum
+        
+        return max(final_duration, min_duration, 1.0)  # Minimum 1 second
     
     async def _check_piper_availability(self) -> bool:
         """Check if Piper TTS is available and properly configured"""
@@ -288,6 +483,11 @@ class PiperTTSService:
                 
                 logger.info(f"Successfully generated TTS audio: {audio_id}")
                 
+                # Measure actual audio duration and update calibration
+                actual_duration = self._measure_audio_duration(audio_path)
+                if actual_duration:
+                    self._update_voice_calibration(voice, text, actual_duration)
+                
                 # Clean up cache if needed
                 await self._cleanup_cache()
                 
@@ -315,6 +515,11 @@ class PiperTTSService:
                 
                 if process.returncode == 0 and audio_path.exists():
                     logger.info(f"Successfully generated TTS audio: {audio_id}")
+                    
+                    # Measure actual audio duration and update calibration
+                    actual_duration = self._measure_audio_duration(audio_path)
+                    if actual_duration:
+                        self._update_voice_calibration(voice, text, actual_duration)
                     
                     # Clean up cache if needed
                     await self._cleanup_cache()
@@ -512,13 +717,21 @@ class PiperTTSService:
         async def generate_single_chunk(chunk: TextChunk) -> StreamingAudioChunk:
             try:
                 audio_id = await self.generate_audio(chunk.text, voice)
+                actual_duration = None
+                
+                # Get actual duration from generated audio if available
+                if audio_id:
+                    audio_path = self._get_audio_path(audio_id)
+                    actual_duration = self._measure_audio_duration(audio_path)
+                
                 return StreamingAudioChunk(
                     chunk_id=chunk.chunk_id,
                     audio_id=audio_id,
                     index=chunk.index,
                     text=chunk.text,
                     is_ready=audio_id is not None,
-                    error=None if audio_id else "Generation failed"
+                    error=None if audio_id else "Generation failed",
+                    actual_duration=actual_duration
                 )
             except Exception as e:
                 logger.error(f"Error generating chunk {chunk.chunk_id}: {e}")
@@ -528,7 +741,8 @@ class PiperTTSService:
                     index=chunk.index,
                     text=chunk.text,
                     is_ready=False,
-                    error=str(e)
+                    error=str(e),
+                    actual_duration=None
                 )
         
         # Generate all chunks in parallel
@@ -623,13 +837,21 @@ class PiperTTSService:
         """Generate audio for a single chunk asynchronously"""
         try:
             audio_id = await self.generate_audio(chunk.text, voice)
+            actual_duration = None
+            
+            # Get actual duration from generated audio if available
+            if audio_id:
+                audio_path = self._get_audio_path(audio_id)
+                actual_duration = self._measure_audio_duration(audio_path)
+            
             return StreamingAudioChunk(
                 chunk_id=chunk.chunk_id,
                 audio_id=audio_id,
                 index=chunk.index,
                 text=chunk.text,
                 is_ready=audio_id is not None,
-                error=None if audio_id else "Generation failed"
+                error=None if audio_id else "Generation failed",
+                actual_duration=actual_duration
             )
         except Exception as e:
             logger.error(f"Error generating chunk {chunk.chunk_id}: {e}")
@@ -639,7 +861,8 @@ class PiperTTSService:
                 index=chunk.index,
                 text=chunk.text,
                 is_ready=False,
-                error=str(e)
+                error=str(e),
+                actual_duration=None
             )
 
 

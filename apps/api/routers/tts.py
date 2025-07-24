@@ -1,12 +1,14 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from services.tts_service import piper_tts_service
 from services.voice_repository import voice_repository_service
 from utils.error_handler import ErrorHandler
 import logging
 import json
+import time
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,53 @@ class VoiceDeleteResponse(BaseModel):
     success: bool
     message: str
     voice_id: str
+
+
+# Voice Calibration Models
+class VoiceCalibrationRequest(BaseModel):
+    voice_id: str = Field(..., description="Voice ID to calibrate")
+    sample_texts: List[str] = Field(default=[
+        "Hello, this is a test of the voice calibration system.",
+        "The quick brown fox jumps over the lazy dog.",
+        "Testing, one, two, three. Can you hear me clearly?",
+        "This sample helps calibrate the speaking rate and timing accuracy.",
+        "Artificial intelligence and machine learning are transforming our world."
+    ], description="Sample texts for calibration measurement")
+    force_recalibration: bool = Field(False, description="Force recalibration even if data exists")
+
+
+class VoiceCalibrationSample(BaseModel):
+    text: str
+    word_count: int
+    character_count: int
+    estimated_duration: float
+    measured_duration: float
+    words_per_minute: float
+    characters_per_second: float
+
+
+class VoiceCalibrationResult(BaseModel):
+    voice_id: str
+    words_per_minute: float
+    characters_per_second: float
+    sample_count: int
+    confidence_score: float
+    last_updated: str
+    calibration_samples: List[VoiceCalibrationSample]
+
+
+class VoiceCalibrationResponse(BaseModel):
+    success: bool
+    voice_id: str
+    result: Optional[VoiceCalibrationResult] = None
+    error: Optional[str] = None
+    calibration_time_ms: Optional[float] = None
+
+
+class CalibrationStatsResponse(BaseModel):
+    total_calibrated_voices: int
+    overall_confidence: float
+    voices: Dict[str, Dict[str, Any]]
 
 
 @router.post("/tts/generate", response_model=TTSGenerateResponse)
@@ -633,4 +682,376 @@ async def get_voice_download_progress(voice_id: str):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get download progress: {str(e)}"
+        )
+
+
+# Voice Calibration Endpoints
+
+@router.post("/tts/voices/{voice_id}/calibrate", response_model=VoiceCalibrationResponse)
+async def calibrate_voice(voice_id: str, request: VoiceCalibrationRequest):
+    """Calibrate a voice for accurate timing by measuring actual TTS output"""
+    try:
+        start_time = time.time()
+        
+        # Check if TTS service is available
+        if not await piper_tts_service.is_service_available():
+            return VoiceCalibrationResponse(
+                success=False,
+                voice_id=voice_id,
+                error="Piper TTS service is not available"
+            )
+        
+        # Check if voice exists
+        available_voices = await piper_tts_service.get_available_voices()
+        voice_exists = any(v['id'] == voice_id for v in available_voices)
+        
+        if not voice_exists:
+            return VoiceCalibrationResponse(
+                success=False,
+                voice_id=voice_id,
+                error=f"Voice {voice_id} not found or not installed"
+            )
+        
+        # Check if calibration already exists and force_recalibration is False
+        calibration_stats = piper_tts_service.get_calibration_stats()
+        if not request.force_recalibration and voice_id in calibration_stats.get('voices', {}):
+            existing_cal = calibration_stats['voices'][voice_id]
+            if existing_cal.get('confidence_score', 0) >= 0.5:
+                logger.info(f"Using existing calibration for voice {voice_id}")
+                
+                calibration_time = (time.time() - start_time) * 1000
+                return VoiceCalibrationResponse(
+                    success=True,
+                    voice_id=voice_id,
+                    result=VoiceCalibrationResult(
+                        voice_id=voice_id,
+                        words_per_minute=existing_cal['words_per_minute'],
+                        characters_per_second=existing_cal['characters_per_second'],
+                        sample_count=existing_cal['sample_count'],
+                        confidence_score=existing_cal['confidence_score'],
+                        last_updated=existing_cal['last_updated'],
+                        calibration_samples=[]
+                    ),
+                    calibration_time_ms=calibration_time
+                )
+        
+        logger.info(f"Starting voice calibration for {voice_id} with {len(request.sample_texts)} samples")
+        
+        # Generate audio samples and measure durations
+        calibration_samples = []
+        
+        for text in request.sample_texts:
+            if not text.strip():
+                continue
+            
+            try:
+                # Generate audio and measure duration
+                audio_id = await piper_tts_service.generate_audio(text, voice_id)
+                
+                if not audio_id:
+                    logger.warning(f"Failed to generate audio for sample: {text[:50]}...")
+                    continue
+                
+                # Get measured duration
+                audio_path = piper_tts_service._get_audio_path(audio_id)
+                measured_duration = piper_tts_service._measure_audio_duration(audio_path)
+                
+                if not measured_duration:
+                    logger.warning(f"Failed to measure duration for sample: {text[:50]}...")
+                    continue
+                
+                # Calculate metrics
+                word_count = len(text.split())
+                character_count = len(text)
+                estimated_duration = piper_tts_service.estimate_duration_with_calibration(text, voice_id)
+                
+                if word_count > 0 and measured_duration > 0:
+                    words_per_minute = (word_count / measured_duration) * 60
+                    characters_per_second = character_count / measured_duration
+                    
+                    calibration_samples.append(VoiceCalibrationSample(
+                        text=text,
+                        word_count=word_count,
+                        character_count=character_count,
+                        estimated_duration=estimated_duration,
+                        measured_duration=measured_duration,
+                        words_per_minute=words_per_minute,
+                        characters_per_second=characters_per_second
+                    ))
+                    
+                    logger.debug(f"Calibration sample: {word_count} words, {measured_duration:.2f}s, {words_per_minute:.1f} WPM")
+                
+            except Exception as e:
+                logger.error(f"Error processing calibration sample: {e}")
+                continue
+        
+        if not calibration_samples:
+            return VoiceCalibrationResponse(
+                success=False,
+                voice_id=voice_id,
+                error="No valid calibration samples could be generated"
+            )
+        
+        # Get final calibration result from TTS service
+        final_stats = piper_tts_service.get_calibration_stats()
+        voice_stats = final_stats.get('voices', {}).get(voice_id, {})
+        
+        if not voice_stats:
+            return VoiceCalibrationResponse(
+                success=False,
+                voice_id=voice_id,
+                error="Calibration completed but no statistics available"
+            )
+        
+        calibration_time = (time.time() - start_time) * 1000
+        
+        result = VoiceCalibrationResult(
+            voice_id=voice_id,
+            words_per_minute=voice_stats['words_per_minute'],
+            characters_per_second=voice_stats['characters_per_second'],
+            sample_count=voice_stats['sample_count'],
+            confidence_score=voice_stats['confidence_score'],
+            last_updated=voice_stats['last_updated'],
+            calibration_samples=calibration_samples
+        )
+        
+        logger.info(f"Voice calibration completed for {voice_id}: {result.words_per_minute:.1f} WPM, confidence {result.confidence_score:.2f}")
+        
+        return VoiceCalibrationResponse(
+            success=True,
+            voice_id=voice_id,
+            result=result,
+            calibration_time_ms=calibration_time
+        )
+        
+    except Exception as e:
+        logger.error(f"Error calibrating voice {voice_id}: {e}")
+        return VoiceCalibrationResponse(
+            success=False,
+            voice_id=voice_id,
+            error=str(e)
+        )
+
+
+@router.get("/tts/voices/{voice_id}/calibration")
+async def get_voice_calibration(voice_id: str):
+    """Get existing calibration data for a voice"""
+    try:
+        calibration_stats = piper_tts_service.get_calibration_stats()
+        voice_stats = calibration_stats.get('voices', {}).get(voice_id)
+        
+        if not voice_stats:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No calibration data found for voice {voice_id}"
+            )
+        
+        return {
+            "voice_id": voice_id,
+            "words_per_minute": voice_stats['words_per_minute'],
+            "characters_per_second": voice_stats['characters_per_second'],
+            "sample_count": voice_stats['sample_count'],
+            "confidence_score": voice_stats['confidence_score'],
+            "last_updated": voice_stats['last_updated']
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting calibration for voice {voice_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get calibration data: {str(e)}"
+        )
+
+
+@router.get("/tts/calibration/stats", response_model=CalibrationStatsResponse)
+async def get_calibration_stats():
+    """Get overall calibration statistics for all voices"""
+    try:
+        stats = piper_tts_service.get_calibration_stats()
+        return CalibrationStatsResponse(
+            total_calibrated_voices=stats['total_calibrated_voices'],
+            overall_confidence=stats['overall_confidence'],
+            voices=stats['voices']
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting calibration stats: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get calibration statistics: {str(e)}"
+        )
+
+
+@router.post("/tts/calibration/auto-calibrate")
+async def auto_calibrate_all_voices():
+    """Automatically calibrate all installed voices"""
+    try:
+        # Get all installed voices
+        available_voices = await piper_tts_service.get_available_voices()
+        
+        if not available_voices:
+            return {
+                "success": False,
+                "message": "No voices available for calibration",
+                "results": []
+            }
+        
+        results = []
+        
+        # Calibrate each voice with default samples
+        for voice in available_voices:
+            voice_id = voice['id']
+            
+            try:
+                # Use default calibration request
+                calibration_request = VoiceCalibrationRequest(
+                    voice_id=voice_id,
+                    force_recalibration=False
+                )
+                
+                # Calibrate the voice
+                result = await calibrate_voice(voice_id, calibration_request)
+                
+                results.append({
+                    "voice_id": voice_id,
+                    "voice_name": voice['name'],
+                    "success": result.success,
+                    "words_per_minute": result.result.words_per_minute if result.result else None,
+                    "confidence_score": result.result.confidence_score if result.result else None,
+                    "error": result.error
+                })
+                
+                # Small delay between calibrations to avoid overwhelming the system
+                await asyncio.sleep(0.5)
+                
+            except Exception as e:
+                logger.error(f"Error calibrating voice {voice_id}: {e}")
+                results.append({
+                    "voice_id": voice_id,
+                    "voice_name": voice['name'],
+                    "success": False,
+                    "error": str(e)
+                })
+        
+        successful_calibrations = len([r for r in results if r['success']])
+        
+        return {
+            "success": True,
+            "message": f"Auto-calibration completed: {successful_calibrations}/{len(results)} voices calibrated successfully",
+            "results": results,
+            "total_voices": len(results),
+            "successful_calibrations": successful_calibrations
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in auto-calibration: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Auto-calibration failed: {str(e)}"
+        )
+
+
+@router.post("/tts/test-timing-fix")
+async def test_timing_fix():
+    """Test endpoint to verify the TTS timing fix works correctly"""
+    try:
+        # Test samples with different lengths and complexities
+        test_samples = [
+            "Hello, this is a short test.",
+            "This is a medium length sentence to test the timing accuracy of our text-to-speech system.",
+            "This is a much longer sentence that contains more complex words and technical terminology like artificial intelligence, machine learning, and natural language processing to test how well our calibration system handles longer content with varying complexity."
+        ]
+        
+        results = []
+        
+        for i, text in enumerate(test_samples):
+            try:
+                # Get estimated duration
+                estimated_duration = piper_tts_service.estimate_duration_with_calibration(text)
+                
+                # Generate actual TTS audio
+                audio_id = await piper_tts_service.generate_audio(text)
+                
+                if not audio_id:
+                    results.append({
+                        "sample": i + 1,
+                        "text": text[:50] + "...",
+                        "error": "Failed to generate TTS audio"
+                    })
+                    continue
+                
+                # Measure actual duration
+                audio_path = piper_tts_service._get_audio_path(audio_id)
+                measured_duration = piper_tts_service._measure_audio_duration(audio_path)
+                
+                if not measured_duration:
+                    results.append({
+                        "sample": i + 1,
+                        "text": text[:50] + "...",
+                        "error": "Failed to measure audio duration"
+                    })
+                    continue
+                
+                # Calculate accuracy metrics
+                word_count = len(text.split())
+                char_count = len(text)
+                timing_accuracy = min(1.0, estimated_duration / measured_duration) if measured_duration > 0 else 0
+                actual_wpm = (word_count / measured_duration) * 60 if measured_duration > 0 else 0
+                
+                results.append({
+                    "sample": i + 1,
+                    "text": text[:50] + "...",
+                    "word_count": word_count,
+                    "character_count": char_count,
+                    "estimated_duration_seconds": round(estimated_duration, 2),
+                    "measured_duration_seconds": round(measured_duration, 2),
+                    "timing_accuracy": round(timing_accuracy, 3),
+                    "actual_words_per_minute": round(actual_wpm, 1),
+                    "timing_error_percent": round(abs(estimated_duration - measured_duration) / measured_duration * 100, 1) if measured_duration > 0 else None,
+                    "audio_id": audio_id
+                })
+                
+            except Exception as e:
+                logger.error(f"Error testing sample {i + 1}: {e}")
+                results.append({
+                    "sample": i + 1,
+                    "text": text[:50] + "...",
+                    "error": str(e)
+                })
+        
+        # Get overall calibration stats
+        calibration_stats = piper_tts_service.get_calibration_stats()
+        
+        # Calculate overall accuracy
+        successful_results = [r for r in results if "timing_accuracy" in r]
+        overall_accuracy = sum(r["timing_accuracy"] for r in successful_results) / len(successful_results) if successful_results else 0
+        
+        return {
+            "success": True,
+            "message": "TTS timing fix test completed",
+            "overall_timing_accuracy": round(overall_accuracy, 3),
+            "successful_samples": len(successful_results),
+            "total_samples": len(test_samples),
+            "calibration_stats": calibration_stats,
+            "sample_results": results,
+            "timing_improvements": {
+                "before_fix": "Fixed 180 WPM estimation with 20% buffer",
+                "after_fix": "Voice-specific calibration with measured durations",
+                "key_improvements": [
+                    "Actual audio duration measurement",
+                    "Voice-specific speaking rate calibration",
+                    "Improved estimation accuracy",
+                    "Timeline synchronization fixes",
+                    "Automatic recalibration system"
+                ]
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in timing fix test: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Timing fix test failed: {str(e)}"
         )

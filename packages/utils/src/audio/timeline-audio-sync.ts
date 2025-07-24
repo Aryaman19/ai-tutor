@@ -574,6 +574,62 @@ export class TimelineAudioSync {
   getCurrentPosition(): AudioTimelinePosition {
     return this.calculateSyncPosition();
   }
+  
+  /**
+   * Recalibrate timeline events when actual TTS durations are available
+   * This method adjusts timeline positions to prevent overlaps and gaps
+   */
+  recalibrateTimelineWithMeasuredDurations(): void {
+    logger.debug('Recalibrating timeline with measured audio durations');
+    
+    const chunks = Array.from(this.audioChunks.values())
+      .sort((a, b) => a.timelineStart - b.timelineStart);
+    
+    let currentTime = 0;
+    const adjustments: Array<{chunkId: string, oldStart: number, newStart: number, oldDuration: number, newDuration: number}> = [];
+    
+    for (const chunk of chunks) {
+      const originalStart = chunk.timelineStart;
+      const originalDuration = chunk.timelineDuration;
+      
+      // Update timeline start to prevent overlaps
+      chunk.timelineStart = Math.max(chunk.timelineStart, currentTime);
+      
+      // Use measured audio duration if significantly different from estimated
+      const durationDifference = Math.abs(chunk.audioDuration - chunk.timelineDuration);
+      const significantDifference = durationDifference > chunk.timelineDuration * 0.2; // 20% threshold
+      
+      if (significantDifference) {
+        chunk.timelineDuration = chunk.audioDuration;
+      }
+      
+      // Record adjustment
+      if (chunk.timelineStart !== originalStart || chunk.timelineDuration !== originalDuration) {
+        adjustments.push({
+          chunkId: chunk.id,
+          oldStart: originalStart,
+          newStart: chunk.timelineStart,
+          oldDuration: originalDuration,
+          newDuration: chunk.timelineDuration
+        });
+      }
+      
+      // Update current time for next chunk
+      currentTime = chunk.timelineStart + chunk.timelineDuration;
+    }
+    
+    if (adjustments.length > 0) {
+      logger.info('Timeline recalibrated with measured durations', {
+        adjustments: adjustments.length,
+        totalAdjustedTime: currentTime
+      });
+      
+      this.emit('timelineRecalibrated', {
+        adjustments,
+        totalDuration: currentTime
+      });
+    }
+  }
 
   /**
    * Register event handler
@@ -635,7 +691,7 @@ export class TimelineAudioSync {
       text: audio.text,
       timelineStart: event.timestamp,
       timelineDuration: event.duration,
-      audioDuration: this.estimateAudioDuration(audio.text, audio.speed || 1.0),
+      audioDuration: this.estimateAudioDuration(audio.text, audio.speed || 1.0, audio.voice),
       isLoaded: false,
       isPlaying: false,
       voiceSettings: {
@@ -939,13 +995,86 @@ export class TimelineAudioSync {
   }
 
   /**
-   * Estimate audio duration from text
+   * Estimate audio duration from text using TTS calibration when available
    */
-  private estimateAudioDuration(text: string, speed: number): number {
-    // Rough estimation: ~150 words per minute at normal speed
-    const wordsPerMinute = 150 * speed;
-    const wordCount = text.trim().split(/\s+/).length;
-    return (wordCount / wordsPerMinute) * 60 * 1000; // Convert to milliseconds
+  private estimateAudioDuration(text: string, speed: number, voice?: string): number {
+    // Try to use TTS service calibration if available
+    try {
+      // This would integrate with the TTS service calibration system
+      // For now, use improved estimation with voice-specific adjustments
+      const baseWordsPerMinute = this.getVoiceSpecificRate(voice) * speed;
+      const wordCount = text.trim().split(/\s+/).length;
+      
+      if (wordCount === 0) {
+        return Math.max(text.length * 50, 1000); // 50ms per character, min 1 second
+      }
+      
+      const baseDuration = (wordCount / baseWordsPerMinute) * 60 * 1000;
+      
+      // Add buffer for natural speech patterns
+      const bufferFactor = 1.25; // 25% buffer for pauses and natural speech
+      
+      return Math.max(baseDuration * bufferFactor, 1000); // Minimum 1 second
+    } catch (error) {
+      logger.warn('TTS calibration unavailable, using fallback estimation', { error });
+      
+      // Fallback to basic estimation
+      const wordsPerMinute = 150 * speed;
+      const wordCount = text.trim().split(/\s+/).length;
+      return Math.max((wordCount / wordsPerMinute) * 60 * 1000, 1000);
+    }
+  }
+  
+  /**
+   * Get voice-specific speaking rate (words per minute)
+   * This integrates with the TTS calibration system
+   */
+  private getVoiceSpecificRate(voice?: string): number {
+    // Default rates based on common voice characteristics
+    const voiceRates: Record<string, number> = {
+      'en_US-lessac-medium': 145,
+      'en_US-ryan-medium': 155,
+      'en_US-jenny-medium': 140,
+      'en_US-danny-medium': 150,
+    };
+    
+    return voice && voiceRates[voice] ? voiceRates[voice] : 150;
+  }
+  
+  /**
+   * Update audio chunk with measured duration from TTS
+   * This should be called when actual TTS audio is generated
+   */
+  updateChunkWithMeasuredDuration(chunkId: string, measuredDuration: number): void {
+    const chunk = this.audioChunks.get(chunkId);
+    if (chunk) {
+      const previousDuration = chunk.audioDuration;
+      chunk.audioDuration = measuredDuration;
+      
+      // Update sync metadata with accuracy measurement
+      const accuracy = Math.min(1.0, previousDuration / measuredDuration);
+      chunk.syncMetadata.measuredAccuracy = accuracy;
+      
+      logger.debug('Updated chunk with measured duration', {
+        chunkId,
+        estimatedDuration: previousDuration,
+        measuredDuration,
+        accuracy
+      });
+      
+      this.emit('chunkDurationUpdated', {
+        chunkId,
+        previousDuration,
+        measuredDuration,
+        accuracy
+      });
+      
+      // Trigger timeline recalibration if this was a significant change
+      const durationChange = Math.abs(previousDuration - measuredDuration) / previousDuration;
+      if (durationChange > 0.15) { // 15% change threshold
+        setTimeout(() => this.recalibrateTimelineWithMeasuredDurations(), 100);
+      }
+    }
   }
 
   /**

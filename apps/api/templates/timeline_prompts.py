@@ -129,6 +129,14 @@ CONSTRAINTS:
 - Keep content focused and engaging
 - Use conversational tone for narration
 
+TTS-AWARE TIMING GUIDELINES:
+- For narration: aim for 140-160 words per minute of speaking time
+- Account for natural pauses between sentences (0.5-1 second)
+- Short phrases (under 5 words) need minimum 2 seconds
+- Complex technical terms require extra time for clear pronunciation
+- Plan timing with actual speech patterns, not just word count
+- Include brief pauses for emphasis and comprehension
+
 {continuity_section}
 
 FORMAT YOUR RESPONSE as a JSON object with this structure:
@@ -139,6 +147,8 @@ FORMAT YOUR RESPONSE as a JSON object with this structure:
       "duration": 5.0,
       "event_type": "narration",
       "content": "Spoken content for this time segment",
+      "word_count": 12,
+      "estimated_speaking_time": 4.8,
       "visual_instruction": "VISUAL: text center 'Main Title' critical",
       "layout_hints": {{
         "semantic": "primary",
@@ -151,6 +161,8 @@ FORMAT YOUR RESPONSE as a JSON object with this structure:
       "duration": 8.0,
       "event_type": "visual",
       "content": "Description of visual element",
+      "word_count": 6,
+      "estimated_speaking_time": 2.4,
       "visual_instruction": "VISUAL: rectangle left 'Concept Box' high",
       "layout_hints": {{
         "semantic": "supporting",
@@ -168,6 +180,13 @@ FORMAT YOUR RESPONSE as a JSON object with this structure:
 {visual_section}
 
 Generate timeline events that naturally flow together and can be presented sequentially with proper timing.
+
+IMPORTANT TIMING NOTES:
+- Calculate word_count for each content segment
+- Set estimated_speaking_time based on 150 words per minute baseline
+- Ensure duration allows for comfortable speech pacing plus small buffer
+- For very short content (under 3 seconds estimated), increase duration to minimum 3 seconds
+- Account for natural speech patterns and pauses in your timing
 """
         
         return prompt.strip()

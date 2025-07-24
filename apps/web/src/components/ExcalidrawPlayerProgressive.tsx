@@ -10,6 +10,7 @@ import { Excalidraw } from '@excalidraw/excalidraw';
 import type { StreamingTimelineChunk, TimelineEvent } from '@ai-tutor/types';
 import { createComponentLogger } from '@ai-tutor/utils';
 import { useTTSSettings, useTTSAudio, useTTSAvailability, useStreamingTTS, useTTSVoices } from "@ai-tutor/hooks";
+import SimpleAudioTimeline from './SimpleAudioTimeline';
 
 // Phase 5 Audio Integration Components
 import {
@@ -138,6 +139,17 @@ export interface ExcalidrawPlayerProgressiveProps {
   onPlaybackStart?: () => void;
   onPlaybackEnd?: () => void;
   onSeek?: (position: number) => void;
+  
+  /** Use simple audio timeline mode instead of canvas */
+  useSimpleAudioMode?: boolean;
+  
+  /** Direct lesson steps for fallback (when chunks don't have proper structure) */
+  lessonSteps?: Array<{
+    step_number: number;
+    title: string;
+    narration: string;
+    duration?: number;
+  }>;
   onError?: (error: Error) => void;
   onSyncStatusChange?: (status: AudioTimelinePosition) => void;
   onElementsChange?: (elements: any[]) => void;
@@ -160,6 +172,8 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
   showControls = true,
   showBufferBar = true,
   showLoadingIndicators = true,
+  useSimpleAudioMode = false,
+  lessonSteps = [],
   streamingConfig = {},
   enhancedConfig = {},
   onPlaybackStart,
@@ -193,6 +207,7 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
   const [audioQueue, setAudioQueue] = useState<Array<{id: string; text: string; startTime: number; duration: number}>>([]);
   const [audioSyncStatus, setAudioSyncStatus] = useState<AudioTimelinePosition | null>(null);
   const [coordinationMode, setCoordinationMode] = useState<CoordinationMode>('synchronized');
+  const [completedAudioSegments, setCompletedAudioSegments] = useState<Set<string>>(new Set());
   
   // Advanced timeline state
   const [seekPerformance, setSeekPerformance] = useState({ averageTime: 0, lastSeekTime: 0 });
@@ -234,7 +249,15 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
     },
     onEnd: () => {
       logger.debug("TTS audio finished playing");
-      // Audio ending will be handled by timeline progression logic
+      // Mark current audio segment as completed to prevent repetition
+      const currentAudio = audioQueue.find(audio => 
+        currentPosition >= audio.startTime && 
+        currentPosition < (audio.startTime + audio.duration)
+      );
+      if (currentAudio) {
+        logger.debug(`Marking audio segment as completed: ${currentAudio.id}`);
+        setCompletedAudioSegments(prev => new Set([...prev, currentAudio.id]));
+      }
     },
     onError: (error) => {
       logger.error("TTS audio error:", error);
@@ -435,6 +458,9 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
         duration: event.duration
       }));
       setAudioQueue(audioItems);
+      
+      // Reset completed audio segments when new content is loaded
+      setCompletedAudioSegments(new Set());
       
       // Create buffered regions based on timeline events
       const regions = chunks.map((chunk, index) => {
@@ -714,6 +740,18 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
     );
     
     if (currentAudio && currentAudio.text !== currentNarrationText) {
+      // Check if this audio segment has already been completed
+      if (completedAudioSegments.has(currentAudio.id)) {
+        logger.debug('Sequential audio: Skipping already completed segment', { 
+          audioId: currentAudio.id, 
+          position: currentPosition,
+          text: currentAudio.text.substring(0, 50) + '...' 
+        });
+        // Don't retrigger completed audio - just clear current narration
+        setCurrentNarrationText('');
+        return;
+      }
+      
       logger.debug('Sequential audio: Moving to next audio segment', { 
         audioId: currentAudio.id, 
         position: currentPosition,
@@ -729,7 +767,7 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
       logger.debug('Sequential audio: No audio for current position, stopping');
       setCurrentNarrationText('');
     }
-  }, [isPlaying, currentPosition, audioQueue, usePiperTTS, currentNarrationText]);
+  }, [isPlaying, currentPosition, audioQueue, usePiperTTS, currentNarrationText, completedAudioSegments]);
 
   // Control TTS playback based on timeline state
   useEffect(() => {
@@ -767,6 +805,11 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
       hasAudioControls: !!ttsAudio.controls.play,
       audioStatus: ttsAudio.status
     });
+    
+    // Reset completed audio segments when starting fresh playback
+    if (currentPosition === 0) {
+      setCompletedAudioSegments(new Set());
+    }
     
     setIsPlaying(true);
     onPlaybackStart?.();
@@ -934,6 +977,147 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
       coordinationMode,
     };
   }, [audioSyncStatus, seekPerformance, coordinationMode, config.audioSync.enabled]);
+  
+  // Simple Audio Mode - create segments from chunks
+  const audioSegments = useMemo(() => {
+    if (!useSimpleAudioMode) return [];
+    
+    logger.debug('Creating audio segments from chunks:', { 
+      chunksCount: chunks.length,
+      chunks: chunks.map(c => ({ 
+        id: c.chunkId, 
+        contentType: c.contentType,
+        eventsCount: c.events?.length || 0,
+        events: c.events?.map(e => ({ type: e.event_type, hasContent: !!e.content })) || []
+      }))
+    });
+    
+    // First try to extract from events with narration type
+    let segments = chunks.flatMap((chunk, chunkIndex) => 
+      (chunk.events || [])
+        .filter(event => event.event_type === 'narration' && event.content)
+        .map((event, eventIndex) => ({
+          id: `${chunk.chunkId}-${eventIndex}`,
+          text: typeof event.content === 'string' ? event.content : 'Audio content',
+          title: `${chunk.contentType || 'Step'} ${chunkIndex + 1} - Part ${eventIndex + 1}`,
+          duration: event.duration ? event.duration / 1000 : undefined
+        }))
+    );
+    
+    // Fallback 1: If no narration events found, create segments from chunk content directly
+    if (segments.length === 0) {
+      logger.debug('No narration events found, creating segments from chunk content');
+      segments = chunks.map((chunk, chunkIndex) => {
+        // Try to extract text from the chunk
+        let text = '';
+        if (chunk.content) {
+          text = typeof chunk.content === 'string' ? chunk.content : JSON.stringify(chunk.content);
+        } else if (chunk.events && chunk.events.length > 0) {
+          // Use first event with content
+          const firstEvent = chunk.events.find(e => e.content);
+          text = firstEvent ? (typeof firstEvent.content === 'string' ? firstEvent.content : 'Event content') : 'No content';
+        } else {
+          text = `Content for ${chunk.contentType || 'step'} ${chunkIndex + 1}`;
+        }
+        
+        return {
+          id: chunk.chunkId,
+          text,
+          title: `${chunk.contentType || 'Step'} ${chunkIndex + 1}`,
+          duration: undefined
+        };
+      }).filter(segment => segment.text.trim().length > 0);
+    }
+    
+    // Fallback 2: If still no segments and we have lesson steps, use those
+    if (segments.length === 0 && lessonSteps.length > 0) {
+      logger.debug('No segments from chunks, using direct lesson steps');
+      segments = lessonSteps
+        .filter(step => step.narration && step.narration.trim().length > 0)
+        .map(step => ({
+          id: `step-${step.step_number}`,
+          text: step.narration,
+          title: step.title || `Step ${step.step_number}`,
+          duration: step.duration
+        }));
+    }
+    
+    // Fallback 3: Create test segments for demonstration if no content found
+    if (segments.length === 0 && chunks.length === 0) {
+      logger.debug('Creating test segments for demonstration');
+      segments = [
+        {
+          id: 'test-1',
+          text: 'Hello and welcome to this lesson! Today we will explore an interesting topic together.',
+          title: 'Introduction',
+          duration: undefined
+        },
+        {
+          id: 'test-2', 
+          text: 'Let me explain the key concepts step by step so you can understand them clearly.',
+          title: 'Key Concepts',
+          duration: undefined
+        },
+        {
+          id: 'test-3',
+          text: 'Now let us look at some practical examples to see how this works in real life.',
+          title: 'Examples',
+          duration: undefined
+        }
+      ];
+    }
+    
+    logger.debug('Created audio segments:', { 
+      segmentsCount: segments.length,
+      segments: segments.map(s => ({ id: s.id, title: s.title, textLength: s.text.length }))
+    });
+    
+    return segments;
+  }, [chunks, useSimpleAudioMode, lessonSteps]);
+
+  // If using simple audio mode, render the audio timeline instead of canvas
+  if (useSimpleAudioMode) {
+    return (
+      <div className={`${className}`}>
+        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <h3 className="font-semibold text-blue-800 mb-2">Simple Audio Mode</h3>
+          <p className="text-sm text-blue-600">
+            Canvas is disabled. Testing audio playback with streaming TTS.
+          </p>
+        </div>
+        
+        <SimpleAudioTimeline
+          segments={audioSegments}
+          voice={getCurrentVoiceId()}
+          className="w-full"
+          onSegmentChange={(index) => {
+            logger.debug(`Switched to segment ${index}`);
+          }}
+          onPlaybackComplete={() => {
+            logger.debug('All audio segments completed');
+            onPlaybackEnd?.();
+          }}
+        />
+        
+        {/* Debug Info */}
+        <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded text-sm">
+          <details>
+            <summary className="cursor-pointer font-medium text-gray-700">Debug Info</summary>
+            <div className="mt-2 space-y-1 text-xs text-gray-600">
+              <div>Total Chunks: {chunks.length}</div>
+              <div>Audio Segments: {audioSegments.length}</div>
+              <div>Lesson Steps: {lessonSteps.length}</div>
+              <div>Voice: {getCurrentVoiceId()}</div>
+              <div>Segments: {audioSegments.map(s => s.title).join(', ')}</div>
+              {audioSegments.length > 0 && (
+                <div>First segment text: "{audioSegments[0].text.substring(0, 100)}..."</div>
+              )}
+            </div>
+          </details>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className={`relative ${className} ${config.visual.smoothTransitions ? 'transition-all duration-300' : ''}`} 

@@ -469,6 +469,7 @@ function AITutorContent() {
                 showControls={true}
                 showBufferBar={true}
                 showLoadingIndicators={true}
+                useSimpleAudioMode={true}  // Enable simple audio mode for testing
                 streamingConfig={{
                   minStartBuffer: 2000,    // Start playing with 2 seconds buffered
                   targetBuffer: 8000,      // Maintain 8 seconds ahead
