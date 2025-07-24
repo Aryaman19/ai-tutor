@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@ai-tutor/ui';
 import { ExcalidrawPlayerProgressive } from '../components/ExcalidrawPlayerProgressive';
-import { lessonsApi } from '@ai-tutor/api-client';
+import { UnifiedPlayer } from '../components/UnifiedPlayer';
+import { lessonsApi, ttsApi } from '@ai-tutor/api-client';
 import { createComponentLogger } from '@ai-tutor/utils';
+import { AudioEngine } from '@ai-tutor/utils/src/audio/unified-audio-engine';
+import { LayoutEngine } from '@ai-tutor/utils/src/excalidraw/layout-engine';
 import type { TimelineEvent, StreamingTimelineChunk } from '@ai-tutor/types';
 
 const logger = createComponentLogger('AITutor');
@@ -83,6 +86,14 @@ function AITutorContent() {
   const [generationProgress, setGenerationProgress] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [isStreamingComplete, setIsStreamingComplete] = useState(false);
+  
+  // Unified Engine State
+  const [audioEngine, setAudioEngine] = useState<AudioEngine | null>(null);
+  const [layoutEngine, setLayoutEngine] = useState<LayoutEngine | null>(null);
+  const [unifiedAudioResult, setUnifiedAudioResult] = useState<any>(null);
+  const [canvasStates, setCanvasStates] = useState<any[]>([]);
+  const [isProcessingEngines, setIsProcessingEngines] = useState(false);
+  const [completeSemanticData, setCompleteSemanticData] = useState<any>(null);
   
   // Playback State
   const [isPlaying, setIsPlaying] = useState(false);
@@ -177,6 +188,214 @@ function AITutorContent() {
   };
 
   // Convert API timeline event to shared type
+  // Process complete semantic data through unified engines
+  const processWithUnifiedEngines = async (semanticData: any) => {
+    setIsProcessingEngines(true);
+    setGenerationProgress('Processing with unified engines...');
+    
+    try {
+      logger.debug('Processing semantic data with unified engines', { semanticData });
+      
+      // Step 1: Check TTS availability first
+      setGenerationProgress('Checking TTS service availability...');
+      try {
+        const availability = await ttsApi.checkAvailability();
+        logger.debug('TTS availability check', { availability });
+        
+        if (!availability.available) {
+          const errorMessage = availability.error || availability.message || 'Unknown error';
+          throw new Error(`TTS service unavailable: ${errorMessage}`);
+        }
+      } catch (availabilityError) {
+        const errorMsg = availabilityError instanceof Error ? availabilityError.message : 'TTS availability check failed';
+        logger.error('TTS availability check failed', { error: errorMsg });
+        throw new Error(`Cannot generate audio: ${errorMsg}`);
+      }
+
+      // Step 2: Create and process with AudioEngine
+      setGenerationProgress('Creating unified audio file...');
+      const audioEng = new AudioEngine({
+        voice: undefined, // Will use default from settings
+        speed: 1.0,
+        volume: 1.0,
+        separatorPause: 800 // 800ms pause between segments
+      });
+      
+      const audioSegments = audioEng.processSemanticData(semanticData);
+      const unifiedText = audioEng.createUnifiedText();
+      
+      logger.debug('Audio engine processed data', { 
+        segmentsCount: audioSegments.length,
+        unifiedTextLength: unifiedText.length,
+        textPreview: unifiedText.substring(0, 200) + '...'
+      });
+      
+      // Validate that we have text to generate audio from
+      if (!unifiedText || unifiedText.trim().length === 0) {
+        throw new Error('No text content available for audio generation');
+      }
+      
+      // Generate single audio file
+      const audioResult = await audioEng.generateUnifiedAudio(ttsApi);
+      
+      setAudioEngine(audioEng);
+      setUnifiedAudioResult(audioResult);
+      
+      logger.debug('Unified audio generated', { 
+        audioId: audioResult.audioId,
+        totalDuration: audioResult.totalDuration,
+        isReady: audioResult.isReady
+      });
+      
+      // Step 2: Create and process with LayoutEngine
+      setGenerationProgress('Creating timeline-based canvas layout...');
+      const layoutEng = new LayoutEngine({
+        canvasWidth: 1200,
+        canvasHeight: 700,
+        elementSpacing: 80,
+        fontSize: 18,
+        maxElementsPerScreen: 6,
+        autoScroll: true,
+        animationDuration: 300
+      });
+      
+      const states = layoutEng.processSemanticData(semanticData, audioSegments);
+      
+      setLayoutEngine(layoutEng);
+      setCanvasStates(states);
+      
+      logger.debug('Layout engine processed data', { 
+        statesCount: states.length,
+        totalDuration: states.reduce((max, state) => Math.max(max, state.timestamp + state.duration), 0)
+      });
+      
+      // Step 3: Convert to streaming chunks for player compatibility
+      setGenerationProgress('Converting to player format...');
+      const chunks = convertCanvasStatesToStreamingChunks(states, audioSegments);
+      setStreamingChunks(chunks);
+      
+      // Also set timeline events for backward compatibility
+      const events = convertCanvasStatesToTimelineEvents(states);
+      setTimelineEvents(events);
+      
+      setIsStreamingComplete(true);
+      setGenerationProgress('Ready to play! Audio can be seeked instantly.');
+      
+      logger.debug('Unified engines processing complete', { 
+        chunksCount: chunks.length,
+        eventsCount: events.length,
+        audioReady: audioResult.isReady
+      });
+      
+      setTimeout(() => setGenerationProgress(''), 3000);
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Unified engines processing failed', error);
+      setError(`Failed to process with unified engines: ${errorMessage}`);
+      setGenerationProgress('');
+    } finally {
+      setIsProcessingEngines(false);
+    }
+  };
+
+  const convertCanvasStatesToStreamingChunks = (states: any[], audioSegments: any[]): StreamingTimelineChunk[] => {
+    return states.map((state, index) => ({
+      chunkId: `unified-chunk-${index}`,
+      chunkNumber: index + 1,
+      totalChunks: states.length,
+      status: 'ready' as const,
+      contentType: state.metadata?.contentType || 'definition',
+      duration: state.duration,
+      timestampOffset: state.timestamp,
+      startTimeOffset: state.timestamp,
+      events: [{
+        id: `unified-event-${index}`,
+        timestamp: state.timestamp,
+        duration: state.duration,
+        type: 'narration' as const,
+        semanticType: 'definition',
+        content: audioSegments[index]?.text || 'Generated content',
+        layoutHints: [{
+          semantic: 'primary' as const,
+          positioning: 'center' as const,
+          importance: 'high' as const
+        }],
+        dependencies: [],
+        priority: 5,
+        tags: ['ai-generated', 'unified-engine'],
+        metadata: {
+          source: 'template' as const, // Use template as the closest match for unified-engine
+          generatedAt: Date.now(),
+          originalPrompt: '',
+          topic: topic,
+          difficulty: difficulty,
+          canvasElements: state.elements
+        }
+      }],
+      generationParams: {
+        targetDuration: state.duration / 1000,
+        maxEvents: 1,
+        complexity: difficulty === 'beginner' ? 'simple' : difficulty === 'advanced' ? 'complex' : 'medium',
+        layoutConstraints: {
+          maxSimultaneousElements: state.elements.length,
+          preferredStyle: 'balanced',
+        },
+        audioConstraints: {
+          speakingRate: 160,
+          pauseFrequency: 'normal',
+        },
+        contentFocus: {
+          primaryObjective: `Learn about ${topic}`,
+          keyConceptsToEmphasize: [],
+        },
+      },
+      nextChunkHints: [],
+      metadata: {
+        model: 'unified-engine',
+        generatedAt: Date.now(),
+        timing: {
+          llmGeneration: 0,
+          postProcessing: 0,
+          validation: 0,
+          total: 0,
+        },
+        unifiedAudio: {
+          audioId: unifiedAudioResult?.audioId,
+          startTime: state.timestamp,
+          endTime: state.timestamp + state.duration
+        }
+      },
+    }));
+  };
+
+  const convertCanvasStatesToTimelineEvents = (states: any[]): TimelineEvent[] => {
+    return states.map((state, index) => ({
+      id: `unified-timeline-${index}`,
+      timestamp: state.timestamp,
+      duration: state.duration,
+      type: 'narration' as const,
+      semanticType: 'definition',
+      content: state.metadata?.title || `Learning segment ${index + 1}`,
+      layoutHints: [{
+        semantic: 'primary' as const,
+        positioning: 'center' as const,
+        importance: 'high' as const
+      }],
+      dependencies: [],
+      priority: 5,
+      tags: ['ai-generated', 'unified-engine'],
+      metadata: {
+        source: 'template' as const, // Use template as the closest match for unified-engine
+        generatedAt: Date.now(),
+        originalPrompt: '',
+        topic: topic,
+        difficulty: difficulty,
+        canvasState: state
+      }
+    }));
+  };
+
   const convertAPIEventToTimelineEvent = (apiEvent: APITimelineEvent, index: number): TimelineEvent => {
     const content = apiEvent.content && apiEvent.content.trim() !== '' 
       ? apiEvent.content 
@@ -220,9 +439,76 @@ function AITutorContent() {
     setTimelineEvents([]);
     setStreamingChunks([]);
     setIsStreamingComplete(false);
+    setCompleteSemanticData(null);
     setGenerationProgress('Starting lesson generation...');
     
     try {
+      // Change to use non-streaming endpoint and wait for complete data
+      setGenerationProgress('Generating complete lesson content...');
+      
+      const response = await fetch('/api/lesson/generate/complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topic,
+          difficulty_level: difficulty,
+          content_type: 'definition',
+          target_duration: targetDuration,
+          user_id: 'ai_tutor_user',
+          format: 'semantic_json' // Request semantic JSON format
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to generate lesson: ${response.status} ${response.statusText}. ${errorText}`);
+      }
+
+      const completeData = await response.json();
+      
+      logger.debug('Received complete lesson data', { 
+        dataKeys: Object.keys(completeData),
+        hasChunks: !!completeData.chunks,
+        chunksLength: completeData.chunks?.length || 0
+      });
+
+      setCompleteSemanticData(completeData);
+      setGenerationProgress('Lesson content received! Processing with unified engines...');
+
+      // Process the complete data with our unified engines
+      await processWithUnifiedEngines(completeData);
+      
+    } catch (error) {
+      console.error('Lesson generation failed:', error);
+      
+      let errorMessage = 'Failed to generate lesson';
+      if (error instanceof Error) {
+        if (error.message.includes('Failed to fetch')) {
+          errorMessage = 'Unable to connect to the AI service. Please check if the server is running.';
+        } else if (error.message.includes('404')) {
+          // Fallback to streaming if complete endpoint doesn't exist
+          logger.warn('Complete endpoint not found, falling back to streaming with unified processing');
+          await generateLessonWithStreamingFallback();
+          return;
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      setError(errorMessage);
+      setGenerationProgress('');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Fallback method using streaming but processing complete data at the end
+  const generateLessonWithStreamingFallback = async () => {
+    try {
+      setGenerationProgress('Using streaming approach with unified processing...');
+      
       const streamResponse = await fetch('/api/lesson/chunked/stream', {
         method: 'POST',
         headers: {
@@ -244,15 +530,26 @@ function AITutorContent() {
 
       const reader = streamResponse.body?.getReader();
       const decoder = new TextDecoder();
-      let allEvents: TimelineEvent[] = [];
+      let allChunksData: any[] = [];
 
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
-            setGenerationProgress('Lesson generation complete!');
-            setIsStreamingComplete(true);
-            setTimeout(() => setGenerationProgress(''), 2000);
+            setGenerationProgress('Streaming complete! Processing with unified engines...');
+            
+            // Build complete semantic data from chunks
+            const completeData = {
+              chunks: allChunksData,
+              topic: topic,
+              difficulty: difficulty,
+              target_duration: targetDuration
+            };
+            
+            setCompleteSemanticData(completeData);
+            
+            // Process with unified engines
+            await processWithUnifiedEngines(completeData);
             break;
           }
 
@@ -267,36 +564,30 @@ function AITutorContent() {
                 if (data.type === 'progress') {
                   const progress = data.data;
                   setGenerationProgress(
-                    `Generating lesson... ${progress.completed_chunks}/${progress.total_chunks} chunks`
+                    `Receiving lesson data... ${progress.completed_chunks}/${progress.total_chunks} chunks`
                   );
                 }
 
                 if (data.type === 'chunk' && data.data.timeline_events) {
                   setGenerationProgress(
-                    `Processing chunk ${data.data.chunk_number}...`
+                    `Received chunk ${data.data.chunk_number}...`
                   );
                   
-                  // Convert API events to timeline events
-                  const newAPIEvents: APITimelineEvent[] = data.data.timeline_events.map((event: any, index: number) => ({
-                    id: `${data.data.chunk_id}_${index}`,
-                    timestamp: event.timestamp,
-                    duration: event.duration,
-                    event_type: event.event_type,
-                    content: event.content,
-                    visual_instruction: event.visual_instruction,
-                    layout_hints: event.layout_hints
-                  }));
-                  
-                  const newEvents = newAPIEvents.map((apiEvent, index) => 
-                    convertAPIEventToTimelineEvent(apiEvent, index)
-                  );
-                  
-                  allEvents = [...allEvents, ...newEvents];
-                  setTimelineEvents(allEvents);
-                  
-                  // Convert to streaming chunks for progressive player
-                  const chunks = convertToStreamingChunks(allEvents);
-                  setStreamingChunks(chunks);
+                  // Store chunk data for later processing
+                  allChunksData.push({
+                    chunkId: data.data.chunk_id,
+                    chunkNumber: data.data.chunk_number,
+                    contentType: 'definition',
+                    events: data.data.timeline_events.map((event: any, index: number) => ({
+                      id: `${data.data.chunk_id}_${index}`,
+                      timestamp: event.timestamp * 1000, // Convert to ms
+                      duration: event.duration * 1000, // Convert to ms
+                      type: 'narration',
+                      content: event.content,
+                      visual_instruction: event.visual_instruction,
+                      layout_hints: event.layout_hints
+                    }))
+                  });
                 }
 
                 if (data.type === 'error') {
@@ -312,21 +603,7 @@ function AITutorContent() {
       }
       
     } catch (error) {
-      console.error('Lesson generation failed:', error);
-      
-      let errorMessage = 'Failed to generate lesson';
-      if (error instanceof Error) {
-        if (error.message.includes('Failed to fetch')) {
-          errorMessage = 'Unable to connect to the AI service. Please check if the server is running.';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
-      setError(errorMessage);
-      setGenerationProgress('');
-    } finally {
-      setIsGenerating(false);
+      throw error; // Re-throw to be handled by parent
     }
   };
 
@@ -338,6 +615,14 @@ function AITutorContent() {
     setCurrentPosition(0);
     setError('');
     setGenerationProgress('');
+    
+    // Reset unified engine state
+    setAudioEngine(null);
+    setLayoutEngine(null);
+    setUnifiedAudioResult(null);
+    setCanvasStates([]);
+    setIsProcessingEngines(false);
+    setCompleteSemanticData(null);
   };
 
   const handlePlaybackStart = () => {
@@ -531,6 +816,16 @@ function AITutorContent() {
                 <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-blue-800 font-medium">{generationProgress}</span>
               </div>
+              {isProcessingEngines && (
+                <div className="mt-2 text-xs text-blue-600">
+                  🔧 Unified Audio & Layout Engines working...
+                </div>
+              )}
+              {unifiedAudioResult && (
+                <div className="mt-2 text-xs text-green-600">
+                  ✅ Audio ready for instant seeking • Duration: {Math.round(unifiedAudioResult.totalDuration / 1000)}s
+                </div>
+              )}
             </div>
           )}
 
@@ -561,37 +856,61 @@ function AITutorContent() {
                 <div className="text-right">
                   <div className="text-sm text-gray-500">
                     {streamingChunks.length} segments ready
+                    {unifiedAudioResult && (
+                      <span className="ml-2 text-green-600">
+                        • Unified Audio ✅
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-gray-400">
                     {isPlaying ? '▶️ Playing' : '⏸️ Paused'}
+                    {unifiedAudioResult && (
+                      <span className="ml-2 text-green-500">
+                        • Instant Seek Available
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
             
-            {/* Progressive Player */}
+            {/* Unified Player */}
             <div className="h-[700px] relative">
-              <ExcalidrawPlayerProgressive
-                chunks={streamingChunks}
-                autoPlay={false}
-                showControls={true}
-                showBufferBar={true}
-                showLoadingIndicators={true}
-                useSimpleAudioMode={false}  // Use podcast-style player with canvas
-                isStreamingComplete={isStreamingComplete}
-                streamingConfig={{
-                  minStartBuffer: 2000,    // Start playing with 2 seconds buffered
-                  targetBuffer: 8000,      // Maintain 8 seconds ahead
-                  autoStart: false         // Manual start for better UX
-                }}
-                width={1200}
-                height={700}
-                onPlaybackStart={handlePlaybackStart}
-                onPlaybackEnd={handlePlaybackEnd}
-                onSeek={handleSeek}
-                onError={handleError}
-                className="w-full h-full"
-              />
+              {unifiedAudioResult && audioEngine && layoutEngine ? (
+                <UnifiedPlayer
+                  audioEngine={audioEngine}
+                  layoutEngine={layoutEngine}
+                  unifiedAudioResult={unifiedAudioResult}
+                  canvasStates={canvasStates}
+                  autoPlay={false}
+                  showControls={true}
+                  width={1200}
+                  height={700}
+                  onPlaybackStart={handlePlaybackStart}
+                  onPlaybackEnd={handlePlaybackEnd}
+                  onSeek={handleSeek}
+                  onError={handleError}
+                  className="w-full h-full"
+                />
+              ) : (
+                <div className="w-full h-full bg-gray-50 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="w-12 h-12 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                      Preparing Unified Player
+                    </h3>
+                    <p className="text-gray-600 mb-4">
+                      Processing lesson with unified audio and layout engines...
+                    </p>
+                    <div className="text-sm text-gray-500 space-y-1">
+                      <div>Audio Engine: {audioEngine ? '✅ Ready' : '⏳ Loading'}</div>
+                      <div>Layout Engine: {layoutEngine ? '✅ Ready' : '⏳ Loading'}</div>
+                      <div>Unified Audio: {unifiedAudioResult ? '✅ Ready' : '⏳ Generating'}</div>
+                      <div>Canvas States: {canvasStates.length > 0 ? `✅ ${canvasStates.length} ready` : '⏳ Processing'}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -603,7 +922,7 @@ function AITutorContent() {
               📋 Lesson Overview
             </h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
                 <div className="text-3xl font-bold text-blue-600">
                   {timelineEvents.length}
@@ -615,7 +934,7 @@ function AITutorContent() {
               
               <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
                 <div className="text-3xl font-bold text-green-600">
-                  {Math.ceil(targetDuration / 60)}
+                  {unifiedAudioResult ? Math.ceil(unifiedAudioResult.totalDuration / 60000) : Math.ceil(targetDuration / 60)}
                 </div>
                 <div className="text-sm text-green-800 font-medium">
                   Minutes Duration
@@ -628,6 +947,21 @@ function AITutorContent() {
                 </div>
                 <div className="text-sm text-purple-800 font-medium">
                   Interactive Chunks
+                </div>
+              </div>
+
+              <div className={`border rounded-lg p-4 text-center ${
+                unifiedAudioResult ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'
+              }`}>
+                <div className={`text-3xl font-bold ${
+                  unifiedAudioResult ? 'text-emerald-600' : 'text-gray-400'
+                }`}>
+                  {unifiedAudioResult ? '✅' : '⏳'}
+                </div>
+                <div className={`text-sm font-medium ${
+                  unifiedAudioResult ? 'text-emerald-800' : 'text-gray-600'
+                }`}>
+                  Unified Audio
                 </div>
               </div>
             </div>
