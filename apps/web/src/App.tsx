@@ -15,6 +15,7 @@ import Lesson from "./pages/Lesson";
 import Settings from "./pages/Settings";
 import { SystemStatus } from "./pages/SystemStatus";
 import AITutor from "./pages/AITutor";
+import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
@@ -37,11 +38,12 @@ function App() {
 
               {/* Routes with layout */}
               <Route path="/" element={<AppLayout />}>
-                <Route index element={<AITutor />} />
-                <Route path="home" element={<Home />} />
+                <Route index element={<Home />} />
+                <Route path="ai-tutor" element={<AITutor />} />
                 <Route path="lesson/:id" element={<Lesson />} />
                 <Route path="settings" element={<Settings />} />
-                    </Route>
+                <Route path="*" element={<NotFound />} />
+              </Route>
             </Routes>
             <Toaster />
           </div>

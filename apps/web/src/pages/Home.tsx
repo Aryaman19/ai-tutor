@@ -127,16 +127,19 @@ const Home: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Timeline Testing Link */}
+        {/* Advanced Features Link */}
         <div className="text-center">
           <Button
-            onClick={() => navigate('/timeline-test')}
+            onClick={() => navigate('/ai-tutor')}
             variant="outline"
-            className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 hover:border-blue-300 hover:bg-gradient-to-r hover:from-blue-100 hover:to-indigo-100 text-blue-700 font-semibold px-6 py-3"
+            className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200 hover:border-purple-300 hover:bg-gradient-to-r hover:from-purple-100 hover:to-pink-100 text-purple-700 hover:text-purple-800 font-semibold px-8 py-4 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-200"
           >
-            <SparklesIcon className="h-5 w-5 mr-2" />
-            Test Timeline Integration (Phase 3)
+            <BrainIcon className="h-5 w-5 mr-3" />
+            🚀 Advanced AI Studio
           </Button>
+          <p className="text-sm text-muted-foreground mt-2">
+            Explore cutting-edge features with progressive streaming & timeline sync
+          </p>
         </div>
 
         {/* Example Topics */}
