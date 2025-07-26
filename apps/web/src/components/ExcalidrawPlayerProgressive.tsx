@@ -907,6 +907,58 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
         .excalidraw {
           --ui-pointerEvents: none !important;
         }
+        
+        /* Range slider styling for seekbar */
+        .range-slider {
+          outline: none;
+        }
+        
+        .range-slider::-webkit-slider-track {
+          height: 12px;
+          background: transparent;
+          border-radius: 6px;
+        }
+        
+        .range-slider::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          height: 14px;
+          width: 14px;
+          border-radius: 50%;
+          background: white;
+          cursor: pointer;
+          border: 2px solid #2563eb;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          margin-top: -1px;
+          box-sizing: border-box;
+        }
+        
+        .range-slider::-webkit-slider-thumb:hover {
+          background: #f3f4f6;
+          transform: scale(1.1);
+        }
+        
+        .range-slider::-moz-range-track {
+          height: 12px;
+          background: transparent;
+          border-radius: 6px;
+          border: none;
+        }
+        
+        .range-slider::-moz-range-thumb {
+          height: 14px;
+          width: 14px;
+          border-radius: 50%;
+          background: white;
+          cursor: pointer;
+          border: 2px solid #2563eb;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          box-sizing: border-box;
+        }
+        
+        .range-slider::-moz-range-thumb:hover {
+          background: #f3f4f6;
+          transform: scale(1.1);
+        }
       `;
       document.head.appendChild(style);
       
@@ -1243,7 +1295,7 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
             <div className="flex flex-col space-y-4 max-w-full mx-auto">
             {/* Buffer Progress Bar */}
             {showBufferBar && (
-              <div className="relative w-full h-3 bg-white/20 rounded-full overflow-hidden mx-2">
+              <div className="relative w-full h-3 bg-white/20 rounded-full overflow-hidden">
                 {/* Buffered regions */}
                 {bufferedRegions.map((region, index) => (
                   <div
@@ -1269,8 +1321,14 @@ export const ExcalidrawPlayerProgressive: React.FC<ExcalidrawPlayerProgressivePr
                   max={Math.max(duration, 1)} // Prevent division by zero
                   value={currentPosition}
                   onChange={(e) => handleSeek(parseInt(e.target.value))}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  style={{ margin: 0, padding: 0, background: 'transparent' }}
+                  className="absolute top-0 left-0 right-0 bottom-0 w-full h-full cursor-pointer z-10 appearance-none bg-transparent range-slider"
+                  style={{ 
+                    margin: 0, 
+                    padding: 0, 
+                    background: 'transparent',
+                    WebkitAppearance: 'none',
+                    MozAppearance: 'none'
+                  }}
                 />
               </div>
             )}
