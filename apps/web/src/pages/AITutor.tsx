@@ -443,43 +443,8 @@ function AITutorContent() {
     setGenerationProgress('Starting lesson generation...');
     
     try {
-      // Change to use non-streaming endpoint and wait for complete data
-      setGenerationProgress('Generating complete lesson content...');
-      
-      const response = await fetch('/api/lesson/generate/complete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          topic,
-          difficulty_level: difficulty,
-          content_type: 'definition',
-          target_duration: targetDuration,
-          user_id: 'ai_tutor_user',
-          format: 'semantic_json' // Request semantic JSON format
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to generate lesson: ${response.status} ${response.statusText}. ${errorText}`);
-      }
-
-      const completeData = await response.json();
-      
-      logger.debug('Received complete lesson data', { 
-        dataKeys: Object.keys(completeData),
-        hasChunks: !!completeData.chunks,
-        chunksLength: completeData.chunks?.length || 0
-      });
-
-      setCompleteSemanticData(completeData);
-      setGenerationProgress('Lesson content received! Processing with unified engines...');
-
-      // Process the complete data with our unified engines
-      await processWithUnifiedEngines(completeData);
-      
+      // Use streaming approach with unified processing
+      await generateLessonWithStreamingFallback();
     } catch (error) {
       console.error('Lesson generation failed:', error);
       
@@ -487,11 +452,6 @@ function AITutorContent() {
       if (error instanceof Error) {
         if (error.message.includes('Failed to fetch')) {
           errorMessage = 'Unable to connect to the AI service. Please check if the server is running.';
-        } else if (error.message.includes('404')) {
-          // Fallback to streaming if complete endpoint doesn't exist
-          logger.warn('Complete endpoint not found, falling back to streaming with unified processing');
-          await generateLessonWithStreamingFallback();
-          return;
         } else {
           errorMessage = error.message;
         }

@@ -175,6 +175,10 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
       }
 
       // Create audio element from URL
+      logger.debug("Creating audio element with URL", {
+        providedUrl: unifiedAudioResult.audioUrl,
+        audioId: unifiedAudioResult.audioId,
+      });
       const audio = new Audio(unifiedAudioResult.audioUrl);
 
       // Set audio properties for better compatibility
@@ -194,7 +198,11 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
       audio.addEventListener("loadedmetadata", () => {
         setDuration(audio.duration * 1000); // Convert to milliseconds
         setIsAudioLoaded(true);
-        logger.debug("Audio loaded", { duration: audio.duration });
+        logger.debug("Audio loaded successfully", { 
+          duration: audio.duration,
+          actualSrc: audio.src,
+          currentSrc: audio.currentSrc,
+        });
       });
 
       audio.addEventListener("timeupdate", () => {
@@ -220,6 +228,17 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
       audio.addEventListener("error", (e) => {
         // Get more detailed error information from the audio element
         const audioElement = e.target as HTMLAudioElement;
+        
+        // Skip errors from cleaned-up audio elements (React strict mode double-mounting)
+        if (!audioElement.src || audioElement.src === "" || audioElement.src === window.location.href) {
+          logger.debug("Ignoring error from cleaned-up audio element", {
+            audioSrc: audioElement.src,
+            currentSrc: audioElement.currentSrc,
+            readyState: audioElement.readyState,
+          });
+          return;
+        }
+
         let errorMessage = "Unknown audio error";
 
         if (audioElement && audioElement.error) {
@@ -252,6 +271,8 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
         logger.error("Audio error details", {
           error: errorMessage,
           audioSrc: audioElement.src,
+          currentSrc: audioElement.currentSrc,
+          originalUrl: unifiedAudioResult.audioUrl,
           readyState: audioElement.readyState,
           networkState: audioElement.networkState,
           errorCode: audioElement.error?.code,
@@ -264,7 +285,11 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
 
       // Cleanup on unmount
       return () => {
-        logger.debug("Cleaning up audio element");
+        logger.debug("Cleaning up audio element", {
+          audioSrc: audio.src,
+          currentSrc: audio.currentSrc,
+          readyState: audio.readyState,
+        });
         audio.pause();
         audio.src = "";
         setAudioElement(null);
@@ -539,7 +564,7 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
 
   return (
     <div className={`relative ${className}`} style={{ height }}>
-      {/* Excalidraw Canvas */}
+      {/* Excalidraw Canvas */}B
       <div
         className="w-full h-full overflow-hidden"
         style={{ position: "relative" }}
