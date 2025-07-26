@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 class ChunkSize(Enum):
     """Predefined chunk size categories"""
-    SMALL = "small"      # 15-20 seconds, 400-600 tokens
-    MEDIUM = "medium"    # 25-35 seconds, 600-800 tokens
-    LARGE = "large"      # 40-60 seconds, 800-1200 tokens
+    SMALL = "small"      # 15-20 seconds, 800-1200 tokens
+    MEDIUM = "medium"    # 25-35 seconds, 1200-2048 tokens
+    LARGE = "large"      # 40-60 seconds, 2048-3072 tokens
 
 
 @dataclass
@@ -32,9 +32,9 @@ class ChunkSizingConfig:
     min_chunk_duration: float = 15.0
     max_chunk_duration: float = 60.0
     target_chunk_duration: float = 30.0
-    min_tokens: int = 400
-    max_tokens: int = 1200
-    target_tokens: int = 800
+    min_tokens: int = 800
+    max_tokens: int = 8192  # Use maximum allowed by user settings
+    target_tokens: int = 4096  # Increased to use full available capacity
     overlap_threshold: float = 0.1  # 10% overlap for continuity
 
 

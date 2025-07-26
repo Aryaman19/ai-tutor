@@ -105,6 +105,11 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
     height,
     zoom: 1,
   });
+  const [currentStateId, setCurrentStateId] = useState<string>('');
+  const [containerSize, setContainerSize] = useState({
+    width: width,
+    height: height,
+  });
 
   // Audio state
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(
@@ -113,6 +118,7 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
   const [isAudioLoaded, setIsAudioLoaded] = useState(false);
 
   // Refs
+  const containerRef = useRef<HTMLDivElement>(null);
   const animationFrameRef = useRef<number>();
   const lastPositionUpdateRef = useRef<number>(0);
   const audioInitializedRef = useRef<boolean>(false);
@@ -126,6 +132,36 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
     onPlaybackEndRef.current = onPlaybackEnd;
     onErrorRef.current = onError;
   }, [onPlaybackStart, onPlaybackEnd, onError]);
+
+  // Container size detection with ResizeObserver
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const resizeObserver = new ResizeObserver(entries => {
+      const entry = entries[0];
+      if (entry) {
+        const { width: newWidth, height: newHeight } = entry.contentRect;
+        
+        // Only update if size actually changed to avoid unnecessary re-renders
+        setContainerSize(prevSize => {
+          if (prevSize.width !== newWidth || prevSize.height !== newHeight) {
+            logger.debug('Container size changed', { 
+              from: prevSize, 
+              to: { width: newWidth, height: newHeight } 
+            });
+            return { width: newWidth, height: newHeight };
+          }
+          return prevSize;
+        });
+      }
+    });
+
+    resizeObserver.observe(containerRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   // Initialize audio element when unified audio result is available
   useEffect(() => {
@@ -437,27 +473,71 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
 
   // Update canvas elements based on current position
   useEffect(() => {
-    if (!layoutEngine || canvasStates.length === 0) return;
+    if (!layoutEngine || canvasStates.length === 0) {
+      logger.debug("Canvas update skipped", {
+        hasLayoutEngine: !!layoutEngine,
+        canvasStatesLength: canvasStates.length
+      });
+      return;
+    }
 
     const currentState = layoutEngine.getStateAtTime(currentPosition);
 
     if (currentState) {
-      setCurrentElements(currentState.elements);
-      setCurrentViewBox(currentState.viewBox);
-
-      // Log only when state changes (not continuously)
-      const now = Date.now();
-      if (now - lastPositionUpdateRef.current > 1000) {
-        // Log every second
-        logger.debug("Canvas state updated", {
+      const stateId = `${currentState.timestamp}-${currentState.duration}`;
+      
+      // Only update if we've moved to a different canvas state
+      if (stateId !== currentStateId) {
+        logger.debug("Canvas state changed", {
           timestamp: currentState.timestamp,
           elementsCount: currentState.elements.length,
+          viewBox: currentState.viewBox,
           title: currentState.metadata?.title,
+          currentPosition,
+          elements: currentState.elements.map(el => ({
+            id: el.id,
+            type: el.type,
+            x: el.x,
+            y: el.y,
+            width: el.width,
+            height: el.height,
+            text: el.text?.substring(0, 50)
+          }))
         });
-        lastPositionUpdateRef.current = now;
+
+        setCurrentElements([...currentState.elements]); // Force new array reference
+        setCurrentViewBox({...currentState.viewBox}); // Force new object reference
+        setCurrentStateId(stateId);
       }
+    } else {
+      logger.debug("No canvas state found for position", {
+        currentPosition,
+        availableStates: canvasStates.map(s => ({
+          timestamp: s.timestamp,
+          duration: s.duration,
+          range: `${s.timestamp} - ${s.timestamp + s.duration}`
+        }))
+      });
     }
-  }, [currentPosition, layoutEngine, canvasStates]);
+  }, [currentPosition, layoutEngine, canvasStates, currentStateId]);
+
+  // Update layout engine when container size changes
+  useEffect(() => {
+    if (!layoutEngine || !containerSize) return;
+
+    logger.debug('Container size changed, updating layout engine', { containerSize });
+
+    // Update the layout engine with new container size
+    layoutEngine.updateContainerSize(containerSize);
+    
+    // Update current view for the new container size
+    const currentState = layoutEngine.getStateAtTime(currentPosition);
+    if (currentState) {
+      setCurrentElements([...currentState.elements]);
+      setCurrentViewBox({...currentState.viewBox});
+      setCurrentStateId(`${currentState.timestamp}-${currentState.duration}`);
+    }
+  }, [containerSize, layoutEngine, currentPosition]);
 
   // Format time for display
   const formatTime = useCallback((timeMs: number): string => {
@@ -563,13 +643,18 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
   }
 
   return (
-    <div className={`relative ${className}`} style={{ height }}>
-      {/* Excalidraw Canvas */}B
+    <div 
+      ref={containerRef}
+      className={`relative ${className}`} 
+      style={{ height }}
+    >
+      {/* Excalidraw Canvas */}
       <div
         className="w-full h-full overflow-hidden"
         style={{ position: "relative" }}
       >
         <Excalidraw
+          key={`excalidraw-${currentStateId}`} // Only re-render when canvas state changes
           initialData={{
             elements: currentElements,
             appState: {
@@ -577,7 +662,7 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
               zenModeEnabled: true,
               gridSize: undefined,
               viewModeEnabled: true,
-              zoom: { value: currentViewBox.zoom as any },
+              zoom: { value: Math.max(0.1, Math.min(3, currentViewBox.zoom)) as any },
               scrollX: -currentViewBox.x,
               scrollY: -currentViewBox.y,
             },
