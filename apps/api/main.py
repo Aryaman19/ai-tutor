@@ -151,6 +151,17 @@ except Exception as e:
     logger.error(f"Failed to register LLM router: {e}")
     logger.warning("LLM endpoints will not be available")
 
+try:
+    from routers.templates import router as templates_router
+    app.include_router(templates_router, prefix="/api/templates", tags=["templates"])
+    logger.info("Templates router registered successfully")
+except ImportError as e:
+    logger.error(f"Templates router import failed: {e}")
+    logger.warning("Templates endpoints will not be available")
+except Exception as e:
+    logger.error(f"Failed to register templates router: {e}")
+    logger.warning("Templates endpoints will not be available")
+
 # Mount static files for audio serving
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")

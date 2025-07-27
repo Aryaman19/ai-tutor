@@ -1,0 +1,225 @@
+{
+  "templates": [
+    {
+      "id": "heading-paragraph-centered",
+      "name": "Centered Heading + Paragraph",
+      "description": "A centered layout with a large heading and paragraph text below",
+      "category": "basic",
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "content",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 60,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle", 
+              "maxLines": 6,
+              "maxChars": 300,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 40 },
+              "content": { "maxLines": 8, "maxChars": 200 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 50 },
+              "content": { "maxLines": 7, "maxChars": 250 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 60 },
+              "content": { "maxLines": 6, "maxChars": 300 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{LESSON_TITLE}}",
+            "content": "{{MAIN_CONTENT}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a concise, engaging title for a lesson about {{TOPIC}}. The title should be educational and capture the main concept. Maximum {maxChars} characters.",
+            "content": "Write clear, educational content about {{TOPIC}} that explains the key concepts in an engaging way. Focus on the most important information that students need to understand. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create natural, conversational narration text for text-to-speech about {{TOPIC}}. Write as if you're an engaging teacher speaking directly to students. Use simple, clear language that flows well when spoken aloud."
+          },
+          "fallbackData": {
+            "heading": "Template Heading Placeholder",
+            "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. This is placeholder content that demonstrates the template layout. The actual educational content will be generated dynamically based on the lesson topic using AI.",
+            "narration": "Template narration placeholder - Natural speech content will be generated here for text-to-speech conversion."
+          }
+        }
+      ]
+    },
+    {
+      "id": "heading-paragraph-left",
+      "name": "Left-Aligned Heading + Paragraph",
+      "description": "A left-aligned layout with heading and paragraph text",
+      "category": "basic",
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "content",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 50,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "left-middle",
+              "maxLines": 8,
+              "maxChars": 400,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 10, "maxChars": 250 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 45 },
+              "content": { "maxLines": 9, "maxChars": 350 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 8, "maxChars": 400 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{LESSON_TITLE}}",
+            "content": "{{MAIN_CONTENT}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a clear, informative title for a lesson about {{TOPIC}}. Make it direct and educational. Maximum {maxChars} characters.",
+            "content": "Write comprehensive educational content about {{TOPIC}} that covers the main concepts students should learn. Use clear explanations and examples. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create engaging narration text for text-to-speech about {{TOPIC}}. Write in a friendly, educational tone as if explaining to students. Use natural speech patterns and clear explanations."
+          },
+          "fallbackData": {
+            "heading": "Left-Aligned Heading Placeholder",
+            "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. This placeholder text demonstrates the left-aligned layout template. Educational content about the specified topic will be generated here using artificial intelligence to provide engaging learning material.",
+            "narration": "Left-aligned template narration placeholder - Conversational educational content will be generated here for natural text-to-speech delivery."
+          }
+        }
+      ]
+    },
+    {
+      "id": "large-heading-multi-paragraph",
+      "name": "Large Heading + Multiple Paragraphs",
+      "description": "A layout with a prominent heading and multiple content sections",
+      "category": "basic",
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "content",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 70,
+              "fontSize": "xlarge",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 12,
+              "maxChars": 600,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "large", "maxChars": 40 },
+              "content": { "maxLines": 15, "maxChars": 400 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "xlarge", "maxChars": 55 },
+              "content": { "maxLines": 13, "maxChars": 500 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xxlarge", "maxChars": 70 },
+              "content": { "maxLines": 12, "maxChars": 600 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{LESSON_TITLE}}",
+            "content": "{{MAIN_CONTENT}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate an impactful, comprehensive title for a detailed lesson about {{TOPIC}}. The title should convey the depth and importance of the subject. Maximum {maxChars} characters.",
+            "content": "Write detailed, educational content about {{TOPIC}} that thoroughly explains the subject with multiple key points and examples. Structure it in clear paragraphs that build understanding progressively. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create comprehensive narration text for text-to-speech about {{TOPIC}}. Write as an expert educator providing detailed explanations. Use clear transitions between concepts and maintain an authoritative yet accessible tone."
+          },
+          "fallbackData": {
+            "heading": "Comprehensive Topic Heading Placeholder",
+            "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. This extended placeholder demonstrates the multi-paragraph template layout.\n\nExcepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Comprehensive educational content will be generated here.",
+            "narration": "Comprehensive template narration placeholder - Detailed educational narration covering multiple aspects of the topic will be generated here for extended text-to-speech delivery."
+          }
+        }
+      ]
+    },
+    {
+      "id": "compact-heading-bullets",
+      "name": "Compact Heading + Bullet Points",
+      "description": "A compact layout with heading and structured bullet point content",
+      "category": "basic",
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "content",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 45,
+              "fontSize": "medium",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "left-content",
+              "maxLines": 10,
+              "maxChars": 350,
+              "alignment": "left",
+              "format": "bullets"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "small", "maxChars": 30 },
+              "content": { "maxLines": 12, "maxChars": 250 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "medium", "maxChars": 40 },
+              "content": { "maxLines": 11, "maxChars": 300 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "large", "maxChars": 45 },
+              "content": { "maxLines": 10, "maxChars": 350 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{LESSON_TITLE}}",
+            "content": "{{BULLET_POINTS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a concise, focused title for a lesson about {{TOPIC}} that works well with bullet points. Maximum {maxChars} characters.",
+            "content": "Create a bulleted list of key points about {{TOPIC}}. Each bullet should be a clear, concise statement. Format with bullet symbols (•). Maximum {maxChars} characters, up to {maxLines} bullet points.",
+            "narration": "Create narration text for text-to-speech that walks through the key points about {{TOPIC}}. Structure it to flow naturally when presenting bulleted information. Use transitions like 'first', 'second', 'additionally' to connect points."
+          },
+          "fallbackData": {
+            "heading": "Bullet Points Topic Placeholder",
+            "content": "• Lorem ipsum primary concept placeholder\n• Dolor sit amet secondary point example\n• Consectetur adipiscing educational bullet\n• Sed do eiusmod structured content item\n• Tempor incididunt organized information\n• Ut labore key learning objective",
+            "narration": "Bullet points template narration placeholder - Sequential narration that walks through each bullet point will be generated here for structured text-to-speech delivery."
+          }
+        }
+      ]
+    }
+  ]
+}

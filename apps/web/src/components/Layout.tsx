@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PlusIcon, MenuIcon, SettingsIcon, ArrowLeftIcon, Trash2Icon } from "lucide-react";
+import { PlusIcon, MenuIcon, SettingsIcon, ArrowLeftIcon, Trash2Icon, LayoutTemplateIcon } from "lucide-react";
 import { Button, ConfirmationModal } from "@ai-tutor/ui";
 import { ScrollArea } from "@ai-tutor/ui";
 import { SimpleThemeToggle } from "@ai-tutor/ui";
@@ -25,18 +25,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   
-  // Auto-hide sidebar on settings page for desktop
+  // Auto-hide sidebar on settings and templates pages for desktop
   const isSettingsPage = location.pathname === '/settings';
-  const [forceHideSidebar, setForceHideSidebar] = useState(isSettingsPage);
+  const isTemplatesPage = location.pathname === '/templates';
+  const shouldHideSidebar = isSettingsPage || isTemplatesPage;
+  const [forceHideSidebar, setForceHideSidebar] = useState(shouldHideSidebar);
   
   React.useEffect(() => {
-    if (isSettingsPage) {
+    if (shouldHideSidebar) {
       setForceHideSidebar(true);
       setSidebarOpen(false);
     } else {
       setForceHideSidebar(false);
     }
-  }, [isSettingsPage]);
+  }, [shouldHideSidebar]);
 
   const { data: lessons = [], isLoading } = useQuery({
     queryKey: ["lessons"],
@@ -186,8 +188,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </ScrollArea>
           </div>
 
-          {/* Settings Link */}
+          {/* Navigation Links */}
           <div className="mt-4 pt-4 border-t flex-shrink-0 space-y-2">
+            <Link
+              to="/templates"
+              className={cn(
+                "flex items-center space-x-2 p-3 rounded-lg transition-colors font-body",
+                "hover:bg-accent border border-transparent",
+                location.pathname === "/templates"
+                  ? "bg-primary/10 border-primary/20 text-primary"
+                  : "text-foreground hover:text-accent-foreground"
+              )}
+            >
+              <LayoutTemplateIcon className="h-4 w-4 flex-shrink-0" />
+              <span className="font-medium text-sm">Templates</span>
+            </Link>
+            
             <Link
               to="/settings"
               className={cn(
@@ -211,21 +227,21 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {/* Mobile Header */}
         <div className={cn(
           "flex items-center h-16 px-4 bg-card border-b flex-shrink-0",
-          isSettingsPage ? "" : "lg:hidden"
+          shouldHideSidebar ? "" : "lg:hidden"
         )}>
           <div className="flex items-center space-x-2">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => {
-                if (isSettingsPage) {
+                if (shouldHideSidebar) {
                   navigate('/');
                 } else {
                   setSidebarOpen(true);
                 }
               }}
             >
-              {isSettingsPage ? (
+              {shouldHideSidebar ? (
                 <ArrowLeftIcon className="h-5 w-5" />
               ) : (
                 <MenuIcon className="h-5 w-5" />
