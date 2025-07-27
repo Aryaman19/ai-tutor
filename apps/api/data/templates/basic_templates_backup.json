@@ -1,0 +1,453 @@
+{
+  "templates": [
+    {
+      "id": "title-objective-1",
+      "name": "Clean Title & Objective",
+      "description": "Simple, centered layout focusing on lesson title and clear learning objective",
+      "category": "title-objective",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "title-objective",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 65,
+              "fontSize": "xlarge",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 4,
+              "maxChars": 280,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "large", "maxChars": 45 },
+              "content": { "maxLines": 5, "maxChars": 200 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "xlarge", "maxChars": 55 },
+              "content": { "maxLines": 4, "maxChars": 240 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xxlarge", "maxChars": 65 },
+              "content": { "maxLines": 4, "maxChars": 280 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{LESSON_TITLE}}",
+            "content": "{{LEARNING_OBJECTIVE}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a compelling, clear title for a lesson about {{TOPIC}}. Make it engaging and educational. Maximum {maxChars} characters.",
+            "content": "Write a concise learning objective for {{TOPIC}}. Start with 'By the end of this lesson, you will understand...' or 'This lesson will teach you...' Focus on what students will achieve. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create an engaging introduction for {{TOPIC}} that states the lesson title and learning objective. Write as an enthusiastic teacher starting a new lesson. Use clear, motivating language."
+          },
+          "fallbackData": {
+            "heading": "Introduction to Photosynthesis",
+            "content": "By the end of this lesson, you will understand how plants convert sunlight, water, and carbon dioxide into glucose and oxygen through the remarkable process of photosynthesis.",
+            "narration": "Welcome to our lesson on photosynthesis! Today we'll explore one of nature's most important processes and discover how plants create their own food while producing the oxygen we breathe."
+          }
+        }
+      ]
+    },
+    {
+      "id": "title-objective-2",
+      "name": "Structured Title & Goals",
+      "description": "Left-aligned title with bullet-point learning objectives",
+      "category": "title-objective",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "title-objective",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 50,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "left-content",
+              "maxLines": 8,
+              "maxChars": 350,
+              "alignment": "left",
+              "format": "bullets"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 10, "maxChars": 250 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 45 },
+              "content": { "maxLines": 9, "maxChars": 300 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 8, "maxChars": 350 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{LESSON_TITLE}}",
+            "content": "{{LEARNING_OBJECTIVES}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a clear, direct title for a lesson about {{TOPIC}}. Keep it concise and educational. Maximum {maxChars} characters.",
+            "content": "Create 3-5 specific learning objectives for {{TOPIC}} as bullet points. Each should start with an action verb like 'Explain', 'Identify', 'Describe', 'Analyze'. Format with bullet symbols (•). Maximum {maxChars} characters.",
+            "narration": "Create narration introducing {{TOPIC}} and walking through each learning objective. Use phrases like 'First, we'll explore...', 'Then, you'll learn to...', 'Finally, we'll examine...' to connect the objectives."
+          },
+          "fallbackData": {
+            "heading": "Understanding Climate Change",
+            "content": "• Explain the greenhouse effect and its natural role\n• Identify human activities that contribute to global warming\n• Describe the evidence for climate change\n• Analyze the potential impacts on ecosystems\n• Evaluate solutions for reducing carbon emissions",
+            "narration": "Welcome to our comprehensive lesson on climate change. First, we'll explore the natural greenhouse effect. Then, you'll learn to identify human contributions to global warming. Next, we'll examine the scientific evidence, analyze ecosystem impacts, and finally evaluate potential solutions."
+          }
+        }
+      ]
+    },
+    {
+      "id": "title-objective-3",
+      "name": "Visual Title & Quest",
+      "description": "Centered layout presenting the lesson as an educational quest or journey",
+      "category": "title-objective",
+      "templateVariant": 3,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "title-objective",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 60,
+              "fontSize": "xlarge",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 6,
+              "maxChars": 400,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "large", "maxChars": 40 },
+              "content": { "maxLines": 8, "maxChars": 280 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 7, "maxChars": 340 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xxlarge", "maxChars": 60 },
+              "content": { "maxLines": 6, "maxChars": 400 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{LESSON_QUEST_TITLE}}",
+            "content": "{{QUEST_DESCRIPTION}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate an exciting, quest-like title for a lesson about {{TOPIC}}. Use words like 'Journey', 'Quest', 'Adventure', 'Discovery', 'Exploration'. Make it engaging. Maximum {maxChars} characters.",
+            "content": "Describe the learning journey for {{TOPIC}} as an exciting quest or adventure. Use engaging language that makes learning feel like an exploration. Mention what 'treasures' of knowledge await. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create an adventurous introduction to {{TOPIC}} that frames learning as an exciting quest. Use enthusiastic language and metaphors of exploration, discovery, and adventure to motivate students."
+          },
+          "fallbackData": {
+            "heading": "Quest for the DNA Code",
+            "content": "🧬 Embark on a fascinating journey into the microscopic world of genetics! 🔬\n\nDiscover the secrets hidden within every cell as we decode the language of life itself. You'll unravel the mysteries of DNA structure, explore how genes work, and understand how genetic information shapes all living things.",
+            "narration": "Welcome, brave explorers, to an incredible quest into the world of genetics! Today we'll venture into the microscopic realm where the secrets of life are written in a four-letter code. Get ready to decode DNA and discover how this amazing molecule makes you uniquely you!"
+          }
+        }
+      ]
+    },
+    {
+      "id": "context-motivation-1",
+      "name": "Why This Matters",
+      "description": "Problem-focused layout emphasizing real-world relevance and importance",
+      "category": "context-motivation",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "context-motivation",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 55,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 10,
+              "maxChars": 500,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 40 },
+              "content": { "maxLines": 12, "maxChars": 350 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 48 },
+              "content": { "maxLines": 11, "maxChars": 425 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 55 },
+              "content": { "maxLines": 10, "maxChars": 500 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{WHY_THIS_MATTERS_TITLE}}",
+            "content": "{{REAL_WORLD_CONTEXT}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a compelling heading that explains why {{TOPIC}} is important or relevant. Use phrases like 'Why This Matters', 'The Real Impact of', 'Why You Need to Know About'. Maximum {maxChars} characters.",
+            "content": "Explain why {{TOPIC}} is important in the real world. Include specific examples, current events, or practical applications. Make it relevant to students' lives. Focus on problems it solves or impacts it has. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create motivating narration about why {{TOPIC}} matters. Connect it to real-world problems, current events, or students' daily lives. Use compelling examples and statistics to show its relevance and importance."
+          },
+          "fallbackData": {
+            "heading": "Why Understanding Electricity Matters",
+            "content": "Every day, you flip switches, charge devices, and rely on electrical power for almost everything. But what happens when the power goes out? Understanding electricity isn't just academic—it's essential for modern life.\n\nFrom the smartphones in our pockets to the renewable energy solutions fighting climate change, electrical knowledge shapes our world. Engineers use these principles to design everything from heart pacemakers to electric vehicles that could transform transportation.",
+            "narration": "Imagine your life without electricity for just one day. No lights, no internet, no refrigeration. This isn't just a thought experiment—it's reality for billions of people worldwide. Understanding electricity isn't just about passing a test; it's about comprehending the invisible force that powers our modern civilization and could hold the key to solving our biggest challenges."
+          }
+        }
+      ]
+    },
+    {
+      "id": "context-motivation-2",
+      "name": "Historical Context",
+      "description": "Timeline-style layout showing how the topic developed and its historical significance",
+      "category": "context-motivation",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "context-motivation",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 45,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "left-content",
+              "maxLines": 12,
+              "maxChars": 550,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 15, "maxChars": 400 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 40 },
+              "content": { "maxLines": 13, "maxChars": 475 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 45 },
+              "content": { "maxLines": 12, "maxChars": 550 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{HISTORICAL_CONTEXT_TITLE}}",
+            "content": "{{HISTORICAL_DEVELOPMENT}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a heading about the historical development or evolution of {{TOPIC}}. Use phrases like 'The Story of', 'How We Discovered', 'The Evolution of', 'From Then to Now'. Maximum {maxChars} characters.",
+            "content": "Provide historical context for {{TOPIC}}, including key discoveries, important figures, and how understanding evolved over time. Include specific dates and breakthrough moments. Show how past discoveries led to current knowledge. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that tells the historical story of {{TOPIC}}. Make it engaging by focusing on key moments of discovery, important scientists or inventors, and how knowledge built up over time. Use storytelling techniques."
+          },
+          "fallbackData": {
+            "heading": "The Story of Atomic Theory",
+            "content": "400 BCE: Greek philosopher Democritus first proposed that matter consists of tiny, indivisible particles called 'atoms.'\n\n1803: John Dalton developed the first modern atomic theory, suggesting atoms of different elements have different masses.\n\n1897: J.J. Thomson discovered electrons, proving atoms aren't indivisible.\n\n1911: Ernest Rutherford's gold foil experiment revealed the nucleus.\n\n1913: Niels Bohr proposed electrons orbit the nucleus in specific energy levels.",
+            "narration": "Our understanding of atoms began over 2,400 years ago with a simple question: if you keep cutting something smaller and smaller, what's the smallest piece you can get? This question launched one of science's greatest detective stories, taking us from ancient Greek philosophy to modern quantum mechanics."
+          }
+        }
+      ]
+    },
+    {
+      "id": "context-motivation-3",
+      "name": "Current Challenges",
+      "description": "Problem-solution layout highlighting contemporary issues and how the topic addresses them",
+      "category": "context-motivation",
+      "templateVariant": 3,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "context-motivation",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 50,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 8,
+              "maxChars": 450,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 10, "maxChars": 320 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 43 },
+              "content": { "maxLines": 9, "maxChars": 385 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 8, "maxChars": 450 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{CURRENT_CHALLENGE_TITLE}}",
+            "content": "{{MODERN_APPLICATIONS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a heading about current challenges or modern applications related to {{TOPIC}}. Use phrases like 'Today's Challenge', 'Modern Applications of', 'Solving Current Problems with'. Maximum {maxChars} characters.",
+            "content": "Describe current challenges, problems, or opportunities where {{TOPIC}} is relevant today. Include modern applications, cutting-edge research, or contemporary issues. Make it timely and relevant. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration connecting {{TOPIC}} to current events, modern challenges, or cutting-edge applications. Make students see how this knowledge is being used right now to solve real problems or create new opportunities."
+          },
+          "fallbackData": {
+            "heading": "Machine Learning: Solving Today's Puzzles",
+            "content": "Right now, machine learning algorithms are:\n\n🏥 Diagnosing diseases faster than human doctors\n🌍 Predicting climate patterns to save lives\n🚗 Powering self-driving cars on our roads\n🎵 Creating music and art that moves us\n🔒 Protecting our data from cyber attacks\n\nThe future belongs to those who understand these digital minds.",
+            "narration": "While you've been learning today, machine learning systems have processed millions of medical scans, translated thousands of languages, and helped discover new medicines. This isn't science fiction—it's happening right now, and understanding these principles puts you at the forefront of the technological revolution shaping our world."
+          }
+        }
+      ]
+    },
+    {
+      "id": "analogy-1",
+      "name": "Simple Comparison",
+      "description": "Basic analogy using familiar concepts to explain new ideas",
+      "category": "analogy",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "analogy",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 60,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 6,
+              "maxChars": 400,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 40 },
+              "content": { "maxLines": 8, "maxChars": 280 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 50 },
+              "content": { "maxLines": 7, "maxChars": 340 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 60 },
+              "content": { "maxLines": 6, "maxChars": 400 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{ANALOGY_TITLE}}",
+            "content": "{{ANALOGY_COMPARISON}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for an analogy about {{TOPIC}}. Use phrases like 'Think of it like...', '{{TOPIC}} is like...', 'Imagine {{TOPIC}} as...'. Maximum {maxChars} characters.",
+            "content": "Create a simple, clear analogy explaining {{TOPIC}} using something familiar from everyday life. Structure it as: '{{TOPIC}} is like [familiar thing] because...' Include 2-3 comparison points. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration presenting an analogy for {{TOPIC}}. Start with 'Imagine...' or 'Think about...' and walk through the comparison step by step. Make it conversational and easy to follow."
+          },
+          "fallbackData": {
+            "heading": "Think of DNA Like a Recipe Book",
+            "content": "DNA is like a massive recipe book in every cell of your body.\n\nJust as a recipe book contains instructions for making different dishes, DNA contains instructions for making different proteins.\n\nEach gene is like a single recipe, and just as you need to follow recipe steps in order, cells must read genetic instructions correctly to build proteins.",
+            "narration": "Imagine you're in a kitchen with the world's most important cookbook. This cookbook doesn't just contain recipes for food—it contains the recipes for life itself. That's exactly what DNA is like: a comprehensive instruction manual written in a special four-letter code that tells every cell in your body how to build the proteins it needs to function."
+          }
+        }
+      ]
+    },
+    {
+      "id": "analogy-2",
+      "name": "Story-Based Analogy",
+      "description": "Narrative analogy that tells a story to explain the concept",
+      "category": "analogy",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "analogy",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 45,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 12,
+              "maxChars": 600,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 15, "maxChars": 420 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 40 },
+              "content": { "maxLines": 13, "maxChars": 510 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 45 },
+              "content": { "maxLines": 12, "maxChars": 600 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{STORY_ANALOGY_TITLE}}",
+            "content": "{{STORY_NARRATIVE}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for a story-based analogy about {{TOPIC}}. Use phrases like 'A Tale of...', 'The Story of...', 'Journey Through...'. Maximum {maxChars} characters.",
+            "content": "Create a short story or narrative that explains {{TOPIC}} through an analogy. Include characters, setting, and plot. Make the story engaging while clearly illustrating the key concepts. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create engaging narration telling a story that explains {{TOPIC}}. Use storytelling techniques like character voices, dramatic pauses, and vivid descriptions to make the analogy memorable and entertaining."
+          },
+          "fallbackData": {
+            "heading": "The Immune System: Body's Defense Force",
+            "content": "Imagine your body as a medieval kingdom under constant threat from invaders. The skin is like the castle walls—the first line of defense that keeps most enemies out.\n\nWhen germs breach the walls, they encounter the kingdom's patrol guards: white blood cells. These brave soldiers come in different types. Some are scouts that sound the alarm, others are warriors that attack directly, and some are specialists that remember enemy faces.\n\nThe bone marrow is like the military academy, constantly training new recruits. The lymph nodes are communication centers where soldiers share intelligence about threats.",
+            "narration": "Picture yourself as the ruler of an ancient kingdom. Every day, hostile armies try to invade your realm, but you have an incredible defense force protecting you. This isn't fantasy—this is exactly what's happening inside your body right now as your immune system fights off countless microscopic invaders!"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -74,11 +74,48 @@ class TemplateService:
                 "id": template["id"],
                 "name": template["name"],
                 "description": template["description"],
-                "category": template["category"],
+                "category": template.get("category", "misc"),
+                "templateVariant": template.get("templateVariant", 1),
                 "slideCount": len(template["slides"])
             }
             for template in self.templates_cache.values()
         ]
+    
+    def get_templates_by_category(self, category: str) -> List[Dict]:
+        """Get templates filtered by category"""
+        return [
+            {
+                "id": template["id"],
+                "name": template["name"],
+                "description": template["description"],
+                "category": template.get("category", "misc"),
+                "templateVariant": template.get("templateVariant", 1),
+                "slideCount": len(template["slides"])
+            }
+            for template in self.templates_cache.values()
+            if template.get("category", "misc") == category
+        ]
+    
+    def get_available_categories(self) -> List[Dict]:
+        """Get list of all available template categories with counts"""
+        categories = {}
+        for template in self.templates_cache.values():
+            category = template.get("category", "misc")
+            if category not in categories:
+                categories[category] = {
+                    "name": category,
+                    "displayName": category.replace("-", " ").title(),
+                    "count": 0,
+                    "templates": []
+                }
+            categories[category]["count"] += 1
+            categories[category]["templates"].append({
+                "id": template["id"],
+                "name": template["name"],
+                "templateVariant": template.get("templateVariant", 1)
+            })
+        
+        return list(categories.values())
     
     def get_template(self, template_id: str) -> Optional[Dict]:
         """Get a specific template by ID"""

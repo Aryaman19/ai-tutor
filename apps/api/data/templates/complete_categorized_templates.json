@@ -1,0 +1,179 @@
+{
+  "templateMetadata": {
+    "version": "2.0",
+    "lastUpdated": "2025-01-27",
+    "totalCategories": 9,
+    "totalTemplates": 30
+  },
+  "templates": [
+    {
+      "id": "title-objective-1",
+      "name": "Clean Title & Objective",
+      "description": "Simple, centered layout focusing on lesson title and clear learning objective",
+      "category": "title-objective",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "title-objective",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 65,
+              "fontSize": "xlarge",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 4,
+              "maxChars": 280,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "large", "maxChars": 45 },
+              "content": { "maxLines": 5, "maxChars": 200 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "xlarge", "maxChars": 55 },
+              "content": { "maxLines": 4, "maxChars": 240 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xxlarge", "maxChars": 65 },
+              "content": { "maxLines": 4, "maxChars": 280 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{LESSON_TITLE}}",
+            "content": "{{LEARNING_OBJECTIVE}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a compelling, clear title for a lesson about {{TOPIC}}. Make it engaging and educational. Maximum {maxChars} characters.",
+            "content": "Write a concise learning objective for {{TOPIC}}. Start with 'By the end of this lesson, you will understand...' or 'This lesson will teach you...' Focus on what students will achieve. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create an engaging introduction for {{TOPIC}} that states the lesson title and learning objective. Write as an enthusiastic teacher starting a new lesson. Use clear, motivating language."
+          },
+          "fallbackData": {
+            "heading": "Introduction to Photosynthesis",
+            "content": "By the end of this lesson, you will understand how plants convert sunlight, water, and carbon dioxide into glucose and oxygen through the remarkable process of photosynthesis.",
+            "narration": "Welcome to our lesson on photosynthesis! Today we'll explore one of nature's most important processes and discover how plants create their own food while producing the oxygen we breathe."
+          }
+        }
+      ]
+    },
+    {
+      "id": "title-objective-2",
+      "name": "Structured Title & Goals",
+      "description": "Left-aligned title with bullet-point learning objectives",
+      "category": "title-objective",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "title-objective",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 50,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "left-content",
+              "maxLines": 8,
+              "maxChars": 350,
+              "alignment": "left",
+              "format": "bullets"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 10, "maxChars": 250 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 45 },
+              "content": { "maxLines": 9, "maxChars": 300 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 8, "maxChars": 350 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{LESSON_TITLE}}",
+            "content": "{{LEARNING_OBJECTIVES}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a clear, direct title for a lesson about {{TOPIC}}. Keep it concise and educational. Maximum {maxChars} characters.",
+            "content": "Create 3-5 specific learning objectives for {{TOPIC}} as bullet points. Each should start with an action verb like 'Explain', 'Identify', 'Describe', 'Analyze'. Format with bullet symbols (•). Maximum {maxChars} characters.",
+            "narration": "Create narration introducing {{TOPIC}} and walking through each learning objective. Use phrases like 'First, we'll explore...', 'Then, you'll learn to...', 'Finally, we'll examine...' to connect the objectives."
+          },
+          "fallbackData": {
+            "heading": "Understanding Climate Change",
+            "content": "• Explain the greenhouse effect and its natural role\n• Identify human activities that contribute to global warming\n• Describe the evidence for climate change\n• Analyze the potential impacts on ecosystems\n• Evaluate solutions for reducing carbon emissions",
+            "narration": "Welcome to our comprehensive lesson on climate change. First, we'll explore the natural greenhouse effect. Then, you'll learn to identify human contributions to global warming. Next, we'll examine the scientific evidence, analyze ecosystem impacts, and finally evaluate potential solutions."
+          }
+        }
+      ]
+    },
+    {
+      "id": "title-objective-3",
+      "name": "Visual Title & Quest",
+      "description": "Centered layout presenting the lesson as an educational quest or journey",
+      "category": "title-objective",
+      "templateVariant": 3,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "title-objective",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 60,
+              "fontSize": "xlarge",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 6,
+              "maxChars": 400,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "large", "maxChars": 40 },
+              "content": { "maxLines": 8, "maxChars": 280 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 7, "maxChars": 340 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xxlarge", "maxChars": 60 },
+              "content": { "maxLines": 6, "maxChars": 400 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{LESSON_QUEST_TITLE}}",
+            "content": "{{QUEST_DESCRIPTION}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate an exciting, quest-like title for a lesson about {{TOPIC}}. Use words like 'Journey', 'Quest', 'Adventure', 'Discovery', 'Exploration'. Make it engaging. Maximum {maxChars} characters.",
+            "content": "Describe the learning journey for {{TOPIC}} as an exciting quest or adventure. Use engaging language that makes learning feel like an exploration. Mention what 'treasures' of knowledge await. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create an adventurous introduction to {{TOPIC}} that frames learning as an exciting quest. Use enthusiastic language and metaphors of exploration, discovery, and adventure to motivate students."
+          },
+          "fallbackData": {
+            "heading": "Quest for the DNA Code",
+            "content": "🧬 Embark on a fascinating journey into the microscopic world of genetics! 🔬\n\nDiscover the secrets hidden within every cell as we decode the language of life itself. You'll unravel the mysteries of DNA structure, explore how genes work, and understand how genetic information shapes all living things.",
+            "narration": "Welcome, brave explorers, to an incredible quest into the world of genetics! Today we'll venture into the microscopic realm where the secrets of life are written in a four-letter code. Get ready to decode DNA and discover how this amazing molecule makes you uniquely you!"
+          }
+        }
+      ]
+    }
+  ]
+}

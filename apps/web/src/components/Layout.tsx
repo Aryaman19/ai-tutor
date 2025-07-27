@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { PlusIcon, MenuIcon, SettingsIcon, ArrowLeftIcon, Trash2Icon, LayoutTemplateIcon } from "lucide-react";
+import { PlusIcon, MenuIcon, SettingsIcon, ArrowLeftIcon, Trash2Icon, LayoutTemplateIcon, BrainIcon } from "lucide-react";
 import { Button, ConfirmationModal } from "@ai-tutor/ui";
 import { ScrollArea } from "@ai-tutor/ui";
 import { SimpleThemeToggle } from "@ai-tutor/ui";
@@ -202,6 +202,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             >
               <LayoutTemplateIcon className="h-4 w-4 flex-shrink-0" />
               <span className="font-medium text-sm">Templates</span>
+            </Link>
+            
+            <Link
+              to="/ai-tutor"
+              className={cn(
+                "flex items-center space-x-2 p-3 rounded-lg transition-colors font-body",
+                "hover:bg-accent border border-transparent",
+                location.pathname === "/ai-tutor"
+                  ? "bg-primary/10 border-primary/20 text-primary"
+                  : "text-foreground hover:text-accent-foreground"
+              )}
+            >
+              <BrainIcon className="h-4 w-4 flex-shrink-0" />
+              <span className="font-medium text-sm">🚀 AI Studio</span>
             </Link>
             
             <Link

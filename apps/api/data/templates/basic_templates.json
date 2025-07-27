@@ -1,69 +1,88 @@
 {
+  "templateMetadata": {
+    "version": "2.0",
+    "lastUpdated": "2025-01-27",
+    "totalCategories": 9,
+    "totalTemplates": 32,
+    "categories": [
+      "title-objective",
+      "context-motivation", 
+      "analogy",
+      "definition",
+      "step-by-step",
+      "examples",
+      "common-mistakes",
+      "mini-recap",
+      "things-to-ponder"
+    ]
+  },
   "templates": [
     {
-      "id": "heading-paragraph-centered",
-      "name": "Centered Heading + Paragraph",
-      "description": "A centered layout with a large heading and paragraph text below",
-      "category": "basic",
+      "id": "title-objective-1",
+      "name": "Clean Title & Objective",
+      "description": "Simple, centered layout focusing on lesson title and clear learning objective",
+      "category": "title-objective",
+      "templateVariant": 1,
       "slides": [
         {
           "id": "slide-1",
-          "type": "content",
+          "type": "title-objective",
           "layout": {
             "heading": {
               "position": "center-top",
-              "maxChars": 60,
-              "fontSize": "large",
+              "maxChars": 65,
+              "fontSize": "xlarge",
               "alignment": "center"
             },
             "content": {
-              "position": "center-middle", 
-              "maxLines": 6,
-              "maxChars": 300,
+              "position": "center-middle",
+              "maxLines": 4,
+              "maxChars": 280,
               "alignment": "center"
             }
           },
           "responsive": {
             "mobile": {
-              "heading": { "fontSize": "medium", "maxChars": 40 },
-              "content": { "maxLines": 8, "maxChars": 200 }
+              "heading": { "fontSize": "large", "maxChars": 45 },
+              "content": { "maxLines": 5, "maxChars": 200 }
             },
             "tablet": {
-              "heading": { "fontSize": "large", "maxChars": 50 },
-              "content": { "maxLines": 7, "maxChars": 250 }
+              "heading": { "fontSize": "xlarge", "maxChars": 55 },
+              "content": { "maxLines": 4, "maxChars": 240 }
             },
             "desktop": {
-              "heading": { "fontSize": "xlarge", "maxChars": 60 },
-              "content": { "maxLines": 6, "maxChars": 300 }
+              "heading": { "fontSize": "xxlarge", "maxChars": 65 },
+              "content": { "maxLines": 4, "maxChars": 280 }
             }
           },
           "placeholders": {
             "heading": "{{LESSON_TITLE}}",
-            "content": "{{MAIN_CONTENT}}",
+            "content": "{{LEARNING_OBJECTIVE}}",
             "narration": "{{NARRATION_TEXT}}"
           },
           "llmPrompts": {
-            "heading": "Generate a concise, engaging title for a lesson about {{TOPIC}}. The title should be educational and capture the main concept. Maximum {maxChars} characters.",
-            "content": "Write clear, educational content about {{TOPIC}} that explains the key concepts in an engaging way. Focus on the most important information that students need to understand. Maximum {maxChars} characters, up to {maxLines} lines.",
-            "narration": "Create natural, conversational narration text for text-to-speech about {{TOPIC}}. Write as if you're an engaging teacher speaking directly to students. Use simple, clear language that flows well when spoken aloud."
+            "heading": "Generate a compelling, clear title for a lesson about {{TOPIC}}. Make it engaging and educational. Maximum {maxChars} characters.",
+            "content": "Write a concise learning objective for {{TOPIC}}. Start with 'By the end of this lesson, you will understand...' or 'This lesson will teach you...' Focus on what students will achieve. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create an engaging introduction for {{TOPIC}} that states the lesson title and learning objective. Write as an enthusiastic teacher starting a new lesson. Use clear, motivating language."
           },
           "fallbackData": {
-            "heading": "Template Heading Placeholder",
-            "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. This is placeholder content that demonstrates the template layout. The actual educational content will be generated dynamically based on the lesson topic using AI.",
-            "narration": "Template narration placeholder - Natural speech content will be generated here for text-to-speech conversion."
+            "heading": "Introduction to Photosynthesis",
+            "content": "By the end of this lesson, you will understand how plants convert sunlight, water, and carbon dioxide into glucose and oxygen through the remarkable process of photosynthesis.",
+            "narration": "Welcome to our lesson on photosynthesis! Today we'll explore one of nature's most important processes and discover how plants create their own food while producing the oxygen we breathe."
           }
         }
       ]
     },
     {
-      "id": "heading-paragraph-left",
-      "name": "Left-Aligned Heading + Paragraph",
-      "description": "A left-aligned layout with heading and paragraph text",
-      "category": "basic",
+      "id": "title-objective-2",
+      "name": "Structured Title & Goals",
+      "description": "Left-aligned title with bullet-point learning objectives",
+      "category": "title-objective",
+      "templateVariant": 2,
       "slides": [
         {
           "id": "slide-1",
-          "type": "content",
+          "type": "title-objective",
           "layout": {
             "heading": {
               "position": "left-top",
@@ -72,10 +91,11 @@
               "alignment": "left"
             },
             "content": {
-              "position": "left-middle",
+              "position": "left-content",
               "maxLines": 8,
-              "maxChars": 400,
-              "alignment": "left"
+              "maxChars": 350,
+              "alignment": "left",
+              "format": "bullets"
             }
           },
           "responsive": {
@@ -85,46 +105,327 @@
             },
             "tablet": {
               "heading": { "fontSize": "large", "maxChars": 45 },
-              "content": { "maxLines": 9, "maxChars": 350 }
+              "content": { "maxLines": 9, "maxChars": 300 }
             },
             "desktop": {
               "heading": { "fontSize": "xlarge", "maxChars": 50 },
-              "content": { "maxLines": 8, "maxChars": 400 }
+              "content": { "maxLines": 8, "maxChars": 350 }
             }
           },
           "placeholders": {
             "heading": "{{LESSON_TITLE}}",
-            "content": "{{MAIN_CONTENT}}",
+            "content": "{{LEARNING_OBJECTIVES}}",
             "narration": "{{NARRATION_TEXT}}"
           },
           "llmPrompts": {
-            "heading": "Generate a clear, informative title for a lesson about {{TOPIC}}. Make it direct and educational. Maximum {maxChars} characters.",
-            "content": "Write comprehensive educational content about {{TOPIC}} that covers the main concepts students should learn. Use clear explanations and examples. Maximum {maxChars} characters, up to {maxLines} lines.",
-            "narration": "Create engaging narration text for text-to-speech about {{TOPIC}}. Write in a friendly, educational tone as if explaining to students. Use natural speech patterns and clear explanations."
+            "heading": "Generate a clear, direct title for a lesson about {{TOPIC}}. Keep it concise and educational. Maximum {maxChars} characters.",
+            "content": "Create 3-5 specific learning objectives for {{TOPIC}} as bullet points. Each should start with an action verb like 'Explain', 'Identify', 'Describe', 'Analyze'. Format with bullet symbols (•). Maximum {maxChars} characters.",
+            "narration": "Create narration introducing {{TOPIC}} and walking through each learning objective. Use phrases like 'First, we'll explore...', 'Then, you'll learn to...', 'Finally, we'll examine...' to connect the objectives."
           },
           "fallbackData": {
-            "heading": "Left-Aligned Heading Placeholder",
-            "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. This placeholder text demonstrates the left-aligned layout template. Educational content about the specified topic will be generated here using artificial intelligence to provide engaging learning material.",
-            "narration": "Left-aligned template narration placeholder - Conversational educational content will be generated here for natural text-to-speech delivery."
+            "heading": "Understanding Climate Change",
+            "content": "• Explain the greenhouse effect and its natural role\n• Identify human activities that contribute to global warming\n• Describe the evidence for climate change\n• Analyze the potential impacts on ecosystems\n• Evaluate solutions for reducing carbon emissions",
+            "narration": "Welcome to our comprehensive lesson on climate change. First, we'll explore the natural greenhouse effect. Then, you'll learn to identify human contributions to global warming. Next, we'll examine the scientific evidence, analyze ecosystem impacts, and finally evaluate potential solutions."
           }
         }
       ]
     },
     {
-      "id": "large-heading-multi-paragraph",
-      "name": "Large Heading + Multiple Paragraphs",
-      "description": "A layout with a prominent heading and multiple content sections",
-      "category": "basic",
+      "id": "title-objective-3",
+      "name": "Visual Title & Quest",
+      "description": "Centered layout presenting the lesson as an educational quest or journey",
+      "category": "title-objective",
+      "templateVariant": 3,
       "slides": [
         {
           "id": "slide-1",
-          "type": "content",
+          "type": "title-objective",
           "layout": {
             "heading": {
               "position": "center-top",
-              "maxChars": 70,
+              "maxChars": 60,
               "fontSize": "xlarge",
               "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 6,
+              "maxChars": 400,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "large", "maxChars": 40 },
+              "content": { "maxLines": 8, "maxChars": 280 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 7, "maxChars": 340 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xxlarge", "maxChars": 60 },
+              "content": { "maxLines": 6, "maxChars": 400 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{LESSON_QUEST_TITLE}}",
+            "content": "{{QUEST_DESCRIPTION}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate an exciting, quest-like title for a lesson about {{TOPIC}}. Use words like 'Journey', 'Quest', 'Adventure', 'Discovery', 'Exploration'. Make it engaging. Maximum {maxChars} characters.",
+            "content": "Describe the learning journey for {{TOPIC}} as an exciting quest or adventure. Use engaging language that makes learning feel like an exploration. Mention what 'treasures' of knowledge await. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create an adventurous introduction to {{TOPIC}} that frames learning as an exciting quest. Use enthusiastic language and metaphors of exploration, discovery, and adventure to motivate students."
+          },
+          "fallbackData": {
+            "heading": "Quest for the DNA Code",
+            "content": "🧬 Embark on a fascinating journey into the microscopic world of genetics! 🔬\n\nDiscover the secrets hidden within every cell as we decode the language of life itself. You'll unravel the mysteries of DNA structure, explore how genes work, and understand how genetic information shapes all living things.",
+            "narration": "Welcome, brave explorers, to an incredible quest into the world of genetics! Today we'll venture into the microscopic realm where the secrets of life are written in a four-letter code. Get ready to decode DNA and discover how this amazing molecule makes you uniquely you!"
+          }
+        }
+      ]
+    },
+    {
+      "id": "context-motivation-1",
+      "name": "Why This Matters",
+      "description": "Problem-focused layout emphasizing real-world relevance and importance",
+      "category": "context-motivation",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "context-motivation",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 55,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 10,
+              "maxChars": 500,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 40 },
+              "content": { "maxLines": 12, "maxChars": 350 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 48 },
+              "content": { "maxLines": 11, "maxChars": 425 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 55 },
+              "content": { "maxLines": 10, "maxChars": 500 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{WHY_THIS_MATTERS_TITLE}}",
+            "content": "{{REAL_WORLD_CONTEXT}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a compelling heading that explains why {{TOPIC}} is important or relevant. Use phrases like 'Why This Matters', 'The Real Impact of', 'Why You Need to Know About'. Maximum {maxChars} characters.",
+            "content": "Explain why {{TOPIC}} is important in the real world. Include specific examples, current events, or practical applications. Make it relevant to students' lives. Focus on problems it solves or impacts it has. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create motivating narration about why {{TOPIC}} matters. Connect it to real-world problems, current events, or students' daily lives. Use compelling examples and statistics to show its relevance and importance."
+          },
+          "fallbackData": {
+            "heading": "Why Understanding Electricity Matters",
+            "content": "Every day, you flip switches, charge devices, and rely on electrical power for almost everything. But what happens when the power goes out? Understanding electricity isn't just academic—it's essential for modern life.\n\nFrom the smartphones in our pockets to the renewable energy solutions fighting climate change, electrical knowledge shapes our world. Engineers use these principles to design everything from heart pacemakers to electric vehicles that could transform transportation.",
+            "narration": "Imagine your life without electricity for just one day. No lights, no internet, no refrigeration. This isn't just a thought experiment—it's reality for billions of people worldwide. Understanding electricity isn't just about passing a test; it's about comprehending the invisible force that powers our modern civilization and could hold the key to solving our biggest challenges."
+          }
+        }
+      ]
+    },
+    {
+      "id": "context-motivation-2",
+      "name": "Historical Context",
+      "description": "Timeline-style layout showing how the topic developed and its historical significance",
+      "category": "context-motivation",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "context-motivation",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 45,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "left-content",
+              "maxLines": 12,
+              "maxChars": 550,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 15, "maxChars": 400 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 40 },
+              "content": { "maxLines": 13, "maxChars": 475 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 45 },
+              "content": { "maxLines": 12, "maxChars": 550 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{HISTORICAL_CONTEXT_TITLE}}",
+            "content": "{{HISTORICAL_DEVELOPMENT}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a heading about the historical development or evolution of {{TOPIC}}. Use phrases like 'The Story of', 'How We Discovered', 'The Evolution of', 'From Then to Now'. Maximum {maxChars} characters.",
+            "content": "Provide historical context for {{TOPIC}}, including key discoveries, important figures, and how understanding evolved over time. Include specific dates and breakthrough moments. Show how past discoveries led to current knowledge. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that tells the historical story of {{TOPIC}}. Make it engaging by focusing on key moments of discovery, important scientists or inventors, and how knowledge built up over time. Use storytelling techniques."
+          },
+          "fallbackData": {
+            "heading": "The Story of Atomic Theory",
+            "content": "400 BCE: Greek philosopher Democritus first proposed that matter consists of tiny, indivisible particles called 'atoms.'\n\n1803: John Dalton developed the first modern atomic theory, suggesting atoms of different elements have different masses.\n\n1897: J.J. Thomson discovered electrons, proving atoms aren't indivisible.\n\n1911: Ernest Rutherford's gold foil experiment revealed the nucleus.\n\n1913: Niels Bohr proposed electrons orbit the nucleus in specific energy levels.",
+            "narration": "Our understanding of atoms began over 2,400 years ago with a simple question: if you keep cutting something smaller and smaller, what's the smallest piece you can get? This question launched one of science's greatest detective stories, taking us from ancient Greek philosophy to modern quantum mechanics."
+          }
+        }
+      ]
+    },
+    {
+      "id": "context-motivation-3",
+      "name": "Current Challenges",
+      "description": "Problem-solution layout highlighting contemporary issues and how the topic addresses them",
+      "category": "context-motivation",
+      "templateVariant": 3,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "context-motivation",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 50,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 8,
+              "maxChars": 450,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 10, "maxChars": 320 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 43 },
+              "content": { "maxLines": 9, "maxChars": 385 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 8, "maxChars": 450 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{CURRENT_CHALLENGE_TITLE}}",
+            "content": "{{MODERN_APPLICATIONS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a heading about current challenges or modern applications related to {{TOPIC}}. Use phrases like 'Today's Challenge', 'Modern Applications of', 'Solving Current Problems with'. Maximum {maxChars} characters.",
+            "content": "Describe current challenges, problems, or opportunities where {{TOPIC}} is relevant today. Include modern applications, cutting-edge research, or contemporary issues. Make it timely and relevant. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration connecting {{TOPIC}} to current events, modern challenges, or cutting-edge applications. Make students see how this knowledge is being used right now to solve real problems or create new opportunities."
+          },
+          "fallbackData": {
+            "heading": "Machine Learning: Solving Today's Puzzles",
+            "content": "Right now, machine learning algorithms are:\n\n🏥 Diagnosing diseases faster than human doctors\n🌍 Predicting climate patterns to save lives\n🚗 Powering self-driving cars on our roads\n🎵 Creating music and art that moves us\n🔒 Protecting our data from cyber attacks\n\nThe future belongs to those who understand these digital minds.",
+            "narration": "While you've been learning today, machine learning systems have processed millions of medical scans, translated thousands of languages, and helped discover new medicines. This isn't science fiction—it's happening right now, and understanding these principles puts you at the forefront of the technological revolution shaping our world."
+          }
+        }
+      ]
+    },
+    {
+      "id": "analogy-1",
+      "name": "Simple Comparison",
+      "description": "Basic analogy using familiar concepts to explain new ideas",
+      "category": "analogy",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "analogy",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 60,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 6,
+              "maxChars": 400,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 40 },
+              "content": { "maxLines": 8, "maxChars": 280 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 50 },
+              "content": { "maxLines": 7, "maxChars": 340 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 60 },
+              "content": { "maxLines": 6, "maxChars": 400 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{ANALOGY_TITLE}}",
+            "content": "{{ANALOGY_COMPARISON}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for an analogy about {{TOPIC}}. Use phrases like 'Think of it like...', '{{TOPIC}} is like...', 'Imagine {{TOPIC}} as...'. Maximum {maxChars} characters.",
+            "content": "Create a simple, clear analogy explaining {{TOPIC}} using something familiar from everyday life. Structure it as: '{{TOPIC}} is like [familiar thing] because...' Include 2-3 comparison points. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration presenting an analogy for {{TOPIC}}. Start with 'Imagine...' or 'Think about...' and walk through the comparison step by step. Make it conversational and easy to follow."
+          },
+          "fallbackData": {
+            "heading": "Think of DNA Like a Recipe Book",
+            "content": "DNA is like a massive recipe book in every cell of your body.\n\nJust as a recipe book contains instructions for making different dishes, DNA contains instructions for making different proteins.\n\nEach gene is like a single recipe, and just as you need to follow recipe steps in order, cells must read genetic instructions correctly to build proteins.",
+            "narration": "Imagine you're in a kitchen with the world's most important cookbook. This cookbook doesn't just contain recipes for food—it contains the recipes for life itself. That's exactly what DNA is like: a comprehensive instruction manual written in a special four-letter code that tells every cell in your body how to build the proteins it needs to function."
+          }
+        }
+      ]
+    },
+    {
+      "id": "analogy-2",
+      "name": "Story-Based Analogy",
+      "description": "Narrative analogy that tells a story to explain the concept",
+      "category": "analogy",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "analogy",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 45,
+              "fontSize": "large",
+              "alignment": "left"
             },
             "content": {
               "position": "full-content",
@@ -135,88 +436,1270 @@
           },
           "responsive": {
             "mobile": {
-              "heading": { "fontSize": "large", "maxChars": 40 },
-              "content": { "maxLines": 15, "maxChars": 400 }
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 15, "maxChars": 420 }
             },
             "tablet": {
-              "heading": { "fontSize": "xlarge", "maxChars": 55 },
-              "content": { "maxLines": 13, "maxChars": 500 }
+              "heading": { "fontSize": "large", "maxChars": 40 },
+              "content": { "maxLines": 13, "maxChars": 510 }
             },
             "desktop": {
-              "heading": { "fontSize": "xxlarge", "maxChars": 70 },
+              "heading": { "fontSize": "xlarge", "maxChars": 45 },
               "content": { "maxLines": 12, "maxChars": 600 }
             }
           },
           "placeholders": {
-            "heading": "{{LESSON_TITLE}}",
-            "content": "{{MAIN_CONTENT}}",
+            "heading": "{{STORY_ANALOGY_TITLE}}",
+            "content": "{{STORY_NARRATIVE}}",
             "narration": "{{NARRATION_TEXT}}"
           },
           "llmPrompts": {
-            "heading": "Generate an impactful, comprehensive title for a detailed lesson about {{TOPIC}}. The title should convey the depth and importance of the subject. Maximum {maxChars} characters.",
-            "content": "Write detailed, educational content about {{TOPIC}} that thoroughly explains the subject with multiple key points and examples. Structure it in clear paragraphs that build understanding progressively. Maximum {maxChars} characters, up to {maxLines} lines.",
-            "narration": "Create comprehensive narration text for text-to-speech about {{TOPIC}}. Write as an expert educator providing detailed explanations. Use clear transitions between concepts and maintain an authoritative yet accessible tone."
+            "heading": "Generate a title for a story-based analogy about {{TOPIC}}. Use phrases like 'A Tale of...', 'The Story of...', 'Journey Through...'. Maximum {maxChars} characters.",
+            "content": "Create a short story or narrative that explains {{TOPIC}} through an analogy. Include characters, setting, and plot. Make the story engaging while clearly illustrating the key concepts. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create engaging narration telling a story that explains {{TOPIC}}. Use storytelling techniques like character voices, dramatic pauses, and vivid descriptions to make the analogy memorable and entertaining."
           },
           "fallbackData": {
-            "heading": "Comprehensive Topic Heading Placeholder",
-            "content": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. This extended placeholder demonstrates the multi-paragraph template layout.\n\nExcepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Comprehensive educational content will be generated here.",
-            "narration": "Comprehensive template narration placeholder - Detailed educational narration covering multiple aspects of the topic will be generated here for extended text-to-speech delivery."
+            "heading": "The Immune System: Body's Defense Force",
+            "content": "Imagine your body as a medieval kingdom under constant threat from invaders. The skin is like the castle walls—the first line of defense that keeps most enemies out.\n\nWhen germs breach the walls, they encounter the kingdom's patrol guards: white blood cells. These brave soldiers come in different types. Some are scouts that sound the alarm, others are warriors that attack directly, and some are specialists that remember enemy faces.\n\nThe bone marrow is like the military academy, constantly training new recruits. The lymph nodes are communication centers where soldiers share intelligence about threats.",
+            "narration": "Picture yourself as the ruler of an ancient kingdom. Every day, hostile armies try to invade your realm, but you have an incredible defense force protecting you. This isn't fantasy—this is exactly what's happening inside your body right now as your immune system fights off countless microscopic invaders!"
           }
         }
       ]
     },
     {
-      "id": "compact-heading-bullets",
-      "name": "Compact Heading + Bullet Points",
-      "description": "A compact layout with heading and structured bullet point content",
-      "category": "basic",
+      "id": "analogy-3",
+      "name": "Visual Metaphor",
+      "description": "Strong visual comparison with clear parallel elements",
+      "category": "analogy",
+      "templateVariant": 3,
       "slides": [
         {
           "id": "slide-1",
-          "type": "content",
+          "type": "analogy",
           "layout": {
             "heading": {
-              "position": "left-top",
-              "maxChars": 45,
-              "fontSize": "medium",
-              "alignment": "left"
+              "position": "center-top",
+              "maxChars": 55,
+              "fontSize": "large",
+              "alignment": "center"
             },
             "content": {
               "position": "left-content",
               "maxLines": 10,
-              "maxChars": 350,
+              "maxChars": 500,
               "alignment": "left",
               "format": "bullets"
             }
           },
           "responsive": {
             "mobile": {
-              "heading": { "fontSize": "small", "maxChars": 30 },
-              "content": { "maxLines": 12, "maxChars": 250 }
+              "heading": { "fontSize": "medium", "maxChars": 40 },
+              "content": { "maxLines": 12, "maxChars": 350 }
             },
             "tablet": {
-              "heading": { "fontSize": "medium", "maxChars": 40 },
-              "content": { "maxLines": 11, "maxChars": 300 }
+              "heading": { "fontSize": "large", "maxChars": 47 },
+              "content": { "maxLines": 11, "maxChars": 425 }
             },
             "desktop": {
-              "heading": { "fontSize": "large", "maxChars": 45 },
-              "content": { "maxLines": 10, "maxChars": 350 }
+              "heading": { "fontSize": "xlarge", "maxChars": 55 },
+              "content": { "maxLines": 10, "maxChars": 500 }
             }
           },
           "placeholders": {
-            "heading": "{{LESSON_TITLE}}",
-            "content": "{{BULLET_POINTS}}",
+            "heading": "{{VISUAL_METAPHOR_TITLE}}",
+            "content": "{{PARALLEL_COMPARISONS}}",
             "narration": "{{NARRATION_TEXT}}"
           },
           "llmPrompts": {
-            "heading": "Generate a concise, focused title for a lesson about {{TOPIC}} that works well with bullet points. Maximum {maxChars} characters.",
-            "content": "Create a bulleted list of key points about {{TOPIC}}. Each bullet should be a clear, concise statement. Format with bullet symbols (•). Maximum {maxChars} characters, up to {maxLines} bullet points.",
-            "narration": "Create narration text for text-to-speech that walks through the key points about {{TOPIC}}. Structure it to flow naturally when presenting bulleted information. Use transitions like 'first', 'second', 'additionally' to connect points."
+            "heading": "Generate a title comparing {{TOPIC}} to a visual or physical system. Use 'like', 'as', or comparison phrases. Maximum {maxChars} characters.",
+            "content": "Create bullet points comparing {{TOPIC}} to a familiar visual or physical system. Each bullet should show one parallel element. Use format: '• [Topic element] is like [familiar element] because...' Maximum {maxChars} characters.",
+            "narration": "Create narration walking through visual comparisons for {{TOPIC}}. Use phrases like 'Picture this...', 'Visualize...', 'You can see how...' to help students form mental images of each comparison."
           },
           "fallbackData": {
-            "heading": "Bullet Points Topic Placeholder",
-            "content": "• Lorem ipsum primary concept placeholder\n• Dolor sit amet secondary point example\n• Consectetur adipiscing educational bullet\n• Sed do eiusmod structured content item\n• Tempor incididunt organized information\n• Ut labore key learning objective",
-            "narration": "Bullet points template narration placeholder - Sequential narration that walks through each bullet point will be generated here for structured text-to-speech delivery."
+            "heading": "The Cell: Like a Bustling Factory",
+            "content": "• The nucleus is like the factory manager's office - it controls all operations\n• Mitochondria are like power generators - they provide energy for everything\n• Ribosomes are like assembly lines - they manufacture proteins\n• The cell membrane is like security gates - it controls what enters and exits\n• Lysosomes are like cleanup crews - they digest waste and worn-out parts\n• The endoplasmic reticulum is like a conveyor belt system - it transports materials",
+            "narration": "Picture the most efficient factory you can imagine, with hundreds of workers, multiple departments, and complex systems all working together perfectly. Now shrink that factory down to microscopic size, and you've got a single cell! Let's take a tour through this amazing biological factory."
+          }
+        }
+      ]
+    },
+    {
+      "id": "analogy-4",
+      "name": "Progressive Analogy",
+      "description": "Builds understanding through multiple connected analogies",
+      "category": "analogy",
+      "templateVariant": 4,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "analogy",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 50,
+              "fontSize": "medium",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 14,
+              "maxChars": 700,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "small", "maxChars": 35 },
+              "content": { "maxLines": 18, "maxChars": 500 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "medium", "maxChars": 43 },
+              "content": { "maxLines": 16, "maxChars": 600 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "large", "maxChars": 50 },
+              "content": { "maxLines": 14, "maxChars": 700 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{PROGRESSIVE_ANALOGY_TITLE}}",
+            "content": "{{BUILDING_ANALOGIES}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for building understanding of {{TOPIC}} through multiple connected analogies. Use phrases like 'Building Understanding', 'From Simple to Complex', 'Layers of...'. Maximum {maxChars} characters.",
+            "content": "Create a series of connected analogies that build understanding of {{TOPIC}} from simple to complex. Start with a basic comparison, then add layers of detail. Structure with clear transitions. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that guides students through multiple connected analogies for {{TOPIC}}. Use phrases like 'Let's start simple...', 'Now let's add another layer...', 'Building on that idea...' to show progression."
+          },
+          "fallbackData": {
+            "heading": "Understanding Gravity: From Simple to Complex",
+            "content": "Level 1: Gravity is like an invisible hand pulling everything down to Earth.\n\nLevel 2: But it's more like a rubber sheet. Imagine a stretched sheet with a bowling ball in the center. Marbles rolled nearby curve toward the ball—that's how massive objects bend spacetime.\n\nLevel 3: Now picture this in 3D. Every object creates a 'dent' in spacetime. Larger objects make bigger dents. Objects follow the curves, which we experience as gravitational attraction.\n\nLevel 4: At the quantum level, it's like particles called gravitons carry the gravitational force, similar to how photons carry light.",
+            "narration": "Let's build your understanding of gravity step by step, like climbing a ladder of knowledge. We'll start with what feels familiar, then gradually reveal the deeper mysteries that even Einstein discovered. Each level will add a new dimension to your understanding."
+          }
+        }
+      ]
+    },
+    {
+      "id": "definition-1",
+      "name": "Clear & Simple",
+      "description": "Straightforward definition with key characteristics highlighted",
+      "category": "definition",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "definition",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 50,
+              "fontSize": "xlarge",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 5,
+              "maxChars": 350,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "large", "maxChars": 35 },
+              "content": { "maxLines": 7, "maxChars": 250 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "xlarge", "maxChars": 43 },
+              "content": { "maxLines": 6, "maxChars": 300 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xxlarge", "maxChars": 50 },
+              "content": { "maxLines": 5, "maxChars": 350 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{TERM_TO_DEFINE}}",
+            "content": "{{CLEAR_DEFINITION}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Provide the key term or concept from {{TOPIC}} that needs to be defined. Keep it concise and clear. Maximum {maxChars} characters.",
+            "content": "Write a clear, simple definition of the main concept in {{TOPIC}}. Avoid jargon. Focus on the essential meaning that students need to understand. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that introduces and defines the key concept in {{TOPIC}}. Use simple language and emphasize the most important aspects. Make it memorable and easy to understand."
+          },
+          "fallbackData": {
+            "heading": "Photosynthesis",
+            "content": "The process by which plants use sunlight, water, and carbon dioxide to create glucose (sugar) and release oxygen as a byproduct.\n\nThis remarkable process converts light energy into chemical energy, allowing plants to make their own food while producing the oxygen we breathe.",
+            "narration": "Photosynthesis is one of the most important biological processes on Earth. In simple terms, it's how plants eat. But instead of consuming food like animals do, plants actually manufacture their own food using just sunlight, water, and carbon dioxide from the air."
+          }
+        }
+      ]
+    },
+    {
+      "id": "definition-2",
+      "name": "Component Breakdown",
+      "description": "Definition with detailed breakdown of key parts or components",
+      "category": "definition",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "definition",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 40,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "left-content",
+              "maxLines": 12,
+              "maxChars": 550,
+              "alignment": "left",
+              "format": "bullets"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 30 },
+              "content": { "maxLines": 15, "maxChars": 400 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 35 },
+              "content": { "maxLines": 13, "maxChars": 475 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 40 },
+              "content": { "maxLines": 12, "maxChars": 550 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{TERM_WITH_COMPONENTS}}",
+            "content": "{{COMPONENT_BREAKDOWN}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Provide the main term from {{TOPIC}} that has multiple components or parts. Maximum {maxChars} characters.",
+            "content": "Define {{TOPIC}} and break it down into its key components, parts, or characteristics. Use bullet points. Each bullet should explain one component clearly. Format with bullet symbols (•). Maximum {maxChars} characters.",
+            "narration": "Create narration that defines {{TOPIC}} and then walks through each component or part systematically. Use phrases like 'The first component is...', 'Another key part is...', 'Finally...' to organize the explanation."
+          },
+          "fallbackData": {
+            "heading": "Ecosystem Components",
+            "content": "An ecosystem is a community of living organisms interacting with their physical environment.\n\n• Biotic factors: All living components (plants, animals, bacteria, fungi)\n• Abiotic factors: Non-living elements (sunlight, water, soil, temperature, air)\n• Producers: Organisms that make their own food (mainly plants)\n• Primary consumers: Herbivores that eat producers\n• Secondary consumers: Carnivores that eat herbivores\n• Decomposers: Organisms that break down dead material and recycle nutrients",
+            "narration": "Think of an ecosystem as nature's perfect neighborhood, where every resident has a specific role and they all depend on each other. Let's break down the key players in this natural community and understand how each component contributes to the whole system."
+          }
+        }
+      ]
+    },
+    {
+      "id": "definition-3",
+      "name": "Etymology & Evolution",
+      "description": "Definition that explores word origins and how meaning has evolved",
+      "category": "definition",
+      "templateVariant": 3,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "definition",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 45,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 10,
+              "maxChars": 500,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 32 },
+              "content": { "maxLines": 13, "maxChars": 350 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 38 },
+              "content": { "maxLines": 11, "maxChars": 425 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 45 },
+              "content": { "maxLines": 10, "maxChars": 500 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{TERM_WITH_ETYMOLOGY}}",
+            "content": "{{WORD_ORIGIN_AND_MEANING}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Provide the main term from {{TOPIC}} with focus on its word origin or evolution. Maximum {maxChars} characters.",
+            "content": "Define {{TOPIC}} by exploring the word's etymology (origin) and how its meaning has evolved. Include the root words, original language, and how understanding has developed over time. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that explains {{TOPIC}} through its word origins and historical development. Make the etymology interesting and show how understanding the word's history helps understand the concept better."
+          },
+          "fallbackData": {
+            "heading": "Democracy: Power of the People",
+            "content": "Democracy comes from the ancient Greek words 'demos' (people) and 'kratos' (power or rule). Literally, it means 'rule by the people.'\n\nThe concept was born in Athens around 508 BCE, where citizens could directly participate in decision-making. However, their definition of 'citizens' was much narrower than ours today.\n\nOver centuries, the meaning has evolved to include broader participation, representative systems, and protection of individual rights—expanding from direct democracy to the complex democratic systems we know today.",
+            "narration": "The word democracy has quite a journey through history. When ancient Greeks first coined this term over 2,500 years ago, they were creating something revolutionary—a system where ordinary people, not kings or nobles, would have political power. But their version of democracy would look very different from what we practice today."
+          }
+        }
+      ]
+    },
+    {
+      "id": "definition-4",
+      "name": "Comparative Definition",
+      "description": "Definition that contrasts with similar or opposite concepts",
+      "category": "definition",
+      "templateVariant": 4,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "definition",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 55,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 8,
+              "maxChars": 480,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 40 },
+              "content": { "maxLines": 10, "maxChars": 340 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 47 },
+              "content": { "maxLines": 9, "maxChars": 410 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 55 },
+              "content": { "maxLines": 8, "maxChars": 480 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{COMPARATIVE_TERM_TITLE}}",
+            "content": "{{COMPARISON_DEFINITION}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for defining {{TOPIC}} through comparison with similar or contrasting concepts. Use phrases like 'vs.', 'compared to', 'distinct from'. Maximum {maxChars} characters.",
+            "content": "Define {{TOPIC}} by comparing and contrasting it with similar or opposite concepts. Show what it is and what it isn't. Use clear comparisons to highlight the key distinguishing features. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that defines {{TOPIC}} through comparison. Use phrases like 'Unlike...', 'Similar to...', 'The key difference is...' to help students understand the concept by relating it to what they already know."
+          },
+          "fallbackData": {
+            "heading": "Weather vs. Climate: Understanding the Difference",
+            "content": "Weather is the day-to-day atmospheric conditions in a specific place—what you check before deciding what to wear.\n\nClimate is the long-term average weather patterns over many years (typically 30+ years) in a region.\n\nThink of it this way: Climate is what you expect, weather is what you get. Miami has a tropical climate, but today's weather might be unusually cool. One cold day doesn't change Miami's warm climate.",
+            "narration": "People often confuse weather and climate, but understanding the difference is crucial for climate science discussions. Weather is immediate and local—whether it's raining right now outside your window. Climate is the big picture—the overall patterns that define what a region is typically like year after year."
+          }
+        }
+      ]
+    },
+    {
+      "id": "step-by-step-1",
+      "name": "Numbered Process",
+      "description": "Clear numbered steps with detailed explanations for each stage",
+      "category": "step-by-step",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "step-by-step",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 50,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "left-content",
+              "maxLines": 12,
+              "maxChars": 600,
+              "alignment": "left",
+              "format": "numbered"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 15, "maxChars": 400 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 43 },
+              "content": { "maxLines": 13, "maxChars": 500 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 12, "maxChars": 600 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{PROCESS_TITLE}}",
+            "content": "{{NUMBERED_STEPS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a clear title for the step-by-step process in {{TOPIC}}. Use phrases like 'How to...', 'Steps to...', 'Process of...'. Maximum {maxChars} characters.",
+            "content": "Break down {{TOPIC}} into clear, numbered steps. Each step should be actionable and specific. Format as: '1. [Action] - [Brief explanation]'. Maximum {maxChars} characters, up to {maxLines} steps.",
+            "narration": "Create narration that walks through each step of {{TOPIC}} methodically. Use transitions like 'First...', 'Next...', 'Then...', 'Finally...' to guide students through the process clearly."
+          },
+          "fallbackData": {
+            "heading": "Steps to Solve a Quadratic Equation",
+            "content": "1. Write the equation in standard form (ax² + bx + c = 0)\n\n2. Identify the coefficients a, b, and c from your equation\n\n3. Calculate the discriminant using b² - 4ac\n\n4. Apply the quadratic formula: x = (-b ± √(b² - 4ac)) / 2a\n\n5. Simplify the expression under the square root\n\n6. Solve for both possible values of x using + and - operations\n\n7. Check your answers by substituting back into the original equation",
+            "narration": "Let's walk through solving quadratic equations step by step. First, we'll get our equation in the right form. Next, we'll identify our key numbers. Then we'll use the quadratic formula to find our solutions. Each step builds on the previous one, so let's take this methodically."
+          }
+        }
+      ]
+    },
+    {
+      "id": "step-by-step-2",
+      "name": "Visual Flowchart",
+      "description": "Process broken down with visual flow indicators and decision points",
+      "category": "step-by-step",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "step-by-step",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 45,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 14,
+              "maxChars": 700,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 32 },
+              "content": { "maxLines": 18, "maxChars": 500 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 38 },
+              "content": { "maxLines": 16, "maxChars": 600 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 45 },
+              "content": { "maxLines": 14, "maxChars": 700 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{FLOWCHART_TITLE}}",
+            "content": "{{FLOWCHART_STEPS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for a flowchart-style explanation of {{TOPIC}}. Use phrases like 'Flowchart:', 'Decision Tree:', 'Process Map:'. Maximum {maxChars} characters.",
+            "content": "Create a flowchart-style breakdown of {{TOPIC}} using arrows (→) and decision points. Include branches for different scenarios. Use symbols like ↓, →, ← to show flow. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that follows the flowchart for {{TOPIC}}. Use phrases like 'Starting here...', 'If this, then...', 'Following this path...', 'This leads us to...' to guide students through the visual flow."
+          },
+          "fallbackData": {
+            "heading": "Scientific Method Flowchart",
+            "content": "START: Observe something interesting\n↓\nAsk a Question: What's happening here?\n↓\nResearch: What do we already know?\n↓\nForm Hypothesis: Make an educated guess\n↓\nDesign Experiment: Test your hypothesis\n↓\nCollect Data: Record what happens\n↓\nAnalyze Results: What do the numbers say?\n→ If hypothesis supported: Draw conclusions\n→ If hypothesis not supported: Revise hypothesis and try again\n↓\nShare Results: Tell others what you learned",
+            "narration": "Let's follow the scientific method like a roadmap. We start with curiosity, ask questions, then systematically test our ideas. At each decision point, our results guide us to the next step. Sometimes we loop back to revise our thinking—that's normal and valuable in science!"
+          }
+        }
+      ]
+    },
+    {
+      "id": "step-by-step-3",
+      "name": "Troubleshooting Guide",
+      "description": "Step-by-step process with common problems and solutions included",
+      "category": "step-by-step",
+      "templateVariant": 3,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "step-by-step",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 55,
+              "fontSize": "medium",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 16,
+              "maxChars": 800,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "small", "maxChars": 40 },
+              "content": { "maxLines": 20, "maxChars": 550 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "medium", "maxChars": 47 },
+              "content": { "maxLines": 18, "maxChars": 675 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "large", "maxChars": 55 },
+              "content": { "maxLines": 16, "maxChars": 800 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{TROUBLESHOOTING_TITLE}}",
+            "content": "{{STEPS_WITH_TROUBLESHOOTING}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for a troubleshooting guide for {{TOPIC}}. Include phrases like 'Complete Guide to...', 'Mastering...', 'Step-by-Step...'. Maximum {maxChars} characters.",
+            "content": "Create a detailed step-by-step guide for {{TOPIC}} that includes common problems and solutions. Format as: 'Step X: [Action] ⚠️ Common issue: [Problem] ✅ Solution: [Fix]'. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create comprehensive narration for {{TOPIC}} that includes both the main steps and troubleshooting advice. Use phrases like 'If you encounter...', 'A common mistake here is...', 'To fix this...' to help students avoid and solve problems."
+          },
+          "fallbackData": {
+            "heading": "Complete Guide to Writing a Research Paper",
+            "content": "Step 1: Choose and narrow your topic\n⚠️ Common issue: Topic too broad\n✅ Solution: Focus on one specific aspect\n\nStep 2: Create a thesis statement\n⚠️ Common issue: Thesis too vague\n✅ Solution: Make it specific and arguable\n\nStep 3: Research and take notes\n⚠️ Common issue: Poor source quality\n✅ Solution: Use academic databases\n\nStep 4: Create an outline\n⚠️ Common issue: No logical flow\n✅ Solution: Group related ideas together\n\nStep 5: Write the first draft\n⚠️ Common issue: Perfectionism paralysis\n✅ Solution: Just start writing; edit later",
+            "narration": "Writing a research paper can feel overwhelming, but breaking it down makes it manageable. I'll walk you through each step and share the most common pitfalls students face, plus exactly how to avoid or fix them. Think of this as your troubleshooting guide to academic success."
+          }
+        }
+      ]
+    },
+    {
+      "id": "step-by-step-4",
+      "name": "Interactive Checklist",
+      "description": "Step-by-step process presented as an actionable checklist format",
+      "category": "step-by-step",
+      "templateVariant": 4,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "step-by-step",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 50,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "left-content",
+              "maxLines": 14,
+              "maxChars": 650,
+              "alignment": "left",
+              "format": "checklist"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 18, "maxChars": 450 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 43 },
+              "content": { "maxLines": 16, "maxChars": 550 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 14, "maxChars": 650 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{CHECKLIST_TITLE}}",
+            "content": "{{ACTIONABLE_CHECKLIST}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a checklist-style title for {{TOPIC}}. Use phrases like 'Checklist:', 'Your Guide to...', 'Action Steps for...'. Maximum {maxChars} characters.",
+            "content": "Create an actionable checklist for {{TOPIC}}. Format as checkbox items: '☐ [Action item with specific instruction]'. Make each item clear and actionable. Maximum {maxChars} characters, up to {maxLines} items.",
+            "narration": "Create narration that presents {{TOPIC}} as a practical checklist. Use encouraging language like 'Let's check off each item...', 'Next on our list...', 'Once you've completed this...' to make the process feel achievable."
+          },
+          "fallbackData": {
+            "heading": "Pre-Presentation Checklist",
+            "content": "☐ Content is organized with clear beginning, middle, and end\n☐ Opening hook grabs audience attention in first 30 seconds\n☐ Key points are supported with evidence or examples\n☐ Slides are visually clean with minimal text\n☐ Technology is tested (microphone, projector, clicker)\n☐ Timing has been practiced and fits allocated time\n☐ Backup plan prepared for technical failures\n☐ Questions and answers anticipated for likely topics\n☐ Comfortable clothes chosen for confidence\n☐ Water bottle and notes organized and accessible",
+            "narration": "A great presentation isn't just about great content—it's about preparation. Let's walk through this checklist together to make sure you're completely ready. Each item here addresses something that could make or break your presentation, so don't skip any steps."
+          }
+        }
+      ]
+    },
+    {
+      "id": "examples-1",
+      "name": "Real-World Cases",
+      "description": "Concrete examples from real situations showing practical applications",
+      "category": "examples",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "examples",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 60,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 12,
+              "maxChars": 650,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 40 },
+              "content": { "maxLines": 15, "maxChars": 450 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 50 },
+              "content": { "maxLines": 13, "maxChars": 550 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 60 },
+              "content": { "maxLines": 12, "maxChars": 650 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{REAL_WORLD_EXAMPLES_TITLE}}",
+            "content": "{{CONCRETE_EXAMPLES}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title focusing on real-world examples of {{TOPIC}}. Use phrases like 'Real Examples of...', 'How {{TOPIC}} Works in Practice', 'Case Studies:'. Maximum {maxChars} characters.",
+            "content": "Provide 2-3 specific, real-world examples of {{TOPIC}} in action. Include concrete details, numbers, or outcomes. Structure each example clearly with context and results. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that brings real-world examples of {{TOPIC}} to life. Use storytelling techniques and specific details to make each example vivid and memorable. Show students how theory becomes practice."
+          },
+          "fallbackData": {
+            "heading": "Real Examples of Supply and Demand",
+            "content": "Concert Tickets: When Taylor Swift announces a tour, millions want tickets but only 50,000 seats exist per show. High demand + low supply = prices skyrocket to $300+ on resale markets.\n\nGas Prices: During the 2022 Ukraine conflict, oil supply decreased while demand stayed constant. Result: U.S. gas prices jumped from $3.30 to over $5.00 per gallon in months.\n\nHousing Market 2020-2022: Remote work increased demand for homes while construction slowed (low supply). Average home prices rose 20% nationally, with some cities seeing 40% increases.",
+            "narration": "Supply and demand isn't just theory—it shapes the prices you see every day. Let's look at three recent examples that probably affected your life directly. Notice how the same economic principle plays out differently across completely different markets."
+          }
+        }
+      ]
+    },
+    {
+      "id": "examples-2",
+      "name": "Progressive Examples",
+      "description": "Examples that build from simple to complex, showing skill development",
+      "category": "examples",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "examples",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 45,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 16,
+              "maxChars": 750,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 32 },
+              "content": { "maxLines": 20, "maxChars": 500 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 38 },
+              "content": { "maxLines": 18, "maxChars": 625 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 45 },
+              "content": { "maxLines": 16, "maxChars": 750 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{PROGRESSIVE_EXAMPLES_TITLE}}",
+            "content": "{{BUILDING_EXAMPLES}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for examples that progress from simple to complex in {{TOPIC}}. Use phrases like 'From Basic to Advanced', 'Building Up', 'Progressive Examples'. Maximum {maxChars} characters.",
+            "content": "Create 3-4 examples of {{TOPIC}} that progress from simple to complex. Label them clearly (Basic, Intermediate, Advanced) and show how skills build. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that shows the progression in {{TOPIC}} examples. Use phrases like 'Let's start simple...', 'Building on that...', 'Now for something more challenging...' to guide students through increasing complexity."
+          },
+          "fallbackData": {
+            "heading": "Progressive Examples: Persuasive Writing",
+            "content": "BASIC: Simple opinion + one reason\n'Students should get longer lunch breaks because they need more time to eat properly.'\n\nINTERMEDIATE: Opinion + multiple reasons + evidence\n'Schools should extend lunch from 20 to 30 minutes. Research shows students eat more nutritious foods when not rushed, test scores improve after proper nutrition breaks, and cafeteria staff report less food waste when students have adequate time.'\n\nADVANCED: Complex argument + counterarguments + sophisticated evidence\n'While extending lunch periods might seem to reduce instructional time, the benefits far outweigh costs. Studies from Finland show that longer breaks actually improve focus during class...'",
+            "narration": "Let's see how persuasive writing develops from basic to sophisticated. We'll start with a simple structure that anyone can master, then build layers of complexity. Notice how each level incorporates everything from the previous level while adding new skills."
+          }
+        }
+      ]
+    },
+    {
+      "id": "examples-3",
+      "name": "Compare & Contrast",
+      "description": "Side-by-side examples showing good vs. poor applications",
+      "category": "examples",
+      "templateVariant": 3,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "examples",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 55,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 14,
+              "maxChars": 700,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 38 },
+              "content": { "maxLines": 18, "maxChars": 480 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 46 },
+              "content": { "maxLines": 16, "maxChars": 590 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 55 },
+              "content": { "maxLines": 14, "maxChars": 700 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{COMPARISON_EXAMPLES_TITLE}}",
+            "content": "{{GOOD_VS_BAD_EXAMPLES}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for comparing good vs. poor examples of {{TOPIC}}. Use phrases like 'Good vs. Bad', 'Do This, Not That', 'Right vs. Wrong'. Maximum {maxChars} characters.",
+            "content": "Create side-by-side examples showing effective vs. ineffective applications of {{TOPIC}}. Use ✅ for good examples and ❌ for poor examples. Explain why each works or fails. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that contrasts good and poor examples of {{TOPIC}}. Use clear language like 'Here's what works...', 'In contrast, this fails because...', 'Notice the difference...' to help students learn from both positive and negative examples."
+          },
+          "fallbackData": {
+            "heading": "Good vs. Bad: Email Communication",
+            "content": "✅ GOOD EMAIL:\nSubject: Meeting Request - Project Alpha Review (30 min)\nHi Sarah,\nCould we schedule 30 minutes this week to review Project Alpha's progress? I have concerns about the timeline and would value your input.\nAvailable: Tue 2-4pm, Wed 10am-12pm, Thu 9-11am\nThanks!\n\n❌ BAD EMAIL:\nSubject: urgent!!!\nhi need to talk can u meet whenever works thanks\n\nWhy the first works: Clear subject, polite tone, specific purpose, time estimate, options provided.\nWhy the second fails: Vague subject, no context, poor grammar, no specifics.",
+            "narration": "The difference between effective and ineffective communication often comes down to clarity and respect for the recipient's time. Let's compare two approaches to the same request and see why one builds professional relationships while the other damages them."
+          }
+        }
+      ]
+    },
+    {
+      "id": "common-mistakes-1",
+      "name": "Warning Signs",
+      "description": "Clear identification of common errors with warning indicators",
+      "category": "common-mistakes",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "common-mistakes",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 50,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "left-content",
+              "maxLines": 12,
+              "maxChars": 600,
+              "alignment": "left",
+              "format": "bullets"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 15, "maxChars": 420 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 43 },
+              "content": { "maxLines": 13, "maxChars": 510 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 12, "maxChars": 600 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{COMMON_MISTAKES_TITLE}}",
+            "content": "{{WARNING_MISTAKES}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a warning-focused title about common mistakes in {{TOPIC}}. Use phrases like 'Avoid These Mistakes', 'Common Pitfalls', 'Warning Signs'. Maximum {maxChars} characters.",
+            "content": "List the most common mistakes students make with {{TOPIC}}. Use warning symbols (⚠️) and bullet points. Focus on errors that significantly impact understanding or results. Maximum {maxChars} characters, up to {maxLines} mistakes.",
+            "narration": "Create cautionary narration about common mistakes in {{TOPIC}}. Use phrases like 'Watch out for...', 'A red flag is...', 'This mistake happens when...' to help students recognize and avoid these errors."
+          },
+          "fallbackData": {
+            "heading": "Common Math Mistakes to Avoid",
+            "content": "⚠️ Forgetting to distribute the negative sign: -(3x + 5) ≠ -3x + 5\n\n⚠️ Canceling terms instead of factors: (x + 3)/(x + 2) ≠ 3/2\n\n⚠️ Mixing up order of operations: 2 + 3 × 4 ≠ 20 (it's 14)\n\n⚠️ Assuming square root of sum equals sum of square roots: √(a + b) ≠ √a + √b\n\n⚠️ Forgetting to check solutions in original equation\n\n⚠️ Dropping negative signs when moving terms across equals sign",
+            "narration": "These math mistakes trip up students at every level—even advanced ones. The tricky part is they often give answers that look reasonable, so you might not catch them. Let's learn to spot these red flags before they cost you points on tests."
+          }
+        }
+      ]
+    },
+    {
+      "id": "common-mistakes-2",
+      "name": "Before & After Fixes",
+      "description": "Common mistakes shown with corrections and explanations",
+      "category": "common-mistakes",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "common-mistakes",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 45,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 16,
+              "maxChars": 800,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 32 },
+              "content": { "maxLines": 20, "maxChars": 550 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 38 },
+              "content": { "maxLines": 18, "maxChars": 675 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 45 },
+              "content": { "maxLines": 16, "maxChars": 800 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{MISTAKES_AND_FIXES_TITLE}}",
+            "content": "{{BEFORE_AFTER_EXAMPLES}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title about fixing common mistakes in {{TOPIC}}. Use phrases like 'Fix These Errors', 'Before & After', 'Common Mistakes Corrected'. Maximum {maxChars} characters.",
+            "content": "Show common mistakes in {{TOPIC}} with corrections. Format as: 'MISTAKE: [wrong approach] ❌\\nCORRECTED: [right approach] ✅\\nWhy: [explanation]'. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that shows how to correct common mistakes in {{TOPIC}}. Use phrases like 'Here's what went wrong...', 'The correct approach is...', 'This works because...' to help students learn from errors."
+          },
+          "fallbackData": {
+            "heading": "Fixing Common Writing Mistakes",
+            "content": "MISTAKE: Run-on sentences ❌\n'I went to the store and bought milk and bread and eggs and then I came home and made breakfast and ate it quickly because I was late for work.'\n\nCORRECTED: Clear, varied sentences ✅\n'I went to the store for milk, bread, and eggs. After returning home, I quickly made and ate breakfast before rushing to work.'\n\nWhy: Shorter sentences are easier to follow and create better rhythm.\n\nMISTAKE: Weak thesis statement ❌\n'This essay is about climate change which is bad.'\n\nCORRECTED: Strong thesis statement ✅\n'Governments must implement carbon pricing immediately because market-based solutions have proven more effective than regulations alone in reducing emissions.'\n\nWhy: Specific claim with clear reasoning that can be supported with evidence.",
+            "narration": "Let's transform weak writing into strong communication. I'll show you the exact mistakes that make writing confusing, then demonstrate how small changes create dramatic improvements. Notice how the corrections aren't just different—they're specifically designed to solve the problems in the original versions."
+          }
+        }
+      ]
+    },
+    {
+      "id": "common-mistakes-3",
+      "name": "Prevention Strategies",
+      "description": "Focus on how to prevent mistakes before they happen",
+      "category": "common-mistakes",
+      "templateVariant": 3,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "common-mistakes",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 55,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 10,
+              "maxChars": 550,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 40 },
+              "content": { "maxLines": 13, "maxChars": 380 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 47 },
+              "content": { "maxLines": 11, "maxChars": 465 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 55 },
+              "content": { "maxLines": 10, "maxChars": 550 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{PREVENTION_STRATEGIES_TITLE}}",
+            "content": "{{PREVENTION_TIPS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title about preventing mistakes in {{TOPIC}}. Use phrases like 'Mistake Prevention', 'How to Avoid', 'Stop Errors Before They Start'. Maximum {maxChars} characters.",
+            "content": "Provide proactive strategies to prevent common mistakes in {{TOPIC}}. Focus on habits, checks, and techniques that stop errors before they occur. Use practical, actionable advice. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration focused on preventing mistakes in {{TOPIC}} rather than just fixing them. Use encouraging language like 'By doing this...', 'This habit prevents...', 'Set yourself up for success by...' to help students build good practices."
+          },
+          "fallbackData": {
+            "heading": "Prevent Public Speaking Mistakes",
+            "content": "🛡️ Practice out loud, not just in your head—your mouth needs training too\n\n🛡️ Time your speech with actual pauses—most people rush when nervous\n\n🛡️ Have water nearby but avoid dairy before speaking—it creates mucus\n\n🛡️ Test all technology 30 minutes early—have backup plans ready\n\n🛡️ Write key transitions on note cards—blanking on connections derails speeches\n\n🛡️ Arrive early to get comfortable in the space—familiarity reduces anxiety\n\n🛡️ Plan your first sentence perfectly—confidence builds from a strong start",
+            "narration": "The best way to handle public speaking mistakes is to prevent them entirely. These aren't just tips—they're shields against the most common speech disasters. Each strategy targets a specific failure point that trips up even experienced speakers."
+          }
+        }
+      ]
+    },
+    {
+      "id": "mini-recap-1",
+      "name": "Key Points Summary",
+      "description": "Concise bullet-point summary of the most important concepts",
+      "category": "mini-recap",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "mini-recap",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 40,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 8,
+              "maxChars": 400,
+              "alignment": "left",
+              "format": "bullets"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 30 },
+              "content": { "maxLines": 10, "maxChars": 280 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 35 },
+              "content": { "maxLines": 9, "maxChars": 340 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 40 },
+              "content": { "maxLines": 8, "maxChars": 400 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{RECAP_TITLE}}",
+            "content": "{{KEY_POINTS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a brief recap title for {{TOPIC}}. Use phrases like 'Key Points', 'Quick Recap', 'Main Takeaways', 'Remember This'. Maximum {maxChars} characters.",
+            "content": "Summarize the most important points from {{TOPIC}} in 4-6 concise bullet points. Focus on concepts students must remember. Use bullet symbols (•). Maximum {maxChars} characters, up to {maxLines} points.",
+            "narration": "Create brief narration that reinforces the key points of {{TOPIC}}. Use phrases like 'Let's quickly review...', 'The main things to remember are...', 'Don't forget...' to help students consolidate their learning."
+          },
+          "fallbackData": {
+            "heading": "Key Takeaways",
+            "content": "• Photosynthesis converts light energy into chemical energy (glucose)\n\n• Requires three inputs: sunlight, water (H₂O), and carbon dioxide (CO₂)\n\n• Produces glucose for plant food and oxygen as a byproduct\n\n• Happens in chloroplasts using chlorophyll to capture light\n\n• Essential for almost all life on Earth—provides oxygen and food chains\n\n• More efficient in optimal conditions: moderate temperature, adequate water, sufficient light",
+            "narration": "Let's quickly review what makes photosynthesis so crucial. Remember these key points: it's an energy conversion process, it needs three specific inputs, and it produces what nearly all life depends on. These fundamentals will help you understand more complex biological processes later."
+          }
+        }
+      ]
+    },
+    {
+      "id": "mini-recap-2",
+      "name": "Visual Mind Map",
+      "description": "Central concept with connected key ideas radiating outward",
+      "category": "mini-recap",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "mini-recap",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 35,
+              "fontSize": "medium",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 12,
+              "maxChars": 600,
+              "alignment": "center"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "small", "maxChars": 25 },
+              "content": { "maxLines": 15, "maxChars": 420 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "medium", "maxChars": 30 },
+              "content": { "maxLines": 13, "maxChars": 510 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "large", "maxChars": 35 },
+              "content": { "maxLines": 12, "maxChars": 600 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{MIND_MAP_TITLE}}",
+            "content": "{{CONNECTED_CONCEPTS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for a mind map recap of {{TOPIC}}. Use phrases like 'Concept Map', 'Mind Map', 'Connected Ideas'. Maximum {maxChars} characters.",
+            "content": "Create a text-based mind map for {{TOPIC}} showing the central concept with connected ideas. Use ASCII art with lines (→, ←, ↑, ↓) to show connections. Center the main concept and branch out related ideas. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration that walks through the mind map of {{TOPIC}}. Use phrases like 'At the center we have...', 'Connected to this is...', 'Notice how these ideas link...' to help students see relationships between concepts."
+          },
+          "fallbackData": {
+            "heading": "Democracy Mind Map",
+            "content": "                Voting Rights\n                     ↑\n          Free Elections ← DEMOCRACY → Individual Rights\n                     ↓\n                Rule of Law\n\n    Key Connections:\n    • Voting Rights enable Free Elections\n    • Rule of Law protects Individual Rights  \n    • Free Elections require Rule of Law\n    • Individual Rights include Voting Rights\n    • All four elements must work together",
+            "narration": "See how democracy isn't just one thing—it's a system where four key elements support each other. Voting rights enable free elections, which depend on rule of law, which protects individual rights, which include voting rights. Remove any piece and the whole system weakens."
+          }
+        }
+      ]
+    },
+    {
+      "id": "mini-recap-3",
+      "name": "Quick Quiz Format",
+      "description": "Recap presented as self-check questions with answers",
+      "category": "mini-recap",
+      "templateVariant": 3,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "mini-recap",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 45,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "left-content",
+              "maxLines": 14,
+              "maxChars": 700,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 32 },
+              "content": { "maxLines": 18, "maxChars": 480 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 38 },
+              "content": { "maxLines": 16, "maxChars": 590 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 45 },
+              "content": { "maxLines": 14, "maxChars": 700 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{QUIZ_RECAP_TITLE}}",
+            "content": "{{SELF_CHECK_QUESTIONS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for a quiz-style recap of {{TOPIC}}. Use phrases like 'Quick Self-Check', 'Test Your Understanding', 'Quiz Yourself'. Maximum {maxChars} characters.",
+            "content": "Create 3-4 self-check questions about {{TOPIC}} with answers provided. Format as: 'Q: [Question]\\nA: [Answer]\\n'. Focus on key concepts that test understanding. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create narration for a self-assessment quiz on {{TOPIC}}. Use encouraging language like 'Test yourself...', 'Can you answer...', 'If you got these right...' to help students check their understanding actively."
+          },
+          "fallbackData": {
+            "heading": "Quick Self-Check: Cell Division",
+            "content": "Q: What's the main difference between mitosis and meiosis?\nA: Mitosis produces two identical diploid cells; meiosis produces four genetically different haploid gametes.\n\nQ: Why is DNA replication important before cell division?\nA: Each new cell needs a complete copy of genetic information to function properly.\n\nQ: What happens if the cell cycle checkpoints fail?\nA: Damaged or incomplete cells might divide, potentially leading to cancer or cell death.\n\nQ: Where does meiosis occur in the human body?\nA: In reproductive organs—ovaries (eggs) and testes (sperm).",
+            "narration": "Let's test your understanding with these key questions about cell division. Try answering each one before reading the response. If you can explain these concepts clearly, you've grasped the fundamentals. If not, that's okay—it shows you which areas need more review."
+          }
+        }
+      ]
+    },
+    {
+      "id": "things-to-ponder-1",
+      "name": "Deep Questions",
+      "description": "Thought-provoking questions that extend learning beyond the basics",
+      "category": "things-to-ponder",
+      "templateVariant": 1,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "things-to-ponder",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 50,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 10,
+              "maxChars": 500,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 35 },
+              "content": { "maxLines": 13, "maxChars": 350 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 43 },
+              "content": { "maxLines": 11, "maxChars": 425 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 50 },
+              "content": { "maxLines": 10, "maxChars": 500 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{DEEP_QUESTIONS_TITLE}}",
+            "content": "{{THOUGHT_PROVOKING_QUESTIONS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for deep thinking about {{TOPIC}}. Use phrases like 'Things to Ponder', 'Deep Questions', 'Think About This', 'Food for Thought'. Maximum {maxChars} characters.",
+            "content": "Create 3-4 thought-provoking questions about {{TOPIC}} that go beyond basic understanding. Questions should encourage critical thinking, connections to other ideas, or ethical considerations. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create contemplative narration about deeper aspects of {{TOPIC}}. Use phrases like 'Consider this...', 'What if...', 'This raises the question...', 'Think about the implications...' to encourage students to think beyond the surface."
+          },
+          "fallbackData": {
+            "heading": "Deep Questions About AI",
+            "content": "🤔 If an AI can write poetry that moves people to tears, does the emotion in the poem come from the AI, the programmer, or the reader?\n\n🤔 Should AI systems be designed to be completely transparent about their decision-making, even if this makes them less effective?\n\n🤔 As AI becomes more capable, what uniquely human skills should education prioritize?\n\n🤔 If an AI makes a mistake that harms someone, who bears the moral responsibility—the AI, its creators, or its users?",
+            "narration": "These aren't questions with simple answers—they're the kind that keep philosophers, scientists, and ethicists debating late into the night. As AI becomes more powerful, grappling with these deeper questions becomes essential. Your generation will likely determine how humanity and artificial intelligence coexist."
+          }
+        }
+      ]
+    },
+    {
+      "id": "things-to-ponder-2",
+      "name": "Future Connections",
+      "description": "Questions linking current learning to future implications and applications",
+      "category": "things-to-ponder",
+      "templateVariant": 2,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "things-to-ponder",
+          "layout": {
+            "heading": {
+              "position": "left-top",
+              "maxChars": 45,
+              "fontSize": "large",
+              "alignment": "left"
+            },
+            "content": {
+              "position": "full-content",
+              "maxLines": 12,
+              "maxChars": 600,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 32 },
+              "content": { "maxLines": 15, "maxChars": 420 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 38 },
+              "content": { "maxLines": 13, "maxChars": 510 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 45 },
+              "content": { "maxLines": 12, "maxChars": 600 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{FUTURE_CONNECTIONS_TITLE}}",
+            "content": "{{FUTURE_IMPLICATIONS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title about future implications of {{TOPIC}}. Use phrases like 'Looking Ahead', 'Future Connections', 'What's Next', 'Tomorrow's Applications'. Maximum {maxChars} characters.",
+            "content": "Create questions about how {{TOPIC}} might evolve, connect to other fields, or impact the future. Focus on applications, innovations, or changes students might see in their lifetimes. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create forward-looking narration about {{TOPIC}}. Use phrases like 'Imagine a world where...', 'In the coming years...', 'This could lead to...', 'You might someday...' to help students see the ongoing relevance of their learning."
+          },
+          "fallbackData": {
+            "heading": "Looking Ahead: Renewable Energy",
+            "content": "🔮 How might your career intersect with renewable energy, even if you're not planning to be an engineer?\n\n🔮 What happens when renewable energy becomes cheaper than fossil fuels everywhere—how does this reshape global politics?\n\n🔮 Could your generation see fully renewable cities? What would daily life look like?\n\n🔮 How might renewable energy transform developing countries differently than developed ones?\n\n🔮 What new industries might emerge that we can't even imagine yet?",
+            "narration": "Today's renewable energy lesson isn't just about understanding current technology—it's about preparing for a world your generation will shape. The decisions being made now about energy policy, investment, and innovation will define the world you'll live and work in. How will you be part of that transformation?"
+          }
+        }
+      ]
+    },
+    {
+      "id": "things-to-ponder-3",
+      "name": "Personal Reflection",
+      "description": "Questions encouraging students to connect learning to their own experiences and values",
+      "category": "things-to-ponder",
+      "templateVariant": 3,
+      "slides": [
+        {
+          "id": "slide-1",
+          "type": "things-to-ponder",
+          "layout": {
+            "heading": {
+              "position": "center-top",
+              "maxChars": 45,
+              "fontSize": "large",
+              "alignment": "center"
+            },
+            "content": {
+              "position": "center-middle",
+              "maxLines": 8,
+              "maxChars": 450,
+              "alignment": "left"
+            }
+          },
+          "responsive": {
+            "mobile": {
+              "heading": { "fontSize": "medium", "maxChars": 32 },
+              "content": { "maxLines": 11, "maxChars": 315 }
+            },
+            "tablet": {
+              "heading": { "fontSize": "large", "maxChars": 38 },
+              "content": { "maxLines": 9, "maxChars": 380 }
+            },
+            "desktop": {
+              "heading": { "fontSize": "xlarge", "maxChars": 45 },
+              "content": { "maxLines": 8, "maxChars": 450 }
+            }
+          },
+          "placeholders": {
+            "heading": "{{PERSONAL_REFLECTION_TITLE}}",
+            "content": "{{REFLECTION_QUESTIONS}}",
+            "narration": "{{NARRATION_TEXT}}"
+          },
+          "llmPrompts": {
+            "heading": "Generate a title for personal reflection on {{TOPIC}}. Use phrases like 'Personal Reflection', 'What This Means to You', 'Your Connection', 'Making It Personal'. Maximum {maxChars} characters.",
+            "content": "Create personal reflection questions about {{TOPIC}} that help students connect the material to their own lives, experiences, and values. Use 'you' language and focus on individual meaning-making. Maximum {maxChars} characters, up to {maxLines} lines.",
+            "narration": "Create intimate, reflective narration about {{TOPIC}}. Use phrases like 'Think about your own...', 'How does this connect to your life...', 'What does this mean for you personally...' to help students make personal connections to the material."
+          },
+          "fallbackData": {
+            "heading": "Your Leadership Style",
+            "content": "💭 When you think about leaders you admire, what specific behaviors make them effective?\n\n💭 How do you naturally respond when a group you're in lacks direction—do you step up, support others, or wait?\n\n💭 What's one leadership skill you'd most like to develop, and why does it matter to you?\n\n💭 How might your cultural background or personal experiences shape your approach to leadership?\n\n💭 What kind of leader do you want to be remembered as?",
+            "narration": "Leadership isn't just a topic to study—it's something you're already practicing and developing in small ways every day. These questions don't have right or wrong answers, but thinking about them honestly can help you become more intentional about the leader you're becoming. Your authentic leadership style is already emerging."
           }
         }
       ]

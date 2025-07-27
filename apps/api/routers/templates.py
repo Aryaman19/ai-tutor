@@ -51,15 +51,21 @@ class FilledTemplateResponse(BaseModel):
     isFallback: bool
 
 @router.get("/", response_model=TemplateListResponse)
-async def get_templates():
+async def get_templates(category: Optional[str] = Query(None, description="Filter templates by category")):
     """
-    Get list of all available templates
+    Get list of all available templates, optionally filtered by category
     
+    Args:
+        category: Optional category to filter by
+        
     Returns:
         List of templates with metadata
     """
     try:
-        templates = template_service.get_all_templates()
+        if category:
+            templates = template_service.get_templates_by_category(category)
+        else:
+            templates = template_service.get_all_templates()
         
         return TemplateListResponse(
             templates=templates,
@@ -69,6 +75,26 @@ async def get_templates():
     except Exception as e:
         logger.error(f"Failed to get templates: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve templates")
+
+@router.get("/categories", response_model=Dict[str, Any])
+async def get_template_categories():
+    """
+    Get list of all available template categories with template counts
+    
+    Returns:
+        List of categories with metadata and template information
+    """
+    try:
+        categories = template_service.get_available_categories()
+        
+        return {
+            "categories": categories,
+            "total": len(categories)
+        }
+    
+    except Exception as e:
+        logger.error(f"Failed to get template categories: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve template categories")
 
 @router.get("/{template_id}", response_model=Dict[str, Any])
 async def get_template(template_id: str):

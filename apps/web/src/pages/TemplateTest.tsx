@@ -81,6 +81,7 @@ const TemplateTest: React.FC = () => {
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 450 });
   const [scaleFactor, setScaleFactor] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showTemplateDetails, setShowTemplateDetails] = useState(false);
   
   // Refs for responsive canvas
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -385,9 +386,9 @@ const TemplateTest: React.FC = () => {
       <div className="bg-white border-b border-gray-200 p-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Template Testing</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Template Browser</h1>
             <p className="text-gray-600 text-sm mt-1">
-              Test educational templates with responsive layouts and live preview
+              Browse and preview educational templates
             </p>
           </div>
           
@@ -395,16 +396,6 @@ const TemplateTest: React.FC = () => {
             <div className="text-right">
               <div className="text-sm text-gray-500">
                 {currentTemplate.templateName}
-              </div>
-              <div className="text-xs text-gray-400">
-                {useGeneratedContent && fillTemplateMutation.data ? (
-                  <>
-                    Topic: {fillTemplateMutation.data.topic} • 
-                    {fillTemplateMutation.data.isFallback ? ' Fallback' : ' Generated'}
-                  </>
-                ) : (
-                  'Fallback Preview'
-                )}
               </div>
             </div>
           )}
@@ -421,43 +412,8 @@ const TemplateTest: React.FC = () => {
             disabled={templatesLoading}
           />
           
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={handleToggleContentType}
-              className={`px-3 py-1 text-sm rounded-md border transition-colors ${
-                useGeneratedContent 
-                  ? 'bg-blue-100 text-blue-700 border-blue-300' 
-                  : 'bg-gray-100 text-gray-700 border-gray-300'
-              }`}
-            >
-              {useGeneratedContent ? 'Generated Content' : 'Fallback Preview'}
-            </button>
-          </div>
         </div>
 
-        {/* Topic Input Row */}
-        <div className="flex items-center gap-4">
-          <div className="flex-1 max-w-md">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Topic for LLM Generation:
-            </label>
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder="e.g., Photosynthesis, Climate Change, Machine Learning"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          
-          <button
-            onClick={handleGenerateContent}
-            disabled={!topic.trim() || !selectedTemplateId || fillTemplateMutation.isPending}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            {fillTemplateMutation.isPending ? 'Generating...' : 'Generate Content'}
-          </button>
-        </div>
       </div>
 
       {/* Preview Area */}
@@ -594,87 +550,104 @@ const TemplateTest: React.FC = () => {
             </div>
 
             {/* Metadata Panel */}
-            <div className="w-80 bg-gray-50 p-4 overflow-y-auto">
-              <h3 className="font-semibold text-gray-900 mb-4">Template Details</h3>
-              
-              <div className="space-y-4">
-                {/* Template Info */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Template</h4>
-                  <div className="text-sm text-gray-600">
-                    <div><strong>ID:</strong> {currentTemplate.templateId}</div>
-                    <div><strong>Name:</strong> {currentTemplate.templateName}</div>
-                    <div><strong>Slide:</strong> {currentTemplate.slideIndex + 1}</div>
-                    <div><strong>Scale:</strong> {Math.round(scaleFactor * 100)}%</div>
-                  </div>
+            <div className={`bg-gray-50 overflow-y-auto transition-all duration-300 ${
+              showTemplateDetails ? 'w-80' : 'w-12'
+            }`}>
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  {showTemplateDetails && (
+                    <h3 className="font-semibold text-gray-900">Template Details</h3>
+                  )}
+                  <button
+                    onClick={() => setShowTemplateDetails(!showTemplateDetails)}
+                    className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
+                    title={showTemplateDetails ? "Hide Details" : "Show Details"}
+                  >
+                    {showTemplateDetails ? '→' : '←'}
+                  </button>
                 </div>
-
-                {/* Content Type Info */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Content Type</h4>
-                  <div className="text-sm text-gray-600">
-                    <div><strong>Mode:</strong> {useGeneratedContent ? 'Generated' : 'Fallback'}</div>
-                    {useGeneratedContent && fillTemplateMutation.data && (
-                      <>
-                        <div><strong>Topic:</strong> {fillTemplateMutation.data.topic}</div>
-                        <div><strong>Status:</strong> {fillTemplateMutation.data.isFallback ? 'Fallback (LLM Failed)' : 'Generated'}</div>
-                      </>
-                    )}
-                    <div><strong>Breakpoint:</strong> {currentTemplate.containerSize.breakpoint}</div>
-                    <div><strong>Canvas:</strong> {Math.round(canvasSize.width)}×{Math.round(canvasSize.height)}</div>
-                  </div>
-                </div>
-
-                {/* Elements */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Elements ({currentTemplate.elements.length})</h4>
-                  <div className="space-y-2">
-                    {currentTemplate.elements.map((element, index) => (
-                      <div key={index} className="bg-white p-2 rounded border text-xs">
-                        <div><strong>Type:</strong> {element.type}</div>
-                        <div><strong>Position:</strong> ({Math.round(element.x)}, {Math.round(element.y)})</div>
-                        <div><strong>Size:</strong> {Math.round(element.width)}×{Math.round(element.height)}</div>
-                        <div><strong>Font:</strong> {element.fontSize}px</div>
-                        <div className="mt-1 text-gray-600 break-words">
-                          <strong>Text:</strong> {element.text.substring(0, 50)}...
-                        </div>
+                
+                {showTemplateDetails && (
+                  <div className="space-y-4">
+                    {/* Template Info */}
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Template</h4>
+                      <div className="text-sm text-gray-600">
+                        <div><strong>ID:</strong> {currentTemplate.templateId}</div>
+                        <div><strong>Name:</strong> {currentTemplate.templateName}</div>
+                        <div><strong>Slide:</strong> {currentTemplate.slideIndex + 1}</div>
+                        <div><strong>Scale:</strong> {Math.round(scaleFactor * 100)}%</div>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
 
-                {/* Content Data */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">
-                    {useGeneratedContent ? 'Generated Content' : 'Fallback Data'}
-                  </h4>
-                  <div className="bg-white p-2 rounded border text-xs">
-                    {(() => {
-                      const contentData = useGeneratedContent && fillTemplateMutation.data 
-                        ? fillTemplateMutation.data.filledContent
-                        : currentTemplate.metadata.fallbackData;
-                      
-                      if (!contentData) return <div>No content data available</div>;
-                      
-                      return (
-                        <>
-                          <div className="mb-2">
-                            <strong>Heading:</strong>
-                            <div className="text-gray-600 mt-1">{contentData.heading}</div>
+                    {/* Content Type Info */}
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Content Type</h4>
+                      <div className="text-sm text-gray-600">
+                        <div><strong>Mode:</strong> {useGeneratedContent ? 'Generated' : 'Fallback'}</div>
+                        {useGeneratedContent && fillTemplateMutation.data && (
+                          <>
+                            <div><strong>Topic:</strong> {fillTemplateMutation.data.topic}</div>
+                            <div><strong>Status:</strong> {fillTemplateMutation.data.isFallback ? 'Fallback (LLM Failed)' : 'Generated'}</div>
+                          </>
+                        )}
+                        <div><strong>Breakpoint:</strong> {currentTemplate.containerSize.breakpoint}</div>
+                        <div><strong>Canvas:</strong> {Math.round(canvasSize.width)}×{Math.round(canvasSize.height)}</div>
+                      </div>
+                    </div>
+
+                    {/* Elements */}
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Elements ({currentTemplate.elements.length})</h4>
+                      <div className="space-y-2">
+                        {currentTemplate.elements.map((element, index) => (
+                          <div key={index} className="bg-white p-2 rounded border text-xs">
+                            <div><strong>Type:</strong> {element.type}</div>
+                            <div><strong>Position:</strong> ({Math.round(element.x)}, {Math.round(element.y)})</div>
+                            <div><strong>Size:</strong> {Math.round(element.width)}×{Math.round(element.height)}</div>
+                            <div><strong>Font:</strong> {element.fontSize}px</div>
+                            <div className="mt-1 text-gray-600 break-words">
+                              <strong>Text:</strong> {element.text.substring(0, 50)}...
+                            </div>
                           </div>
-                          <div className="mb-2">
-                            <strong>Content:</strong>
-                            <div className="text-gray-600 mt-1">{contentData.content?.substring(0, 100)}...</div>
-                          </div>
-                          <div>
-                            <strong>Narration:</strong>
-                            <div className="text-gray-600 mt-1">{contentData.narration?.substring(0, 100)}...</div>
-                          </div>
-                        </>
-                      );
-                    })()}
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Content Data */}
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">
+                        {useGeneratedContent ? 'Generated Content' : 'Fallback Data'}
+                      </h4>
+                      <div className="bg-white p-2 rounded border text-xs">
+                        {(() => {
+                          const contentData = useGeneratedContent && fillTemplateMutation.data 
+                            ? fillTemplateMutation.data.filledContent
+                            : currentTemplate.metadata.fallbackData;
+                          
+                          if (!contentData) return <div>No content data available</div>;
+                          
+                          return (
+                            <>
+                              <div className="mb-2">
+                                <strong>Heading:</strong>
+                                <div className="text-gray-600 mt-1">{contentData.heading}</div>
+                              </div>
+                              <div className="mb-2">
+                                <strong>Content:</strong>
+                                <div className="text-gray-600 mt-1">{contentData.content?.substring(0, 100)}...</div>
+                              </div>
+                              <div>
+                                <strong>Narration:</strong>
+                                <div className="text-gray-600 mt-1">{contentData.narration?.substring(0, 100)}...</div>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
             </div>
