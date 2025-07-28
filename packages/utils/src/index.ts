@@ -26,6 +26,16 @@ export {
   type CoordinationMetrics
 } from './audio/audio-visual-coordinator';
 
+export { 
+  AudioMerger,
+  type AudioSegment,
+  type MergedAudioResult,
+  type CrossfadeOptions
+} from './audio/audio-merger';
+
+// Utility functions
+export { debounce, throttle } from './debounce';
+
 // Advanced Timeline Features (Phase 3-4)
 export { 
   createTimelineLayoutEngine,

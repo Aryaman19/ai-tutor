@@ -1313,8 +1313,6 @@ function AITutorContent() {
                     slides={aiTutorLesson.slides}
                     autoPlay={false}
                     showControls={true}
-                    width={1200}
-                    height={700}
                     onSlideChange={(slideIndex) => logger.debug('Canvas slide changed:', slideIndex)}
                     onPlaybackStart={handlePlaybackStart}
                     onPlaybackEnd={handlePlaybackEnd}

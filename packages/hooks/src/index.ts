@@ -55,6 +55,12 @@ export { useSettingsForm } from './useSettingsForm';
 export { useUnifiedAudio } from './useUnifiedAudio';
 export { useUnifiedLayout } from './useUnifiedLayout';
 
+// Multi-slide audio hook
+export { useMultiSlideAudio } from './useMultiSlideAudio';
+
+// Slide progression hook
+export { useSlideProgression } from './useSlideProgression';
+
 export type {
   UnifiedAudioStatus,
   UseUnifiedAudioResult
@@ -64,3 +70,17 @@ export type {
   UnifiedLayoutStatus,
   UseUnifiedLayoutResult
 } from './useUnifiedLayout';
+
+export type {
+  SlideAudioData,
+  MultiSlideAudioStatus,
+  AudioMergeResult,
+  UseMultiSlideAudioResult
+} from './useMultiSlideAudio';
+
+export type {
+  SlideSegment,
+  SlideProgressionOptions,
+  SlideProgressionState,
+  UseSlideProgressionResult
+} from './useSlideProgression';

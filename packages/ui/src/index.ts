@@ -6,6 +6,9 @@
 export { BufferProgressBar } from './components/BufferProgressBar';
 export { StreamingLoadingIndicator, BufferingDots } from './components/StreamingLoadingIndicator';
 
+// Audio components
+export { AudioSeekBar } from './components/AudioSeekBar';
+
 // Types
 export type {
   BufferProgressBarProps,
@@ -14,3 +17,8 @@ export type {
 export type {
   StreamingLoadingIndicatorProps,
 } from './components/StreamingLoadingIndicator';
+
+export type {
+  AudioSeekBarProps,
+  SlideMarker,
+} from './components/AudioSeekBar';
