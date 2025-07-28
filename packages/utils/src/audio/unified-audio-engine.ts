@@ -378,6 +378,223 @@ export class AudioEngine {
   }
 
   /**
+   * Multi-slide audio generation methods
+   */
+  
+  /**
+   * Process slide-by-slide narration content
+   */
+  processSlideNarrations(slides: Array<{ narration: string; duration?: number; slideNumber?: number }>): NarrationSegment[] {
+    logger.debug('Processing slide narrations', { slideCount: slides.length });
+    
+    const segments: NarrationSegment[] = [];
+    let currentTime = 0;
+    
+    slides.forEach((slide, index) => {
+      if (slide.narration && slide.narration.trim()) {
+        const duration = slide.duration || this.estimateTextDuration(slide.narration);
+        
+        segments.push({
+          id: `slide-${slide.slideNumber || index + 1}`,
+          text: slide.narration.trim(),
+          startTime: currentTime,
+          duration,
+          metadata: {
+            slideNumber: slide.slideNumber || index + 1,
+            contentType: 'slide-narration'
+          }
+        });
+        
+        // Add separator pause (which will be replaced by crossfade)
+        currentTime += duration + (this.options.separatorPause || 500);
+      }
+    });
+    
+    this.segments = segments;
+    logger.debug('Created slide segments', { segmentCount: segments.length });
+    
+    return segments;
+  }
+  
+  /**
+   * Generate individual audio files for each slide
+   */
+  async generateSlideAudioFiles(ttsApi: any): Promise<Array<{
+    slideNumber: number;
+    audioId: string;
+    audioUrl: string;
+    duration: number;
+    text: string;
+  }>> {
+    logger.debug('Generating individual slide audio files', { segmentCount: this.segments.length });
+    
+    const audioFiles = [];
+    
+    for (const segment of this.segments) {
+      try {
+        logger.debug(`Generating audio for slide ${segment.metadata?.slideNumber}`, {
+          textLength: segment.text.length,
+          textPreview: segment.text.substring(0, 50) + '...'
+        });
+        
+        const response = await ttsApi.generateAudio({
+          text: segment.text,
+          voice: this.options.voice
+        });
+        
+        if (!response.audio_url || !response.audio_id) {
+          throw new Error(`TTS API failed for slide ${segment.metadata?.slideNumber}`);
+        }
+        
+        audioFiles.push({
+          slideNumber: segment.metadata?.slideNumber || 0,
+          audioId: response.audio_id,
+          audioUrl: response.audio_url,
+          duration: segment.duration,
+          text: segment.text
+        });
+        
+      } catch (error) {
+        logger.error(`Failed to generate audio for slide ${segment.metadata?.slideNumber}:`, error);
+        // Continue with other slides, but mark this as failed
+        audioFiles.push({
+          slideNumber: segment.metadata?.slideNumber || 0,
+          audioId: '',
+          audioUrl: '',
+          duration: segment.duration,
+          text: segment.text
+        });
+      }
+    }
+    
+    logger.debug('Generated slide audio files', { 
+      totalFiles: audioFiles.length,
+      successfulFiles: audioFiles.filter(f => f.audioUrl).length
+    });
+    
+    return audioFiles;
+  }
+  
+  /**
+   * Simulate crossfade merging (placeholder for actual audio processing)
+   */
+  async simulateCrossfadeMerging(
+    audioFiles: Array<{
+      slideNumber: number;
+      audioId: string;
+      audioUrl: string;
+      duration: number;
+      text: string;
+    }>,
+    crossfadeDuration: number = 500
+  ): Promise<{
+    unifiedAudioUrl: string;
+    totalDuration: number;
+    segments: Array<{
+      slideNumber: number;
+      startTime: number;
+      endTime: number;
+      text: string;
+    }>;
+  }> {
+    logger.debug('Simulating crossfade merging', { 
+      audioFileCount: audioFiles.length,
+      crossfadeDuration 
+    });
+    
+    // Calculate timing with crossfades
+    const segments = [];
+    let currentTime = 0;
+    
+    audioFiles.forEach((audioFile, index) => {
+      if (audioFile.audioUrl) {
+        const startTime = currentTime;
+        const endTime = currentTime + audioFile.duration;
+        
+        segments.push({
+          slideNumber: audioFile.slideNumber,
+          startTime,
+          endTime,
+          text: audioFile.text
+        });
+        
+        // Move to next position with crossfade overlap
+        if (index < audioFiles.length - 1) {
+          currentTime += audioFile.duration - crossfadeDuration;
+        } else {
+          currentTime += audioFile.duration;
+        }
+      }
+    });
+    
+    const totalDuration = currentTime;
+    
+    // In a real implementation, this would be the actual merged audio URL
+    const unifiedAudioUrl = `/api/audio/merged-lesson-${Date.now()}.mp3`;
+    
+    // Update internal segments with new timing
+    this.segments = this.segments.map((segment, index) => ({
+      ...segment,
+      startTime: segments[index]?.startTime || segment.startTime,
+      duration: segments[index] ? segments[index].endTime - segments[index].startTime : segment.duration
+    }));
+    
+    logger.debug('Crossfade merge simulation complete', {
+      totalDuration,
+      segmentCount: segments.length,
+      unifiedAudioUrl
+    });
+    
+    return {
+      unifiedAudioUrl,
+      totalDuration,
+      segments
+    };
+  }
+  
+  /**
+   * Complete workflow for multi-slide audio generation
+   */
+  async generateMultiSlideAudio(
+    slides: Array<{ narration: string; duration?: number; slideNumber?: number }>,
+    ttsApi: any,
+    crossfadeDuration: number = 500
+  ): Promise<UnifiedAudioResult> {
+    logger.debug('Starting multi-slide audio generation', { 
+      slideCount: slides.length,
+      crossfadeDuration 
+    });
+    
+    // Process slide narrations into segments
+    this.processSlideNarrations(slides);
+    
+    // Generate individual audio files
+    const audioFiles = await this.generateSlideAudioFiles(ttsApi);
+    
+    // Simulate crossfade merging
+    const mergedResult = await this.simulateCrossfadeMerging(audioFiles, crossfadeDuration);
+    
+    // Create unified audio result
+    const result: UnifiedAudioResult = {
+      audioUrl: mergedResult.unifiedAudioUrl,
+      audioId: `multi-slide-${Date.now()}`,
+      totalDuration: mergedResult.totalDuration,
+      segments: this.segments,
+      isReady: true
+    };
+    
+    this.audioResult = result;
+    
+    logger.debug('Multi-slide audio generation complete', {
+      audioId: result.audioId,
+      totalDuration: result.totalDuration,
+      segmentCount: result.segments.length
+    });
+    
+    return result;
+  }
+
+  /**
    * Static factory method to create and process data in one call
    */
   static async createFromSemanticData(
@@ -395,6 +612,23 @@ export class AudioEngine {
     
     // Generate audio
     const result = await engine.generateUnifiedAudio(ttsApi);
+    
+    return { engine, result };
+  }
+  
+  /**
+   * Static factory method for multi-slide audio generation
+   */
+  static async createFromSlides(
+    slides: Array<{ narration: string; duration?: number; slideNumber?: number }>,
+    ttsApi: any,
+    options: AudioEngineOptions = {},
+    crossfadeDuration: number = 500
+  ): Promise<{ engine: AudioEngine; result: UnifiedAudioResult }> {
+    const engine = new AudioEngine(options);
+    
+    // Generate multi-slide audio
+    const result = await engine.generateMultiSlideAudio(slides, ttsApi, crossfadeDuration);
     
     return { engine, result };
   }

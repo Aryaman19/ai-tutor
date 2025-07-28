@@ -26,12 +26,14 @@ class SettingsService:
                 validation_result["errors"].append("Model name is required")
                 validation_result["valid"] = False
             
-            if llm_settings.temperature < 0 or llm_settings.temperature > 2:
-                validation_result["errors"].append("Temperature must be between 0 and 2")
+            # Validate timing
+            if llm_settings.timing not in ["short", "medium", "long"]:
+                validation_result["errors"].append("Timing must be 'short', 'medium', or 'long'")
                 validation_result["valid"] = False
             
-            if llm_settings.max_tokens < 1 or llm_settings.max_tokens > 8192:
-                validation_result["errors"].append("Max tokens must be between 1 and 8192")
+            # Validate difficulty
+            if llm_settings.difficulty not in ["easy", "intermediate", "advanced"]:
+                validation_result["errors"].append("Difficulty must be 'easy', 'intermediate', or 'advanced'")
                 validation_result["valid"] = False
             
             # Provider-specific validation

@@ -51,18 +51,34 @@ class TemplateService:
     def _load_templates(self):
         """Load all template files into cache"""
         try:
-            templates_file = self.templates_dir / "basic_templates.json"
+            # First try to load from categorized templates file
+            categorized_file = self.templates_dir / "complete_categorized_templates.json"
+            basic_file = self.templates_dir / "basic_templates.json"
             
-            if templates_file.exists():
-                with open(templates_file, 'r', encoding='utf-8') as f:
+            templates_loaded = False
+            
+            if basic_file.exists():
+                with open(basic_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     
                 for template in data.get("templates", []):
                     self.templates_cache[template["id"]] = template
                     
-                logger.info(f"Loaded {len(self.templates_cache)} templates")
-            else:
-                logger.warning(f"Templates file not found: {templates_file}")
+                logger.info(f"Loaded {len(self.templates_cache)} basic templates")
+                templates_loaded = True
+                
+            elif categorized_file.exists():
+                with open(categorized_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    
+                for template in data.get("templates", []):
+                    self.templates_cache[template["id"]] = template
+                    
+                logger.info(f"Loaded {len(self.templates_cache)} basic templates")
+                templates_loaded = True
+            
+            if not templates_loaded:
+                logger.warning(f"No template files found in: {self.templates_dir}")
                 
         except Exception as e:
             logger.error(f"Failed to load templates: {e}")
@@ -463,6 +479,81 @@ class TemplateService:
             "alignment": element.alignment,
             "color": element.color,
             "backgroundColor": element.backgroundColor
+        }
+    
+    def get_template_prompts_and_fallbacks(self, template_id: str, slide_index: int = 0) -> Dict[str, Dict[str, str]]:
+        """Get LLM prompts and fallback data for a template slide"""
+        template = self.get_template(template_id)
+        if not template:
+            raise ValueError(f"Template {template_id} not found")
+        
+        if slide_index >= len(template["slides"]):
+            raise ValueError(f"Slide index {slide_index} out of range")
+        
+        slide = template["slides"][slide_index]
+        
+        # Extract LLM prompts and fallback data
+        llm_prompts = slide.get("llmPrompts", {})
+        fallback_data = slide.get("fallbackData", {})
+        
+        return {
+            "prompts": llm_prompts,
+            "fallbacks": fallback_data
+        }
+    
+    def render_template_with_content(
+        self,
+        template_id: str,
+        filled_content: Dict[str, str],
+        container_size: ContainerSize,
+        slide_index: int = 0,
+        position_offset: float = 0.0
+    ) -> Dict[str, Any]:
+        """Render template with provided content and optional position offset"""
+        template = self.get_template(template_id)
+        if not template:
+            raise ValueError(f"Template {template_id} not found")
+        
+        if slide_index >= len(template["slides"]):
+            raise ValueError(f"Slide index {slide_index} out of range")
+        
+        slide = template["slides"][slide_index]
+        
+        # Get responsive configuration
+        breakpoint = container_size.breakpoint
+        responsive_config = slide.get("responsive", {}).get(breakpoint, {})
+        
+        # Merge base layout with responsive overrides
+        layout = self._merge_layout_config(slide["layout"], responsive_config)
+        
+        # Calculate elements with filled content
+        elements = self._calculate_elements(
+            layout, 
+            filled_content, 
+            container_size
+        )
+        
+        # Apply position offset for multi-slide layout
+        if position_offset > 0:
+            for element in elements:
+                element.x += position_offset
+        
+        return {
+            "templateId": template["id"],
+            "templateName": template["name"],
+            "slideIndex": slide_index,
+            "containerSize": {
+                "width": container_size.width,
+                "height": container_size.height,
+                "breakpoint": breakpoint
+            },
+            "elements": [self._element_to_dict(el) for el in elements],
+            "metadata": {
+                "slideId": slide["id"],
+                "slideType": slide["type"],
+                "filledContent": filled_content,
+                "positionOffset": position_offset
+            }
         }
 
 # Global service instance

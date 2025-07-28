@@ -14,6 +14,8 @@ from models.lesson import (
 )
 from services.ollama_service import ollama_service
 from utils.error_handler import ErrorHandler
+from services.ai_tutor_service import ai_tutor_service
+from services.template_service import ContainerSize
 
 # Optional TTS service import
 try:
@@ -1161,3 +1163,246 @@ async def convert_chunks_to_lesson(lesson_id: str, chunks: List[Dict[str, Any]])
             status_code=500,
             detail=f"Failed to convert chunks: {str(e)}"
         )
+
+
+# ============ AI Tutor Multi-Slide Generation ============
+
+class ContainerSizeRequest(BaseModel):
+    """Container size for responsive rendering"""
+    width: int = Field(1200, ge=320, le=3840, description="Container width in pixels")
+    height: int = Field(800, ge=240, le=2160, description="Container height in pixels")
+
+class AITutorGenerationRequest(BaseModel):
+    """Request for AI tutor lesson generation"""
+    topic: str = Field(..., min_length=3, max_length=200, description="Educational topic")
+    difficulty_level: str = Field("beginner", description="Difficulty level: beginner, intermediate, advanced")
+    target_duration: float = Field(120.0, ge=30.0, le=600.0, description="Target duration in seconds")
+    container_size: Optional[ContainerSizeRequest] = Field(default=None, description="Container size for responsive rendering")
+
+class AITutorSlideResponse(BaseModel):
+    """Response model for individual slide"""
+    slide_number: int
+    template_id: str
+    template_name: str
+    content_type: str
+    filled_content: Dict[str, str]
+    elements: List[Dict[str, Any]]
+    narration: str
+    estimated_duration: float
+    position_offset: float
+    metadata: Dict[str, Any]
+    generation_time: float
+    status: str
+    error_message: Optional[str] = None
+
+class AITutorProgressResponse(BaseModel):
+    """Progress update for AI tutor generation"""
+    status: str
+    message: str
+    progress: float
+    current_slide: int
+    total_slides: int
+    timestamp: float
+
+class AITutorLessonResponse(BaseModel):
+    """Complete AI tutor lesson response"""
+    topic: str
+    difficulty_level: str
+    target_duration: float
+    total_slides: int
+    estimated_total_duration: float
+    slides: List[AITutorSlideResponse]
+    audio_url: Optional[str] = None
+    audio_segments: Optional[List[Dict[str, Any]]] = None
+    canvas_states: Optional[List[Dict[str, Any]]] = None
+    generation_stats: Optional[Dict[str, Any]] = None
+    success: bool
+    error: Optional[str] = None
+
+@router.post("/ai-tutor/generate", response_model=AITutorLessonResponse)
+async def generate_ai_tutor_lesson(request: AITutorGenerationRequest):
+    """Generate complete AI tutor lesson with multi-slide layout"""
+    try:
+        logger.info(f"Starting AI tutor lesson generation: {request.topic}")
+        
+        # Convert container size
+        container_size = None
+        if request.container_size:
+            container_size = ContainerSize(
+                width=request.container_size.width,
+                height=request.container_size.height
+            )
+        
+        # Collect all slides and progress updates
+        slides = []
+        final_progress = None
+        
+        async for progress_update, slide_result in ai_tutor_service.generate_ai_tutor_lesson(
+            topic=request.topic,
+            difficulty_level=request.difficulty_level,
+            target_duration=request.target_duration,
+            container_size=container_size
+        ):
+            final_progress = progress_update
+            
+            if slide_result:
+                slide_response = AITutorSlideResponse(
+                    slide_number=slide_result.slide_number,
+                    template_id=slide_result.template_id,
+                    template_name=slide_result.template_name,
+                    content_type=slide_result.content_type,
+                    filled_content=slide_result.filled_content,
+                    elements=slide_result.elements,
+                    narration=slide_result.narration,
+                    estimated_duration=slide_result.estimated_duration,
+                    position_offset=slide_result.position_offset,
+                    metadata=slide_result.metadata,
+                    generation_time=slide_result.generation_time,
+                    status=slide_result.status,
+                    error_message=slide_result.error_message
+                )
+                slides.append(slide_response)
+        
+        # Get final lesson data (would come from the generator in a real implementation)
+        total_duration = sum(slide.estimated_duration for slide in slides)
+        successful_slides = len([s for s in slides if s.status == "success"])
+        success = successful_slides >= len(slides) * 0.8 if slides else False
+        
+        # Generate audio segments data
+        audio_segments = []
+        current_time = 0.0
+        for slide in slides:
+            if slide.narration:
+                audio_segments.append({
+                    "slide_number": slide.slide_number,
+                    "text": slide.narration,
+                    "start_time": current_time,
+                    "duration": slide.estimated_duration,
+                    "end_time": current_time + slide.estimated_duration
+                })
+                current_time += slide.estimated_duration - 0.5  # 500ms crossfade
+        
+        # Generate canvas states for UnifiedPlayer
+        canvas_states = []
+        for slide in slides:
+            if slide.elements:
+                canvas_states.append({
+                    "timestamp": 0,  # Will be updated with actual audio timing
+                    "duration": slide.estimated_duration * 1000,  # Convert to ms
+                    "elements": slide.elements,
+                    "viewBox": {
+                        "x": slide.position_offset,
+                        "y": 0,
+                        "width": 1200,
+                        "height": 800,
+                        "zoom": 1.0
+                    },
+                    "metadata": {
+                        "slide_number": slide.slide_number,
+                        "content_type": slide.content_type,
+                        "template_id": slide.template_id
+                    }
+                })
+        
+        return AITutorLessonResponse(
+            topic=request.topic,
+            difficulty_level=request.difficulty_level,
+            target_duration=request.target_duration,
+            total_slides=len(slides),
+            estimated_total_duration=total_duration,
+            slides=slides,
+            audio_url=f"/api/audio/lesson-{int(time.time())}.mp3",  # Placeholder
+            audio_segments=audio_segments,
+            canvas_states=canvas_states,
+            generation_stats={
+                "slides_generated": len(slides),
+                "successful_slides": successful_slides,
+                "success_rate": successful_slides / len(slides) if slides else 0,
+                "total_elements": sum(len(s.elements) for s in slides)
+            },
+            success=success,
+            error=None if success else f"Only {successful_slides}/{len(slides)} slides generated successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in AI tutor lesson generation: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate AI tutor lesson: {str(e)}"
+        )
+
+@router.post("/ai-tutor/stream")
+async def stream_ai_tutor_generation(request: AITutorGenerationRequest):
+    """Stream AI tutor lesson generation with real-time progress"""
+    
+    async def generate():
+        try:
+            import json
+            
+            # Convert container size
+            container_size = None
+            if request.container_size:
+                container_size = ContainerSize(
+                    width=request.container_size.width,
+                    height=request.container_size.height
+                )
+            
+            async for progress_update, slide_result in ai_tutor_service.generate_ai_tutor_lesson(
+                topic=request.topic,
+                difficulty_level=request.difficulty_level,
+                target_duration=request.target_duration,
+                container_size=container_size
+            ):
+                # Send progress update
+                progress_data = {
+                    "type": "progress",
+                    "data": progress_update
+                }
+                yield f"data: {json.dumps(progress_data)}\n\n"
+                
+                # Send slide result if available
+                if slide_result:
+                    slide_data = {
+                        "type": "slide",
+                        "data": {
+                            "slide_number": slide_result.slide_number,
+                            "template_id": slide_result.template_id,
+                            "template_name": slide_result.template_name,
+                            "content_type": slide_result.content_type,
+                            "filled_content": slide_result.filled_content,
+                            "elements": slide_result.elements,
+                            "narration": slide_result.narration,
+                            "estimated_duration": slide_result.estimated_duration,
+                            "position_offset": slide_result.position_offset,
+                            "metadata": slide_result.metadata,
+                            "generation_time": slide_result.generation_time,
+                            "status": slide_result.status,
+                            "error_message": slide_result.error_message
+                        }
+                    }
+                    yield f"data: {json.dumps(slide_data)}\n\n"
+            
+            # Send completion signal
+            completion_data = {
+                "type": "complete",
+                "data": {"message": "AI tutor lesson generation completed"}
+            }
+            yield f"data: {json.dumps(completion_data)}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Error in streaming AI tutor generation: {e}")
+            error_data = {
+                "type": "error",
+                "data": {"error": str(e)}
+            }
+            yield f"data: {json.dumps(error_data)}\n\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )

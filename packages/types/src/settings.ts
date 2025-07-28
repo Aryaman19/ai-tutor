@@ -3,11 +3,8 @@ export interface LLMSettings {
   model: string;
   endpoint?: string;
   apiKey?: string;
-  temperature: number;
-  maxTokens: number;
-  topP: number;
-  frequencyPenalty: number;
-  presencePenalty: number;
+  timing: 'short' | 'medium' | 'long';
+  difficulty: 'easy' | 'intermediate' | 'advanced';
 }
 
 export interface TTSSettings {

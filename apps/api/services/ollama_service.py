@@ -45,8 +45,8 @@ class OllamaService:
             
             # Use settings or defaults
             model = llm_settings.model if llm_settings else self.model
-            temperature = llm_settings.temperature if llm_settings else 0.7
-            max_tokens = llm_settings.max_tokens if llm_settings else 2048
+            temperature = 0.7  # Default temperature
+            max_tokens = 16384  # Default max tokens (16k)
             
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -64,7 +64,11 @@ class OllamaService:
                 
                 if response.status_code == 200:
                     result = response.json()
-                    return result.get("response", "")
+                    response_text = result.get("response", "")
+                    if not response_text or response_text.strip() == "":
+                        logger.warning(f"Empty response from Ollama for prompt: {prompt[:50]}...")
+                        logger.debug(f"Full Ollama response: {result}")
+                    return response_text
                 else:
                     logger.error(f"Ollama API error: {response.status_code} - {response.text}")
                     return None
@@ -263,6 +267,68 @@ Answer:
 """
         
         return await self._make_request(prompt)
+    
+    async def generate_content(self, prompt: str, user_id: str = "default", max_tokens: int = 200, **kwargs) -> Optional[Dict[str, str]]:
+        """Generate content using the LLM with a given prompt"""
+        try:
+            # Extract response_format from kwargs if provided
+            response_format = kwargs.get('response_format', None)
+            
+            # Modify prompt if JSON format is requested
+            if response_format == "json":
+                prompt = f"{prompt}\n\nPlease respond in valid JSON format."
+            
+            response_text = await self._make_request(prompt, user_id)
+            if response_text:
+                content = response_text.strip()
+                
+                # If JSON format was requested, try to parse and return
+                if response_format == "json":
+                    if not content or content.strip() == "":
+                        logger.warning("Empty response received when JSON format was requested")
+                        return {
+                            "content": "",
+                            "status": "failed",
+                            "error": "Empty response from LLM"
+                        }
+                    
+                    try:
+                        import json
+                        # Clean up markdown code blocks if present
+                        cleaned_content = self._extract_json_from_markdown(content)
+                        json_data = json.loads(cleaned_content)
+                        return {
+                            "content": json_data,
+                            "status": "success",
+                            "format": "json"
+                        }
+                    except json.JSONDecodeError as e:
+                        # If JSON parsing fails, return as text
+                        logger.warning(f"JSON parsing failed: {e}. Content: {content[:100]}...")
+                        return {
+                            "content": content,
+                            "status": "success", 
+                            "format": "text",
+                            "warning": "Requested JSON format but response is not valid JSON"
+                        }
+                else:
+                    return {
+                        "content": content,
+                        "status": "success"
+                    }
+            else:
+                return {
+                    "content": "",
+                    "status": "failed",
+                    "error": "No response from LLM"
+                }
+        except Exception as e:
+            logger.error(f"Failed to generate content: {e}")
+            return {
+                "content": "",
+                "status": "failed",
+                "error": str(e)
+            }
     
     async def generate_visual_script(self, topic: str, difficulty_level: str = "beginner", user_id: str = "default") -> Optional[List[CanvasStep]]:
         """Generate a visual lesson script with narration and drawing instructions"""
@@ -898,6 +964,39 @@ Focus on topics that can be effectively visualized through simple drawings. Make
             return min(base_max, 4096)
         else:
             return min(base_max, 2048)  # Conservative default
+    
+    def _extract_json_from_markdown(self, content: str) -> str:
+        """Extract JSON content from markdown code blocks"""
+        import re
+        
+        # Remove leading/trailing whitespace
+        content = content.strip()
+        
+        # Pattern to match markdown code blocks with optional language identifier
+        # Matches: ```json\n{...}\n``` or ```\n{...}\n```
+        markdown_pattern = r'```(?:json)?\s*\n?(.*?)\n?```'
+        
+        # Try to find JSON in markdown code blocks
+        matches = re.findall(markdown_pattern, content, re.DOTALL | re.IGNORECASE)
+        if matches:
+            # Use the first match (largest code block)
+            json_content = matches[0].strip()
+            logger.debug(f"Extracted JSON from markdown: {json_content[:100]}...")
+            return json_content
+        
+        # If no markdown blocks found, try to extract JSON-like content
+        # Look for content between first { and last }
+        start_idx = content.find('{')
+        end_idx = content.rfind('}')
+        
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            json_content = content[start_idx:end_idx + 1]
+            logger.debug(f"Extracted JSON from braces: {json_content[:100]}...")
+            return json_content
+        
+        # Return original content if no extraction possible
+        logger.debug("No JSON extraction possible, returning original content")
+        return content
     
     def _get_default_features(self) -> Dict:
         """Get default feature set for unknown models"""

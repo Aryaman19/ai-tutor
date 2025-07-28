@@ -33,8 +33,8 @@ class ChunkSizingConfig:
     max_chunk_duration: float = 60.0
     target_chunk_duration: float = 30.0
     min_tokens: int = 800
-    max_tokens: int = 8192  # Use maximum allowed by user settings
-    target_tokens: int = 4096  # Increased to use full available capacity
+    max_tokens: int = 16384  # Use maximum allowed (16k)
+    target_tokens: int = 8192  # Increased to use full available capacity
     overlap_threshold: float = 0.1  # 10% overlap for continuity
 
 

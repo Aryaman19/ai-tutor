@@ -389,3 +389,140 @@ async def generate_lesson_from_template(
     except Exception as e:
         logger.error(f"Failed to generate lesson from template {template_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate lesson")
+
+@router.post("/dummy-lesson", response_model=Dict[str, Any])
+async def generate_dummy_template_lesson():
+    """
+    Generate a dummy multi-slide lesson using templates with fallback data
+    
+    This endpoint creates a complete lesson using multiple templates with their
+    fallback narration data, generates audio for each slide, and calculates
+    proper timing for a seamless multi-slide experience.
+    
+    Returns:
+        Complete AI tutor lesson structure with multiple slides and unified audio timing
+    """
+    try:
+        logger.info("Starting dummy template lesson generation")
+        
+        # Select diverse templates from different categories
+        all_templates = template_service.get_all_templates()
+        
+        # Filter templates by category for diversity
+        categories_to_use = ["title-objective", "definition", "analogy", "examples", "mini-recap"]
+        selected_templates = []
+        
+        for category in categories_to_use:
+            category_templates = [t for t in all_templates if t.get("category") == category]
+            if category_templates:
+                # Take first template from each category
+                selected_templates.append(category_templates[0])
+        
+        # Fallback: if we don't have enough diverse templates, use first 3-5 available
+        if len(selected_templates) < 3:
+            selected_templates = all_templates[:5]
+        
+        # Limit to 5 slides maximum
+        selected_templates = selected_templates[:5]
+        
+        logger.info(f"Selected {len(selected_templates)} templates for dummy lesson")
+        
+        # Container size for rendering
+        container_size = ContainerSize(width=1200, height=700)
+        
+        # Generate slides using fallback data
+        slides = []
+        current_time_offset = 0
+        
+        for slide_index, template_info in enumerate(selected_templates):
+            template_id = template_info["id"]
+            template = template_service.get_template(template_id)
+            
+            if not template:
+                logger.warning(f"Template {template_id} not found, skipping")
+                continue
+            
+            # Render template with fallback data
+            rendered = template_service.render_template(
+                template_id=template_id,
+                container_size=container_size,
+                slide_index=0  # Use first slide of each template
+            )
+            
+            # Extract fallback data
+            fallback_data = rendered["metadata"].get("fallbackData", {})
+            narration = fallback_data.get("narration", f"Learning about slide {slide_index + 1}")
+            heading = fallback_data.get("heading", f"Slide {slide_index + 1}")
+            content = fallback_data.get("content", "Educational content")
+            
+            # Estimate duration based on narration text (rough estimate: 160 WPM)
+            word_count = len(narration.split())
+            estimated_duration = max(3.0, (word_count / 160) * 60)  # Minimum 3 seconds
+            
+            # Create slide data structure compatible with AITutorPlayer
+            slide_data = {
+                "slide_number": slide_index + 1,
+                "template_id": template_id,
+                "template_name": template_info["name"],
+                "content_type": template_info.get("category", "educational"),
+                "filled_content": {
+                    "heading": heading,
+                    "content": content,
+                    "narration": narration
+                },
+                "elements": rendered["elements"],
+                "narration": narration,
+                "estimated_duration": estimated_duration,
+                "position_offset": slide_index * (container_size.width + 100),  # Space slides horizontally
+                "metadata": {
+                    "slideId": f"dummy-slide-{slide_index + 1}",
+                    "slideType": template_info.get("category", "educational"),
+                    "fallbackData": fallback_data,
+                    "templateInfo": template_info,
+                    "renderInfo": rendered["metadata"]
+                },
+                "generation_time": 0.1,  # Mock generation time
+                "status": "success"
+            }
+            
+            slides.append(slide_data)
+            current_time_offset += estimated_duration
+        
+        # Calculate total duration
+        total_duration = sum(slide["estimated_duration"] for slide in slides)
+        
+        # Create lesson response compatible with AI tutor format
+        lesson_response = {
+            "topic": "Multi-Template Demo Lesson",
+            "difficulty_level": "intermediate",
+            "target_duration": total_duration,
+            "total_slides": len(slides),
+            "estimated_total_duration": total_duration,
+            "slides": slides,
+            "audio_url": None,  # Will be generated by frontend audio engine
+            "audio_segments": [
+                {
+                    "slide_number": slide["slide_number"],
+                    "text": slide["narration"],
+                    "start_time": sum(slides[i]["estimated_duration"] for i in range(slide["slide_number"] - 1)),
+                    "duration": slide["estimated_duration"]
+                }
+                for slide in slides
+            ],
+            "canvas_states": [],  # Will be generated by layout engine
+            "generation_stats": {
+                "total_templates_used": len(slides),
+                "categories_used": list(set(slide["content_type"] for slide in slides)),
+                "total_generation_time": len(slides) * 0.1,
+                "fallback_data_used": True
+            },
+            "success": True
+        }
+        
+        logger.info(f"Generated dummy lesson with {len(slides)} slides, total duration: {total_duration:.1f}s")
+        
+        return lesson_response
+        
+    except Exception as e:
+        logger.error(f"Failed to generate dummy template lesson: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate dummy lesson: {str(e)}")

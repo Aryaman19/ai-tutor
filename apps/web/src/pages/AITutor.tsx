@@ -4,6 +4,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@ai-tutor/ui';
 import { ExcalidrawPlayerProgressive } from '../components/ExcalidrawPlayerProgressive';
 import { UnifiedPlayer } from '../components/UnifiedPlayer';
+import AITutorPlayer from '../components/AITutorPlayer';
+import MultiSlideCanvasPlayer from '../components/MultiSlideCanvasPlayer';
 import { lessonsApi, ttsApi } from '@ai-tutor/api-client';
 import { createComponentLogger } from '@ai-tutor/utils';
 import { AudioEngine } from '@ai-tutor/utils/src/audio/unified-audio-engine';
@@ -50,7 +52,7 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-// API response interface
+// API response interfaces
 interface APITimelineEvent {
   id?: string;
   timestamp: number;
@@ -59,6 +61,37 @@ interface APITimelineEvent {
   content: string;
   visual_instruction?: string;
   layout_hints?: Record<string, any>;
+}
+
+interface AITutorSlide {
+  slide_number: number;
+  template_id: string;
+  template_name: string;
+  content_type: string;
+  filled_content: Record<string, string>;
+  elements: any[];
+  narration: string;
+  estimated_duration: number;
+  position_offset: number;
+  metadata: any;
+  generation_time: number;
+  status: string;
+  error_message?: string;
+}
+
+interface AITutorLessonResponse {
+  topic: string;
+  difficulty_level: string;
+  target_duration: number;
+  total_slides: number;
+  estimated_total_duration: number;
+  slides: AITutorSlide[];
+  audio_url?: string;
+  audio_segments?: any[];
+  canvas_states?: any[];
+  generation_stats?: any;
+  success: boolean;
+  error?: string;
 }
 
 interface StreamingData {
@@ -94,6 +127,13 @@ function AITutorContent() {
   const [canvasStates, setCanvasStates] = useState<any[]>([]);
   const [isProcessingEngines, setIsProcessingEngines] = useState(false);
   const [completeSemanticData, setCompleteSemanticData] = useState<any>(null);
+  
+  // AI Tutor Multi-Slide State
+  const [aiTutorLesson, setAiTutorLesson] = useState<AITutorLessonResponse | null>(null);
+  const [isGeneratingAITutor, setIsGeneratingAITutor] = useState(false);
+  const [aiTutorProgress, setAiTutorProgress] = useState<string>('');
+  const [useMultiSlideMode, setUseMultiSlideMode] = useState(true);
+  const [useCanvasPlayer, setUseCanvasPlayer] = useState(false);
   
   // Playback State
   const [isPlaying, setIsPlaying] = useState(false);
@@ -583,6 +623,216 @@ function AITutorContent() {
     setCanvasStates([]);
     setIsProcessingEngines(false);
     setCompleteSemanticData(null);
+    
+    // Reset AI tutor state
+    setAiTutorLesson(null);
+    setIsGeneratingAITutor(false);
+    setAiTutorProgress('');
+  };
+
+  // Generate AI tutor lesson with multi-slide support
+  const generateAITutorLesson = async () => {
+    if (!topic.trim()) {
+      setError('Please enter a topic to generate a lesson');
+      return;
+    }
+
+    setIsGeneratingAITutor(true);
+    setError('');
+    setAiTutorProgress('Starting AI tutor lesson generation...');
+    resetLesson();
+
+    try {
+      logger.debug('Starting AI tutor lesson generation', { topic, difficulty, targetDuration });
+
+      // Call the AI tutor API
+      const response = await fetch('/api/ai-tutor/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topic: topic.trim(),
+          difficulty_level: difficulty,
+          target_duration: targetDuration,
+          container_size: {
+            width: 1200,
+            height: 800
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      const lesson: AITutorLessonResponse = await response.json();
+      
+      logger.debug('AI tutor lesson generated successfully', { 
+        lesson: {
+          topic: lesson.topic,
+          total_slides: lesson.total_slides,
+          success: lesson.success,
+          slides_count: lesson.slides?.length || 0
+        }
+      });
+
+      if (!lesson.success) {
+        throw new Error(lesson.error || 'AI tutor lesson generation failed');
+      }
+
+      setAiTutorLesson(lesson);
+      setAiTutorProgress('AI tutor lesson generated successfully!');
+
+      // Process the lesson for UnifiedPlayer
+      await processAITutorLessonForPlayer(lesson);
+
+    } catch (error) {
+      logger.error('AI tutor lesson generation failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setError(`AI tutor generation failed: ${errorMessage}`);
+      setAiTutorProgress('');
+    } finally {
+      setIsGeneratingAITutor(false);
+    }
+  };
+
+  // Generate dummy template lesson using fallback data
+  const generateDummyTemplateLesson = async () => {
+    setIsGeneratingAITutor(true);
+    setError('');
+    setAiTutorProgress('Loading dummy templates with fallback data...');
+    resetLesson();
+
+    try {
+      logger.debug('Starting dummy template lesson generation');
+
+      // Call the dummy template API
+      const response = await fetch('/api/templates/dummy-lesson', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      const lesson: AITutorLessonResponse = await response.json();
+      
+      logger.debug('Dummy template lesson generated successfully', { 
+        lesson: {
+          topic: lesson.topic,
+          total_slides: lesson.total_slides,
+          success: lesson.success,
+          slides_count: lesson.slides?.length || 0,
+          categories_used: lesson.generation_stats?.categories_used
+        }
+      });
+
+      if (!lesson.success) {
+        throw new Error(lesson.error || 'Dummy template lesson generation failed');
+      }
+
+      setAiTutorLesson(lesson);
+      setAiTutorProgress('Dummy template lesson loaded successfully!');
+
+      // Process the lesson for UnifiedPlayer
+      await processAITutorLessonForPlayer(lesson);
+
+    } catch (error) {
+      logger.error('Dummy template lesson generation failed:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setError(`Dummy template generation failed: ${errorMessage}`);
+      setAiTutorProgress('');
+    } finally {
+      setIsGeneratingAITutor(false);
+    }
+  };
+
+  // Process AI tutor lesson for UnifiedPlayer
+  const processAITutorLessonForPlayer = async (lesson: AITutorLessonResponse) => {
+    setIsProcessingEngines(true);
+    setAiTutorProgress('Setting up unified player...');
+
+    try {
+      // Create AudioEngine with slide narrations
+      const slides = lesson.slides.map(slide => ({
+        narration: slide.narration,
+        duration: slide.estimated_duration * 1000, // Convert to ms
+        slideNumber: slide.slide_number
+      }));
+
+      logger.debug('Creating AudioEngine for multi-slide lesson', { slidesCount: slides.length });
+
+      const audioEngineInstance = new AudioEngine({
+        voice: 'default',
+        speed: 1.0,
+        volume: 1.0,
+        separatorPause: 500 // 500ms crossfade
+      });
+
+      // Process slide narrations
+      audioEngineInstance.processSlideNarrations(slides);
+
+      // Create mock unified audio result (since we don't have actual TTS)
+      const mockAudioResult = {
+        audioUrl: lesson.audio_url || '/api/audio/mock-lesson.mp3',
+        audioId: `ai-tutor-${Date.now()}`,
+        totalDuration: lesson.estimated_total_duration * 1000, // Convert to ms
+        segments: audioEngineInstance.getSegments(),
+        isReady: true
+      };
+
+      setAudioEngine(audioEngineInstance);
+      setUnifiedAudioResult(mockAudioResult);
+
+      // Create LayoutEngine and set up canvas states
+      const layoutEngineInstance = new LayoutEngine({
+        canvasWidth: 1200,
+        canvasHeight: 800,
+        elementSpacing: 80,
+        fontSize: 16,
+        maxElementsPerScreen: 8,
+        autoScroll: true,
+        animationDuration: 300
+      });
+
+      // Convert lesson canvas states
+      const canvasStatesData = lesson.canvas_states || [];
+      
+      // Update timing for canvas states based on audio segments
+      const processedStates = canvasStatesData.map((state, index) => {
+        const audioSegment = mockAudioResult.segments[index];
+        return {
+          ...state,
+          timestamp: audioSegment ? audioSegment.startTime : index * 5000,
+          duration: audioSegment ? audioSegment.duration : 5000,
+        };
+      });
+
+      layoutEngineInstance.setCanvasStates(processedStates);
+      setLayoutEngine(layoutEngineInstance);
+      setCanvasStates(processedStates);
+
+      logger.debug('AI tutor lesson processed for UnifiedPlayer', {
+        audioReady: !!mockAudioResult.isReady,
+        canvasStatesCount: processedStates.length,
+        totalDuration: mockAudioResult.totalDuration
+      });
+
+      setAiTutorProgress('Ready to play AI tutor lesson!');
+      setIsStreamingComplete(true);
+
+    } catch (error) {
+      logger.error('Failed to process AI tutor lesson for player:', error);
+      setError(`Failed to set up player: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsProcessingEngines(false);
+    }
   };
 
   const handlePlaybackStart = () => {
@@ -699,7 +949,7 @@ function AITutorContent() {
                     ? 'bg-white shadow-sm text-blue-600'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
-                disabled={isGenerating || createLessonMutation.isPending}
+                disabled={isGenerating || createLessonMutation.isPending || isGeneratingAITutor}
               >
                 🎮 Play Now
               </button>
@@ -710,33 +960,151 @@ function AITutorContent() {
                     ? 'bg-white shadow-sm text-green-600'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
-                disabled={isGenerating || createLessonMutation.isPending}
+                disabled={isGenerating || createLessonMutation.isPending || isGeneratingAITutor}
               >
                 📚 Save Lesson
               </button>
             </div>
           </div>
 
+          {/* AI Tutor Mode Toggle (only for interactive mode) */}
+          {mode === 'interactive' && (
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                🤖 Lesson Generation Mode
+              </label>
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setUseMultiSlideMode(true)}
+                  className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
+                    useMultiSlideMode
+                      ? 'bg-white shadow-sm text-purple-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  disabled={isGenerating || isGeneratingAITutor}
+                >
+                  🎯 AI Tutor (Multi-Slide)
+                </button>
+                <button
+                  onClick={() => setUseMultiSlideMode(false)}
+                  className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
+                    !useMultiSlideMode
+                      ? 'bg-white shadow-sm text-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  disabled={isGenerating || isGeneratingAITutor}
+                >
+                  ⚡ Stream Mode (Legacy)
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {useMultiSlideMode 
+                  ? "🎯 Structured lessons with multiple slides, templates, and synchronized audio"
+                  : "⚡ Traditional streaming mode with timeline events"
+                }
+              </p>
+            </div>
+          )}
+
+          {/* Canvas Player Mode Toggle (only for multi-slide mode) */}
+          {mode === 'interactive' && useMultiSlideMode && (
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                🎨 Canvas Player Mode
+              </label>
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button
+                  onClick={() => setUseCanvasPlayer(false)}
+                  className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
+                    !useCanvasPlayer
+                      ? 'bg-white shadow-sm text-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  disabled={isGenerating || isGeneratingAITutor}
+                >
+                  🤖 AI Tutor Player
+                </button>
+                <button
+                  onClick={() => setUseCanvasPlayer(true)}
+                  className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
+                    useCanvasPlayer
+                      ? 'bg-white shadow-sm text-orange-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                  disabled={isGenerating || isGeneratingAITutor}
+                >
+                  🎨 Multi-Slide Canvas
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {useCanvasPlayer 
+                  ? "🎨 POC-style multi-slide canvas player with timer-based progression"
+                  : "🤖 Standard AI tutor player with audio synchronization"
+                }
+              </p>
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="flex gap-4">
             {mode === 'interactive' ? (
-              <Button
-                onClick={generateLesson}
-                disabled={isGenerating || !topic.trim()}
-                className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 text-lg"
-              >
-                {isGenerating ? (
-                  <div className="flex items-center justify-center space-x-3">
-                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Generating Interactive Content...</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center space-x-3">
-                    <span className="text-xl">🎮</span>
-                    <span>Generate & Play Now</span>
-                  </div>
+              <>
+                <Button
+                  onClick={useMultiSlideMode ? generateAITutorLesson : generateLesson}
+                  disabled={(useMultiSlideMode ? isGeneratingAITutor : isGenerating) || !topic.trim()}
+                  className={`flex-1 ${
+                    useMultiSlideMode 
+                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700' 
+                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+                  } text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 text-lg`}
+                >
+                  {(useMultiSlideMode ? isGeneratingAITutor : isGenerating) ? (
+                    <div className="flex items-center justify-center space-x-3">
+                      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>
+                        {useMultiSlideMode 
+                          ? 'Generating AI Tutor Lesson...' 
+                          : 'Generating Interactive Content...'
+                        }
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center space-x-3">
+                      <span className="text-xl">
+                        {useMultiSlideMode ? '🎯' : '🎮'}
+                      </span>
+                      <span>
+                        {useMultiSlideMode 
+                          ? 'Generate AI Tutor Lesson' 
+                          : 'Generate & Play Now'
+                        }
+                      </span>
+                    </div>
+                  )}
+                </Button>
+                
+                {/* Load Dummy Templates Button - only show in multi-slide mode */}
+                {useMultiSlideMode && (
+                  <Button
+                    onClick={generateDummyTemplateLesson}
+                    disabled={isGeneratingAITutor || isGenerating}
+                    className="flex-none bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 text-lg"
+                    title="Load a multi-slide lesson using template fallback data without LLM generation"
+                  >
+                    {isGeneratingAITutor && aiTutorProgress.includes('dummy') ? (
+                      <div className="flex items-center justify-center space-x-3">
+                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Loading Templates...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center space-x-3">
+                        <span className="text-xl">📐</span>
+                        <span>Load Dummy Templates</span>
+                      </div>
+                    )}
+                  </Button>
                 )}
-              </Button>
+              </>
             ) : (
               <Button
                 onClick={() => createLessonMutation.mutate(topic.trim())}
@@ -757,12 +1125,12 @@ function AITutorContent() {
               </Button>
             )}
             
-            {(timelineEvents.length > 0 || error) && (
+            {(timelineEvents.length > 0 || aiTutorLesson || error) && (
               <Button
                 onClick={resetLesson}
                 variant="outline"
                 className="px-6 py-4 text-lg"
-                disabled={isGenerating || createLessonMutation.isPending}
+                disabled={isGenerating || createLessonMutation.isPending || isGeneratingAITutor}
               >
                 🔄 New Lesson
               </Button>
@@ -770,11 +1138,25 @@ function AITutorContent() {
           </div>
 
           {/* Progress indicator */}
-          {generationProgress && (
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          {(generationProgress || aiTutorProgress) && (
+            <div className={`mt-4 p-3 ${
+              aiTutorProgress 
+                ? 'bg-purple-50 border border-purple-200' 
+                : 'bg-blue-50 border border-blue-200'
+            } rounded-lg`}>
               <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-blue-800 font-medium">{generationProgress}</span>
+                <div className={`w-4 h-4 border-2 ${
+                  aiTutorProgress 
+                    ? 'border-purple-600' 
+                    : 'border-blue-600'
+                } border-t-transparent rounded-full animate-spin`}></div>
+                <span className={`${
+                  aiTutorProgress 
+                    ? 'text-purple-800' 
+                    : 'text-blue-800'
+                } font-medium`}>
+                  {aiTutorProgress || generationProgress}
+                </span>
               </div>
               {isProcessingEngines && (
                 <div className="mt-2 text-xs text-blue-600">
@@ -798,10 +1180,99 @@ function AITutorContent() {
               </div>
             </div>
           )}
+
+          {/* AI Tutor Lesson Info */}
+          {aiTutorLesson && (
+            <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-semibold text-purple-900">
+                  {aiTutorLesson.generation_stats?.fallback_data_used 
+                    ? '📐 Dummy Template Lesson Generated' 
+                    : '🎯 AI Tutor Lesson Generated'
+                  }
+                </h3>
+                <div className="flex items-center space-x-2">
+                  {aiTutorLesson.success ? (
+                    <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                      ✅ Success
+                    </span>
+                  ) : (
+                    <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
+                      ❌ Error
+                    </span>
+                  )}
+                  {aiTutorLesson.generation_stats?.fallback_data_used && (
+                    <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-medium rounded-full">
+                      📐 Template Data
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="bg-white/50 p-3 rounded-lg">
+                  <div className="text-purple-600 font-medium">Topic</div>
+                  <div className="text-gray-900">{aiTutorLesson.topic}</div>
+                </div>
+                <div className="bg-white/50 p-3 rounded-lg">
+                  <div className="text-purple-600 font-medium">Slides</div>
+                  <div className="text-gray-900">{aiTutorLesson.total_slides}</div>
+                </div>
+                <div className="bg-white/50 p-3 rounded-lg">
+                  <div className="text-purple-600 font-medium">Duration</div>
+                  <div className="text-gray-900">{Math.round(aiTutorLesson.estimated_total_duration)}s</div>
+                </div>
+                <div className="bg-white/50 p-3 rounded-lg">
+                  <div className="text-purple-600 font-medium">Difficulty</div>
+                  <div className="text-gray-900 capitalize">{aiTutorLesson.difficulty_level}</div>
+                </div>
+              </div>
+
+              {/* Template Categories for Dummy Lessons */}
+              {aiTutorLesson.generation_stats?.fallback_data_used && aiTutorLesson.generation_stats?.categories_used && (
+                <div className="mt-4">
+                  <div className="text-sm font-medium text-purple-700 mb-2">Template Categories Used:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {aiTutorLesson.generation_stats.categories_used.map((category: string, index: number) => (
+                      <span 
+                        key={index} 
+                        className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded-full capitalize"
+                      >
+                        {category.replace('-', ' ')}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {aiTutorLesson.slides && aiTutorLesson.slides.length > 0 && (
+                <div className="mt-4">
+                  <div className="text-sm font-medium text-purple-700 mb-2">Slide Preview:</div>
+                  <div className="flex space-x-2 overflow-x-auto">
+                    {aiTutorLesson.slides.slice(0, 5).map((slide, index) => (
+                      <div key={slide.slide_number} className="flex-shrink-0 bg-white p-2 rounded border text-xs min-w-[120px]">
+                        <div className="font-medium text-gray-900">#{slide.slide_number}</div>
+                        <div className="text-gray-600 capitalize">{slide.content_type}</div>
+                        <div className="text-purple-600">{slide.template_name}</div>
+                        {aiTutorLesson.generation_stats?.fallback_data_used && (
+                          <div className="text-orange-600 text-xs mt-1">Fallback Data</div>
+                        )}
+                      </div>
+                    ))}
+                    {aiTutorLesson.slides.length > 5 && (
+                      <div className="flex-shrink-0 bg-gray-100 p-2 rounded border text-xs min-w-[60px] flex items-center justify-center">
+                        +{aiTutorLesson.slides.length - 5} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Lesson Player */}
-        {streamingChunks.length > 0 && (
+        {(streamingChunks.length > 0 || (aiTutorLesson && isStreamingComplete)) && (
           <div className="bg-white rounded-xl shadow-lg overflow-hidden mb-8">
             <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b">
               <div className="flex items-center justify-between">
@@ -815,7 +1286,7 @@ function AITutorContent() {
                 </div>
                 <div className="text-right">
                   <div className="text-sm text-gray-500">
-                    {streamingChunks.length} segments ready
+                    {aiTutorLesson ? `${aiTutorLesson.total_slides} slides ready` : `${streamingChunks.length} segments ready`}
                     {unifiedAudioResult && (
                       <span className="ml-2 text-green-600">
                         • Unified Audio ✅
@@ -834,9 +1305,38 @@ function AITutorContent() {
               </div>
             </div>
             
-            {/* Unified Player */}
+            {/* Player */}
             <div className="h-[700px] relative">
-              {unifiedAudioResult && audioEngine && layoutEngine ? (
+              {aiTutorLesson && aiTutorLesson.slides ? (
+                useCanvasPlayer ? (
+                  <MultiSlideCanvasPlayer
+                    slides={aiTutorLesson.slides}
+                    autoPlay={false}
+                    showControls={true}
+                    width={1200}
+                    height={700}
+                    onSlideChange={(slideIndex) => logger.debug('Canvas slide changed:', slideIndex)}
+                    onPlaybackStart={handlePlaybackStart}
+                    onPlaybackEnd={handlePlaybackEnd}
+                    onError={handleError}
+                    className="w-full h-full"
+                    testMode={false} // Set to true to test with simple elements
+                  />
+                ) : (
+                  <AITutorPlayer
+                    slides={aiTutorLesson.slides}
+                    autoPlay={false}
+                    showControls={true}
+                    width={1200}
+                    height={700}
+                    onPlaybackStart={handlePlaybackStart}
+                    onPlaybackEnd={handlePlaybackEnd}
+                    onSlideChange={(slideIndex) => logger.debug('AI tutor slide changed:', slideIndex)}
+                    onError={handleError}
+                    className="w-full h-full"
+                  />
+                )
+              ) : unifiedAudioResult && audioEngine && layoutEngine ? (
                 <UnifiedPlayer
                   audioEngine={audioEngine}
                   layoutEngine={layoutEngine}
@@ -857,16 +1357,34 @@ function AITutorContent() {
                   <div className="text-center">
                     <div className="w-12 h-12 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                     <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                      Preparing Unified Player
+                      {aiTutorLesson 
+                        ? (useCanvasPlayer ? 'Preparing Multi-Slide Canvas Player' : 'Preparing AI Tutor Player')
+                        : 'Preparing Unified Player'
+                      }
                     </h3>
                     <p className="text-gray-600 mb-4">
-                      Processing lesson with unified audio and layout engines...
+                      {aiTutorLesson 
+                        ? (useCanvasPlayer 
+                          ? 'Setting up POC-style multi-slide canvas player...' 
+                          : 'Setting up AI tutor lesson player...'
+                        )
+                        : 'Processing lesson with unified audio and layout engines...'
+                      }
                     </p>
                     <div className="text-sm text-gray-500 space-y-1">
-                      <div>Audio Engine: {audioEngine ? '✅ Ready' : '⏳ Loading'}</div>
-                      <div>Layout Engine: {layoutEngine ? '✅ Ready' : '⏳ Loading'}</div>
-                      <div>Unified Audio: {unifiedAudioResult ? '✅ Ready' : '⏳ Generating'}</div>
-                      <div>Canvas States: {canvasStates.length > 0 ? `✅ ${canvasStates.length} ready` : '⏳ Processing'}</div>
+                      {aiTutorLesson ? (
+                        <>
+                          <div>AI Tutor Lesson: {aiTutorLesson.success ? '✅ Ready' : '⏳ Processing'}</div>
+                          <div>Slides: {aiTutorLesson.slides?.length > 0 ? `✅ ${aiTutorLesson.slides.length} ready` : '⏳ Generating'}</div>
+                        </>
+                      ) : (
+                        <>
+                          <div>Audio Engine: {audioEngine ? '✅ Ready' : '⏳ Loading'}</div>
+                          <div>Layout Engine: {layoutEngine ? '✅ Ready' : '⏳ Loading'}</div>
+                          <div>Unified Audio: {unifiedAudioResult ? '✅ Ready' : '⏳ Generating'}</div>
+                          <div>Canvas States: {canvasStates.length > 0 ? `✅ ${canvasStates.length} ready` : '⏳ Processing'}</div>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -961,7 +1479,7 @@ function AITutorContent() {
         )}
 
         {/* Empty State */}
-        {!isGenerating && streamingChunks.length === 0 && !error && (
+        {!isGenerating && !isGeneratingAITutor && streamingChunks.length === 0 && !aiTutorLesson && !error && (
           <div className="bg-white rounded-xl shadow-lg p-12 text-center">
             <div className="text-6xl mb-4">🎓</div>
             <h3 className="text-2xl font-semibold text-gray-900 mb-2">

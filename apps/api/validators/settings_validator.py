@@ -90,21 +90,17 @@ class SettingsValidator:
     @staticmethod
     def _validate_llm(llm_data: Dict[str, Any], result: ValidationResult):
         """Validate LLM settings"""
-        if "temperature" in llm_data:
-            temp = llm_data["temperature"]
-            if not isinstance(temp, (int, float)):
-                result.add_error("llm.temperature", "Temperature must be a number")
-            elif temp < 0 or temp > 2:
-                result.add_error("llm.temperature", "Temperature must be between 0 and 2")
+        if "timing" in llm_data:
+            timing = llm_data["timing"]
+            valid_timings = ["short", "medium", "long"]
+            if timing not in valid_timings:
+                result.add_error("llm.timing", f"Timing must be one of: {', '.join(valid_timings)}")
         
-        if "maxTokens" in llm_data:
-            max_tokens = llm_data["maxTokens"]
-            if not isinstance(max_tokens, int):
-                result.add_error("llm.maxTokens", "Max tokens must be an integer")
-            elif max_tokens < 1:
-                result.add_error("llm.maxTokens", "Max tokens must be at least 1")
-            elif max_tokens > 8192:
-                result.add_error("llm.maxTokens", "Max tokens cannot exceed 8192")
+        if "difficulty" in llm_data:
+            difficulty = llm_data["difficulty"]
+            valid_difficulties = ["easy", "intermediate", "advanced"]
+            if difficulty not in valid_difficulties:
+                result.add_error("llm.difficulty", f"Difficulty must be one of: {', '.join(valid_difficulties)}")
         
         if "model" in llm_data:
             model = llm_data["model"]
@@ -255,7 +251,7 @@ class SettingsValidator:
         # Define valid fields for each section
         valid_fields = {
             "profile": ["name", "email", "avatar", "timezone"],
-            "llm": ["provider", "model", "temperature", "maxTokens", "apiKey"],
+            "llm": ["provider", "model", "timing", "difficulty", "apiKey"],
             "tts": ["provider", "voice", "speed", "volume", "apiKey"],
             "stt": ["provider", "language", "continuous", "interimResults", "apiKey"],
             "language": ["primary", "secondary"],

@@ -10,11 +10,8 @@ class LLMSettings(BaseModel):
     model: str = Field(default="gemma2:3b", description="Model name")
     endpoint: Optional[str] = Field(default=None, description="Custom API endpoint")
     api_key: Optional[str] = Field(default=None, description="API key for external providers")
-    temperature: float = Field(default=0.7, ge=0.0, le=2.0, description="Temperature for text generation")
-    max_tokens: int = Field(default=2048, ge=1, le=8192, description="Maximum tokens to generate")
-    top_p: float = Field(default=1.0, ge=0.0, le=1.0, description="Top-p sampling parameter")
-    frequency_penalty: float = Field(default=0.0, ge=-2.0, le=2.0, description="Frequency penalty")
-    presence_penalty: float = Field(default=0.0, ge=-2.0, le=2.0, description="Presence penalty")
+    timing: str = Field(default="short", description="Content timing (short, medium, long)")
+    difficulty: str = Field(default="intermediate", description="Content difficulty (easy, intermediate, advanced)")
 
 
 class TTSSettings(BaseModel):

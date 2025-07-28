@@ -54,7 +54,6 @@ const ModelsSettingsComponent: React.FC<ModelsSettingsProps> = ({
       <GenerationParameters
         data={data}
         onChange={onChange}
-        contextLength={state.features?.contextLength}
       />
 
       <ModelTesting

@@ -49,6 +49,12 @@ export interface CanvasState {
     eventId?: string;
     contentType?: string;
     title?: string;
+    // Multi-slide support
+    slideIndex?: number;
+    slideOffset?: number;
+    slideWidth?: number;
+    isMultiSlide?: boolean;
+    transitionType?: 'slide-change' | 'timeline-update';
   };
 }
 
@@ -1344,6 +1350,169 @@ export class LayoutEngine {
       zoom: 1
     };
     
+  }
+
+  /**
+   * Multi-slide support methods
+   */
+  
+  /**
+   * Create multi-slide canvas states with horizontal positioning
+   */
+  createMultiSlideStates(
+    slides: Array<{
+      elements: CanvasElement[];
+      timestamp: number;
+      duration: number;
+      metadata?: any;
+    }>,
+    slideWidth: number = 1200,
+    slideSpacing: number = 100
+  ): CanvasState[] {
+    const states: CanvasState[] = [];
+    
+    slides.forEach((slide, index) => {
+      // Calculate horizontal position for this slide
+      const slideOffset = index * (slideWidth + slideSpacing);
+      
+      // Adjust all elements to be positioned at the slide offset
+      const adjustedElements = slide.elements.map(element => ({
+        ...element,
+        x: element.x + slideOffset,
+        id: `${element.id}-slide-${index}` // Ensure unique IDs across slides
+      }));
+      
+      const state: CanvasState = {
+        elements: adjustedElements,
+        timestamp: slide.timestamp,
+        duration: slide.duration,
+        viewBox: {
+          x: slideOffset,
+          y: 0,
+          width: slideWidth,
+          height: this.options.canvasHeight,
+          zoom: 1
+        },
+        metadata: {
+          ...slide.metadata,
+          slideIndex: index,
+          slideOffset,
+          slideWidth,
+          isMultiSlide: true
+        }
+      };
+      
+      states.push(state);
+    });
+    
+    return states;
+  }
+  
+  /**
+   * Update container size for responsive multi-slide layout
+   */
+  updateContainerSize(containerSize: { width: number; height: number }): void {
+    this.options.canvasWidth = containerSize.width;
+    this.options.canvasHeight = containerSize.height;
+    
+    // Update current viewBox
+    this.currentViewBox.width = containerSize.width;
+    this.currentViewBox.height = containerSize.height;
+    
+    // Recalculate responsive font size
+    this.options.fontSize = this.calculateResponsiveFontSize(containerSize.width);
+  }
+  
+  /**
+   * Calculate responsive font size based on container width
+   */
+  private calculateResponsiveFontSize(containerWidth: number): number {
+    const { minFontSize = 12, maxFontSize = 32, scalingFactor = 50 } = this.options;
+    
+    // Base font size calculation
+    let fontSize = Math.floor(containerWidth / scalingFactor);
+    
+    // Clamp to min/max values
+    fontSize = Math.max(minFontSize, Math.min(maxFontSize, fontSize));
+    
+    return fontSize;
+  }
+  
+  /**
+   * Get canvas state at specific time with multi-slide support
+   */
+  getStateAtTime(timeMs: number): CanvasState | null {
+    if (this.canvasStates.length === 0) {
+      return null;
+    }
+    
+    // Find the state that should be active at the given time
+    for (const state of this.canvasStates) {
+      const stateStartTime = state.timestamp;
+      const stateEndTime = state.timestamp + state.duration;
+      
+      if (timeMs >= stateStartTime && timeMs < stateEndTime) {
+        return state;
+      }
+    }
+    
+    // If no exact match, return the last state if time is beyond all states
+    const lastState = this.canvasStates[this.canvasStates.length - 1];
+    if (timeMs >= lastState.timestamp) {
+      return lastState;
+    }
+    
+    // If time is before all states, return the first state
+    return this.canvasStates[0];
+  }
+  
+  /**
+   * Get all canvas states (for external access)
+   */
+  getCanvasStates(): CanvasState[] {
+    return [...this.canvasStates];
+  }
+  
+  /**
+   * Set canvas states (for multi-slide initialization)
+   */
+  setCanvasStates(states: CanvasState[]): void {
+    this.canvasStates = states;
+  }
+  
+  /**
+   * Calculate optimal zoom level for multi-slide view
+   */
+  calculateOptimalZoom(
+    totalSlides: number,
+    slideWidth: number,
+    slideSpacing: number,
+    containerWidth: number
+  ): number {
+    const totalWidth = totalSlides * slideWidth + (totalSlides - 1) * slideSpacing;
+    const optimalZoom = containerWidth / totalWidth;
+    
+    // Clamp zoom between reasonable values
+    return Math.max(0.1, Math.min(3.0, optimalZoom));
+  }
+  
+  /**
+   * Get slide bounds for navigation
+   */
+  getSlideBounds(slideIndex: number, slideWidth: number, slideSpacing: number): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } {
+    const slideOffset = slideIndex * (slideWidth + slideSpacing);
+    
+    return {
+      x: slideOffset,
+      y: 0,
+      width: slideWidth,
+      height: this.options.canvasHeight
+    };
   }
 
   /**

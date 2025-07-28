@@ -98,7 +98,20 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
   const [duration, setDuration] = useState(0);
   const [isReady, setIsReady] = useState(false);
   const [currentElements, setCurrentElements] = useState<any[]>([]);
-  const [currentViewBox, setCurrentViewBox] = useState({
+  const [currentViewBox, setCurrentViewBox] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    zoom: number;
+    metadata?: {
+      slideIndex?: number;
+      isMultiSlide?: boolean;
+      isSlideTransition?: boolean;
+      slideOffset?: number;
+      transitionType?: 'slide-change' | 'timeline-update';
+    };
+  }>({
     x: 0,
     y: 0,
     width,
@@ -471,7 +484,7 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
     handlePlay,
   ]);
 
-  // Update canvas elements based on current position
+  // Enhanced multi-slide timeline synchronization
   useEffect(() => {
     if (!layoutEngine || canvasStates.length === 0) {
       logger.debug("Canvas update skipped", {
@@ -488,12 +501,27 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
       
       // Only update if we've moved to a different canvas state
       if (stateId !== currentStateId) {
+        // Detect if this is a slide transition for multi-slide lessons
+        const isMultiSlide = currentState.metadata?.isMultiSlide;
+        const slideIndex = currentState.metadata?.slideIndex;
+        const previousSlideIndex = currentElements.length > 0 ? 
+          currentElements[0]?.customData?.slideIndex : null;
+        
+        const isSlideTransition = isMultiSlide && 
+          slideIndex !== undefined && 
+          previousSlideIndex !== undefined && 
+          slideIndex !== previousSlideIndex;
+
         logger.debug("Canvas state changed", {
           timestamp: currentState.timestamp,
           elementsCount: currentState.elements.length,
           viewBox: currentState.viewBox,
           title: currentState.metadata?.title,
+          slideIndex,
+          isMultiSlide,
+          isSlideTransition,
           currentPosition,
+          slideOffset: currentState.metadata?.slideOffset,
           elements: currentState.elements.map(el => ({
             id: el.id,
             type: el.type,
@@ -505,9 +533,43 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
           }))
         });
 
-        setCurrentElements([...currentState.elements]); // Force new array reference
-        setCurrentViewBox({...currentState.viewBox}); // Force new object reference
+        // Enhanced element updating with slide metadata
+        const enhancedElements = currentState.elements.map(el => ({
+          ...el,
+          customData: {
+            ...el.customData,
+            slideIndex,
+            isMultiSlide,
+            slideTransition: isSlideTransition,
+            timestamp: currentState.timestamp
+          }
+        }));
+
+        // Enhanced viewBox with transition information
+        const enhancedViewBox = {
+          ...currentState.viewBox,
+          metadata: {
+            slideIndex,
+            isMultiSlide,
+            isSlideTransition,
+            slideOffset: currentState.metadata?.slideOffset || 0,
+            transitionType: isSlideTransition ? 'slide-change' : 'timeline-update'
+          }
+        };
+
+        setCurrentElements([...enhancedElements]); // Force new array reference
+        setCurrentViewBox({...enhancedViewBox}); // Force new object reference
         setCurrentStateId(stateId);
+
+        // Trigger additional actions for slide transitions
+        if (isSlideTransition) {
+          logger.info(`Slide transition: ${previousSlideIndex} → ${slideIndex}`, {
+            fromSlide: previousSlideIndex,
+            toSlide: slideIndex,
+            transitionTime: currentPosition,
+            slideOffset: currentState.metadata?.slideOffset
+          });
+        }
       }
     } else {
       logger.debug("No canvas state found for position", {
@@ -515,11 +577,13 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
         availableStates: canvasStates.map(s => ({
           timestamp: s.timestamp,
           duration: s.duration,
-          range: `${s.timestamp} - ${s.timestamp + s.duration}`
+          range: `${s.timestamp} - ${s.timestamp + s.duration}`,
+          slideIndex: s.metadata?.slideIndex,
+          isMultiSlide: s.metadata?.isMultiSlide
         }))
       });
     }
-  }, [currentPosition, layoutEngine, canvasStates, currentStateId]);
+  }, [currentPosition, layoutEngine, canvasStates, currentStateId, currentElements]);
 
   // Update layout engine when container size changes
   useEffect(() => {
@@ -779,8 +843,18 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
               {/* Center spacer */}
               <div className="flex-1"></div>
 
-              {/* Right side - Current segment info */}
+              {/* Right side - Current segment and slide info */}
               <div className="flex items-center gap-2 text-white text-sm min-w-0 flex-shrink">
+                {/* Multi-slide information */}
+                {currentViewBox.metadata?.isMultiSlide && (
+                  <div className="bg-purple-500/30 px-2 py-1 rounded-full whitespace-nowrap">
+                    <span className="text-white/90 text-xs font-medium">
+                      🎯 Slide {(currentViewBox.metadata?.slideIndex || 0) + 1}
+                    </span>
+                  </div>
+                )}
+
+                {/* Content type information */}
                 {currentSegment && (
                   <div className="bg-white/20 px-2 py-1 rounded-full whitespace-nowrap">
                     <span className="text-white/80 text-xs">
@@ -792,7 +866,7 @@ export const UnifiedPlayer: React.FC<UnifiedPlayerProps> = ({
                 <div className="flex items-center gap-1 whitespace-nowrap">
                   <div className="w-2 h-2 bg-green-400 rounded-full flex-shrink-0"></div>
                   <span className="text-white/80 text-xs hidden sm:inline">
-                    Instant Seek
+                    {currentViewBox.metadata?.isMultiSlide ? "Multi-Slide Ready" : "Instant Seek"}
                   </span>
                   <span className="text-white/80 text-xs sm:hidden">Ready</span>
                 </div>

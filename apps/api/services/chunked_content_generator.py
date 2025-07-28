@@ -171,7 +171,7 @@ class ChunkedContentGenerator:
             
             fallback_configs = [
                 ChunkGenerationConfig(
-                    max_tokens=8192,  # Use maximum capacity from user settings to handle complex JSON responses
+                    max_tokens=16384,  # Use maximum capacity (16k) to handle complex JSON responses
                     target_duration=30.0,
                     content_type=content_type,
                     difficulty=difficulty
