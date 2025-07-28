@@ -162,6 +162,17 @@ except Exception as e:
     logger.error(f"Failed to register templates router: {e}")
     logger.warning("Templates endpoints will not be available")
 
+try:
+    from routers.ai_tutor import router as ai_tutor_router
+    app.include_router(ai_tutor_router, prefix="/api", tags=["ai-tutor"])
+    logger.info("AI Tutor router registered successfully")
+except ImportError as e:
+    logger.error(f"AI Tutor router import failed: {e}")
+    logger.warning("AI Tutor endpoints will not be available")
+except Exception as e:
+    logger.error(f"Failed to register AI Tutor router: {e}")
+    logger.warning("AI Tutor endpoints will not be available")
+
 # Mount static files for audio serving
 try:
     app.mount("/static", StaticFiles(directory="static"), name="static")

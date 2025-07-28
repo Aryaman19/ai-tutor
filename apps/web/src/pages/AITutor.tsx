@@ -133,7 +133,7 @@ function AITutorContent() {
   const [isGeneratingAITutor, setIsGeneratingAITutor] = useState(false);
   const [aiTutorProgress, setAiTutorProgress] = useState<string>('');
   const [useMultiSlideMode, setUseMultiSlideMode] = useState(true);
-  const [useCanvasPlayer, setUseCanvasPlayer] = useState(false);
+  const [useCanvasPlayer, setUseCanvasPlayer] = useState(true);
   
   // Playback State
   const [isPlaying, setIsPlaying] = useState(false);

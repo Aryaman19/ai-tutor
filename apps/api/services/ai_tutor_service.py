@@ -225,38 +225,122 @@ class AITutorService:
             )
     
     async def _generate_slide_content(self, slide_structure: SlideStructure) -> Dict[str, str]:
-        """Generate content for slide using LLM"""
-        filled_content = {}
+        """Generate content for slide using enhanced template filling system"""
         
-        # Always use the structure prompts which are properly formatted
-        # Template prompts have placeholders that need complex substitution
-        prompts_to_use = slide_structure.content_prompts
+        # Get template for constraints
+        template = template_service.get_template(slide_structure.template_id)
+        if not template:
+            logger.error(f"Template {slide_structure.template_id} not found")
+            return self._get_fallback_content(slide_structure)
         
-        logger.debug(f"Using prompts for slide {slide_structure.slide_number}", {
-            "content_type": slide_structure.content_type,
-            "template_id": slide_structure.template_id,
-            "prompts": prompts_to_use
+        # Create template filler with ollama service
+        from services.template_filling_service import create_template_filler
+        template_filler = create_template_filler(ollama_service)
+        
+        try:
+            # Extract topic and difficulty from prompts (they contain this context)
+            topic = self._extract_topic_from_prompts(slide_structure.content_prompts)
+            difficulty_level = self._extract_difficulty_from_prompts(slide_structure.content_prompts)
+            
+            logger.debug(f"Generating content for slide {slide_structure.slide_number}", {
+                "content_type": slide_structure.content_type,
+                "template_id": slide_structure.template_id,
+                "topic": topic,
+                "difficulty": difficulty_level
+            })
+            
+            # Use enhanced template filling with structured prompts
+            filled_template = await template_filler.fill_template_with_prompts(
+                template=template,
+                content_prompts=slide_structure.content_prompts,
+                topic=topic,
+                difficulty_level=difficulty_level,
+                slide_index=0,
+                container_size={"width": self.slide_width, "height": 800}
+            )
+            
+            logger.debug(f"Content generated successfully for slide {slide_structure.slide_number}", {
+                "is_fallback": filled_template.is_fallback,
+                "generation_method": filled_template.metadata.get("generation_method"),
+                "content_keys": list(filled_template.filled_content.keys())
+            })
+            
+            return filled_template.filled_content
+            
+        except Exception as e:
+            logger.error(f"Enhanced content generation failed for slide {slide_structure.slide_number}: {e}")
+            return self._get_fallback_content(slide_structure)
+    
+    def _extract_topic_from_prompts(self, content_prompts: Dict[str, str]) -> str:
+        """Extract topic from content prompts"""
+        for prompt in content_prompts.values():
+            # Look for "Topic: " pattern in prompts
+            if "Topic: " in prompt:
+                topic_start = prompt.find("Topic: ") + 7
+                topic_end = prompt.find(".", topic_start)
+                if topic_end != -1:
+                    return prompt[topic_start:topic_end].strip()
+        return "Educational Topic"
+    
+    def _extract_difficulty_from_prompts(self, content_prompts: Dict[str, str]) -> str:
+        """Extract difficulty level from content prompts"""
+        for prompt in content_prompts.values():
+            # Look for "Difficulty: " pattern in prompts
+            if "Difficulty: " in prompt:
+                difficulty_start = prompt.find("Difficulty: ") + 12
+                difficulty_end = prompt.find(".", difficulty_start)
+                if difficulty_end != -1:
+                    difficulty = prompt[difficulty_start:difficulty_end].strip()
+                    if difficulty in ["beginner", "intermediate", "advanced"]:
+                        return difficulty
+        return "intermediate"
+    
+    def _get_fallback_content(self, slide_structure: SlideStructure) -> Dict[str, str]:
+        """Get fallback content when all generation methods fail"""
+        
+        fallback_content_map = {
+            "title-objective": {
+                "heading": f"Learning About {slide_structure.content_type.replace('-', ' ').title()}",
+                "content": "By the end of this lesson, you will understand the key concepts and be able to apply what you've learned."
+            },
+            "context-motivation": {
+                "heading": "Why This Matters",
+                "content": "Understanding this topic is important for building a strong foundation in the subject and has practical applications in real-world scenarios."
+            },
+            "analogy": {
+                "heading": "Think of It Like This",
+                "content": "To help you understand this concept, imagine it like something familiar from everyday life that shares similar characteristics."
+            },
+            "definition": {
+                "heading": "What Is It?",
+                "content": "This concept can be defined as a fundamental principle that helps us understand how things work in this domain."
+            },
+            "step-by-step": {
+                "heading": "How It Works",
+                "content": "Let's break this down into clear, manageable steps: First, we identify the key components. Then, we examine how they interact. Finally, we see the overall result."
+            },
+            "examples": {
+                "heading": "Real Examples",
+                "content": "Here are some concrete examples that demonstrate this concept in action and help illustrate the key principles we've discussed."
+            },
+            "common-mistakes": {
+                "heading": "Watch Out For These",
+                "content": "Students often make certain mistakes when learning this topic. Being aware of these common pitfalls will help you avoid them."
+            },
+            "mini-recap": {
+                "heading": "Key Takeaways",
+                "content": "Let's review the most important points: we've covered the definition, seen examples, and learned how to apply the concepts correctly."
+            },
+            "things-to-ponder": {
+                "heading": "Think About This",
+                "content": "Consider how this concept connects to other things you've learned. What questions does it raise? How might you use this knowledge in the future?"
+            }
+        }
+        
+        return fallback_content_map.get(slide_structure.content_type, {
+            "heading": "Educational Content",
+            "content": "Important information about this topic will be covered to help you learn effectively."
         })
-        
-        for field_name, prompt in prompts_to_use.items():
-            try:
-                response = await ollama_service.generate_content(
-                    prompt=prompt,
-                    user_id="system",
-                    max_tokens=200  # Keep content concise for slides
-                )
-                
-                if response and response.get("content"):
-                    filled_content[field_name] = response["content"].strip()
-                else:
-                    logger.warning(f"No content generated for {field_name}")
-                    filled_content[field_name] = ""
-                    
-            except Exception as e:
-                logger.error(f"Failed to generate content for {field_name}: {e}")
-                filled_content[field_name] = ""
-        
-        return filled_content
     
     def _verify_and_add_fallback(
         self, filled_content: Dict[str, str], slide_structure: SlideStructure

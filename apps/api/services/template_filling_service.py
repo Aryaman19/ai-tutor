@@ -79,6 +79,65 @@ class TemplateFiller:
             # Fall back to fallback data
             return self._create_fallback_template(template, topic, slide_index)
     
+    async def fill_template_with_prompts(
+        self,
+        template: Dict,
+        content_prompts: Dict[str, str],
+        topic: str,
+        difficulty_level: str = "intermediate",
+        slide_index: int = 0,
+        container_size: Optional[Dict] = None
+    ) -> FilledTemplate:
+        """
+        Fill a template using structured content prompts from lesson structure service
+        
+        Args:
+            template: Template definition 
+            content_prompts: Generated prompts for each content field
+            topic: The educational topic
+            difficulty_level: Difficulty level for content generation
+            slide_index: Which slide to fill (default: 0)
+            container_size: Optional container size for responsive constraints
+            
+        Returns:
+            FilledTemplate with generated content
+        """
+        
+        if slide_index >= len(template["slides"]):
+            raise ValueError(f"Slide index {slide_index} out of range")
+        
+        slide = template["slides"][slide_index]
+        
+        # Get responsive constraints
+        constraints = self._get_responsive_constraints(slide, container_size)
+        
+        try:
+            # Generate content using structured prompts
+            filled_content = await self._generate_content_from_structured_prompts(
+                content_prompts, constraints, difficulty_level
+            )
+            
+            return FilledTemplate(
+                template_id=template["id"],
+                topic=topic,
+                slide_index=slide_index,
+                filled_content=filled_content,
+                metadata={
+                    "generation_method": "structured_prompts",
+                    "template_name": template["name"],
+                    "constraints": constraints,
+                    "slide_id": slide["id"],
+                    "difficulty_level": difficulty_level
+                },
+                is_fallback=False
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to generate content from structured prompts for template {template['id']}: {e}")
+            
+            # Fall back to fallback data
+            return self._create_fallback_template(template, topic, slide_index)
+    
     def _get_responsive_constraints(
         self, 
         slide: Dict, 
@@ -164,6 +223,199 @@ class TemplateFiller:
         
         return filled_content
     
+    async def _generate_content_from_structured_prompts(
+        self,
+        content_prompts: Dict[str, str],
+        constraints: Dict[str, Any],
+        difficulty_level: str
+    ) -> Dict[str, str]:
+        """
+        Generate content using structured prompts from lesson structure service
+        
+        Args:
+            content_prompts: Dict with field names as keys and prompts as values
+            constraints: Responsive constraints for content generation
+            difficulty_level: Difficulty level for tailoring content complexity
+            
+        Returns:
+            Dict with field names as keys and generated content as values
+        """
+        filled_content = {}
+        
+        for field_name, prompt in content_prompts.items():
+            try:
+                # Get constraints for this specific field
+                field_constraints = constraints.get(field_name, {
+                    "maxChars": self._get_default_max_chars(field_name),
+                    "maxLines": self._get_default_max_lines(field_name),
+                    "format": "text"
+                })
+                
+                # Enhance prompt with difficulty and constraints
+                enhanced_prompt = self._enhance_prompt_with_constraints(
+                    prompt, field_constraints, difficulty_level
+                )
+                
+                # Generate content with LLM
+                generated_content = await self._call_llm_with_retry(
+                    enhanced_prompt, field_constraints, field_name
+                )
+                
+                filled_content[field_name] = generated_content
+                logger.debug(f"Generated {field_name}: {generated_content[:50]}...")
+                
+            except Exception as e:
+                logger.error(f"Failed to generate content for {field_name}: {e}")
+                
+                # Use fallback content
+                filled_content[field_name] = self._get_fallback_content(field_name)
+        
+        return filled_content
+    
+    def _get_default_max_chars(self, field_name: str) -> int:
+        """Get default character limits based on field type"""
+        char_limits = {
+            "heading": 60,
+            "title": 60,
+            "content": 280,
+            "body": 280,
+            "text": 280,
+            "description": 200,
+            "summary": 150,
+            "objective": 120
+        }
+        return char_limits.get(field_name, 200)
+    
+    def _get_default_max_lines(self, field_name: str) -> int:
+        """Get default line limits based on field type"""
+        line_limits = {
+            "heading": 1,
+            "title": 1,
+            "content": 5,
+            "body": 5,
+            "text": 4,
+            "description": 3,
+            "summary": 3,
+            "objective": 2
+        }
+        return line_limits.get(field_name, 3)
+    
+    def _enhance_prompt_with_constraints(
+        self,
+        prompt: str,
+        constraints: Dict[str, Any],
+        difficulty_level: str
+    ) -> str:
+        """Enhance prompt with constraints and difficulty-specific instructions"""
+        
+        enhanced_prompt = prompt
+        
+        # Add character limit instruction
+        max_chars = constraints.get("maxChars", 200)
+        enhanced_prompt += f" Keep response under {max_chars} characters."
+        
+        # Add line limit instruction
+        max_lines = constraints.get("maxLines", 3)
+        if max_lines == 1:
+            enhanced_prompt += " Provide a single line response."
+        else:
+            enhanced_prompt += f" Use maximum {max_lines} lines."
+        
+        # Add difficulty-specific instructions
+        difficulty_instructions = {
+            "beginner": " Use simple language and avoid jargon. Be clear and concise.",
+            "intermediate": " Use clear explanations with appropriate technical terms.",
+            "advanced": " Provide detailed explanations with precise terminology."
+        }
+        
+        enhanced_prompt += difficulty_instructions.get(difficulty_level, "")
+        
+        # Add format instructions
+        format_type = constraints.get("format", "text")
+        if format_type == "bullets":
+            enhanced_prompt += " Format as bullet points using • symbols."
+        
+        return enhanced_prompt
+    
+    async def _call_llm_with_retry(
+        self,
+        prompt: str,
+        constraints: Dict[str, Any],
+        field_name: str,
+        max_retries: int = 2
+    ) -> str:
+        """Call LLM with retry logic for better reliability"""
+        
+        for attempt in range(max_retries + 1):
+            try:
+                content = await self._call_llm(prompt, constraints)
+                
+                logger.debug(f"Generated content for {field_name}: '{content}' (length: {len(content)})")
+                
+                # Validate content quality
+                if self._is_content_acceptable(content, field_name):
+                    logger.debug(f"Content accepted for {field_name}")
+                    return content
+                else:
+                    logger.warning(f"Content quality check failed for {field_name}, attempt {attempt + 1}. Content: '{content}'")
+                    if attempt == max_retries:
+                        logger.warning(f"Using potentially low-quality content for {field_name} after {max_retries + 1} attempts")
+                        return content  # Return anyway on final attempt
+                    
+            except Exception as e:
+                if attempt == max_retries:
+                    raise e
+                logger.warning(f"LLM call failed for {field_name}, attempt {attempt + 1}: {e}")
+                
+        return self._get_fallback_content(field_name)
+    
+    def _is_content_acceptable(self, content: str, field_name: str) -> bool:
+        """Check if generated content meets quality standards - relaxed for better success rate"""
+        
+        if not content or content.strip() == "":
+            return False
+        
+        # More relaxed placeholder check - only reject obvious placeholders
+        obvious_placeholders = [
+            "{{", "}}", "placeholder", "TODO", "TBD",
+            "insert here", "add here", "fill in", "[REPLACE"
+        ]
+        
+        content_lower = content.lower()
+        for indicator in obvious_placeholders:
+            if indicator in content_lower:
+                return False
+        
+        # Much more relaxed minimum length requirements
+        min_lengths = {
+            "heading": 3,  # Reduced from 5
+            "title": 3,    # Reduced from 5  
+            "content": 10,  # Reduced from 20
+            "body": 10,     # Reduced from 20
+            "text": 5       # Reduced from 15
+        }
+        
+        min_length = min_lengths.get(field_name, 3)  # More lenient default
+        if len(content.strip()) < min_length:
+            return False
+        
+        return True
+    
+    def _get_fallback_content(self, field_name: str) -> str:
+        """Get fallback content when LLM generation fails"""
+        fallback_content = {
+            "heading": "Educational Content",
+            "title": "Learning Topic",
+            "content": "This section contains important information about the topic that will help you understand the key concepts.",
+            "body": "Educational content will be presented here to help students learn effectively.",
+            "text": "Key information about this topic.",
+            "description": "Important details about the subject matter.",
+            "summary": "Key points summarized for easy understanding.",
+            "objective": "Students will learn important concepts."
+        }
+        
+        return fallback_content.get(field_name, "Educational content will be displayed here.")
+    
     def _build_prompt(
         self, 
         prompt_template: str, 
@@ -193,16 +445,18 @@ class TemplateFiller:
             raise Exception("No LLM service available")
         
         try:
-            # Call Ollama service
-            response = await self.ollama_service.generate_content(
-                prompt=prompt,
-                max_tokens=min(constraints.get("maxChars", 300) * 2, 1000),  # Rough token estimate
-                temperature=0.7,
-                model="gemma2:3b"  # Use the model from CLAUDE.md
-            )
+            # Add constraints to the prompt to guide generation
+            max_chars = constraints.get("maxChars", 300)
+            enhanced_prompt = f"{prompt} Keep your response under {max_chars} characters and make it clear and direct."
             
-            # Extract and validate content
-            content = response.get("response", "").strip()
+            # Call Ollama service using the correct method
+            response_text = await self.ollama_service._make_request(enhanced_prompt, "system")
+            
+            if not response_text or not response_text.strip():
+                logger.warning(f"Empty or None response from Ollama for prompt: {prompt[:50]}...")
+                raise Exception("Empty response from LLM")
+            
+            content = response_text.strip()
             
             # Validate against constraints
             validated_content = self._validate_and_trim_content(content, constraints)

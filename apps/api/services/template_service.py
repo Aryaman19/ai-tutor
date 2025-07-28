@@ -137,6 +137,193 @@ class TemplateService:
         """Get a specific template by ID"""
         return self.templates_cache.get(template_id)
     
+    def select_best_template(
+        self, 
+        category: str, 
+        topic: str, 
+        difficulty_level: str, 
+        content_complexity: int = 3,
+        topic_analysis: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict]:
+        """
+        Intelligently select the best template for a given category and context
+        
+        Args:
+            category: Template category (e.g., "definition", "examples")
+            topic: The lesson topic
+            difficulty_level: "beginner", "intermediate", or "advanced"
+            content_complexity: 1-5 scale of content complexity
+            topic_analysis: Optional analysis from LLM with topic insights
+        
+        Returns:
+            Best template dict or None if no suitable template found
+        """
+        
+        available_templates = self.get_templates_by_category(category)
+        if not available_templates:
+            logger.warning(f"No templates found for category: {category}")
+            return None
+        
+        if len(available_templates) == 1:
+            return available_templates[0]
+        
+        # Score each template based on suitability
+        scored_templates = []
+        
+        for template in available_templates:
+            score = self._calculate_template_score(
+                template, topic, difficulty_level, content_complexity, topic_analysis
+            )
+            scored_templates.append((template, score))
+        
+        # Sort by score (highest first) and return best match
+        scored_templates.sort(key=lambda x: x[1], reverse=True)
+        best_template = scored_templates[0][0]
+        
+        logger.debug(f"Selected template {best_template['id']} for category {category} with score {scored_templates[0][1]}")
+        return best_template
+    
+    def _calculate_template_score(
+        self, 
+        template: Dict, 
+        topic: str, 
+        difficulty_level: str, 
+        content_complexity: int,
+        topic_analysis: Optional[Dict[str, Any]]
+    ) -> float:
+        """Calculate suitability score for a template"""
+        
+        score = 0.0
+        
+        # Base score for having the template
+        score += 10.0
+        
+        # Prefer newer template variants (higher templateVariant numbers)
+        variant = template.get("templateVariant", 1)
+        score += variant * 2.0
+        
+        # Difficulty level matching
+        difficulty_preferences = {
+            "beginner": {"simple": 5.0, "clean": 4.0, "basic": 3.0},
+            "intermediate": {"balanced": 5.0, "standard": 4.0, "detailed": 3.0},
+            "advanced": {"comprehensive": 5.0, "detailed": 4.0, "complex": 3.0}
+        }
+        
+        template_name_lower = template.get("name", "").lower()
+        template_desc_lower = template.get("description", "").lower()
+        
+        for keyword, bonus in difficulty_preferences.get(difficulty_level, {}).items():
+            if keyword in template_name_lower or keyword in template_desc_lower:
+                score += bonus
+        
+        # Content complexity matching
+        complexity_keywords = {
+            1: ["simple", "basic", "clean"],
+            2: ["clear", "standard"],
+            3: ["balanced", "detailed"],
+            4: ["comprehensive", "advanced"],
+            5: ["complex", "detailed", "thorough"]
+        }
+        
+        for keyword in complexity_keywords.get(content_complexity, []):
+            if keyword in template_name_lower or keyword in template_desc_lower:
+                score += 3.0
+        
+        # Topic-specific scoring
+        if topic_analysis:
+            teaching_approach = topic_analysis.get("teaching_approach", "").lower()
+            
+            # Visual approach preferences
+            if teaching_approach == "visual":
+                visual_keywords = ["visual", "diagram", "chart", "graphic"]
+                for keyword in visual_keywords:
+                    if keyword in template_name_lower or keyword in template_desc_lower:
+                        score += 4.0
+            
+            # Step-by-step approach preferences
+            elif teaching_approach == "step-by-step":
+                process_keywords = ["step", "process", "sequential", "ordered"]
+                for keyword in process_keywords:
+                    if keyword in template_name_lower or keyword in template_desc_lower:
+                        score += 4.0
+            
+            # Example-driven approach preferences
+            elif teaching_approach == "example-driven":
+                example_keywords = ["example", "case", "instance", "sample"]
+                for keyword in example_keywords:
+                    if keyword in template_name_lower or keyword in template_desc_lower:
+                        score += 4.0
+        
+        # Category-specific preferences
+        category_preferences = {
+            "title-objective": ["clean", "simple", "clear"],
+            "definition": ["clear", "concise", "focused"],
+            "examples": ["practical", "concrete", "relatable"],
+            "step-by-step": ["sequential", "ordered", "process"],
+            "analogy": ["visual", "comparison", "relatable"],
+            "common-mistakes": ["warning", "caution", "avoid"],
+            "mini-recap": ["summary", "concise", "key"],
+            "things-to-ponder": ["thought", "question", "reflection"]
+        }
+        
+        template_category = template.get("category", "")
+        for keyword in category_preferences.get(template_category, []):
+            if keyword in template_name_lower or keyword in template_desc_lower:
+                score += 2.0
+        
+        return score
+    
+    def get_template_with_fallback(
+        self, 
+        primary_template_id: str, 
+        category: str,
+        topic: str = "",
+        difficulty_level: str = "intermediate"
+    ) -> Dict:
+        """
+        Get template with intelligent fallback if primary template is not available
+        
+        Args:
+            primary_template_id: Preferred template ID
+            category: Template category as fallback
+            topic: Topic for context-aware fallback selection
+            difficulty_level: Difficulty level for fallback selection
+        
+        Returns:
+            Template dict (either primary or best fallback)
+        """
+        
+        # Try to get primary template
+        primary_template = self.get_template(primary_template_id)
+        if primary_template:
+            return primary_template
+        
+        logger.warning(f"Primary template {primary_template_id} not found, using fallback")
+        
+        # Use intelligent selection for fallback
+        fallback_template = self.select_best_template(
+            category=category,
+            topic=topic,
+            difficulty_level=difficulty_level,
+            content_complexity=3  # Default complexity
+        )
+        
+        if fallback_template:
+            return fallback_template
+        
+        # Last resort: get any template from category
+        available_templates = self.get_templates_by_category(category)
+        if available_templates:
+            logger.warning(f"Using first available template in category {category}")
+            return available_templates[0]
+        
+        # Final fallback: use first available template of any category
+        if self.templates_cache:
+            logger.error(f"No templates in category {category}, using any available template")
+            return list(self.templates_cache.values())[0]
+        
+        raise ValueError(f"No templates available for fallback from {primary_template_id}")
+    
     def render_template(
         self, 
         template_id: str, 

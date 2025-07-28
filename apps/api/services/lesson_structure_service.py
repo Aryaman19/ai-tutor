@@ -1,11 +1,18 @@
 """
 Lesson Structure Analysis Service
 
-This service analyzes topics and determines optimal lesson structure including:
-- Number of slides needed
-- Template selection for each slide
-- Content distribution across slides
-- Timing calculations for each slide
+This service generates structured educational lessons using the 9-section format:
+1. Title + Objective
+2. Context / Motivation  
+3. Analogy
+4. Definition
+5. Step-by-step Explanation / Theory
+6. Examples
+7. Common mistakes
+8. Mini Recap
+9. Some things to ponder
+
+Each section maps to specific templates and includes LLM content generation.
 """
 import json
 import logging
@@ -40,25 +47,98 @@ class LessonStructure:
     content_flow: List[str]  # ordered list of content types
 
 class LessonStructureService:
-    """Service for analyzing topics and generating lesson structures"""
+    """Service for generating structured 9-section educational lessons"""
     
     def __init__(self):
-        self.template_categories = {
-            "title-objective": {"priority": 1, "base_duration": 15, "required": True},
-            "definition": {"priority": 1, "base_duration": 30, "required": True}, 
-            "process": {"priority": 2, "base_duration": 45, "required": False},
-            "example": {"priority": 2, "base_duration": 35, "required": False},
-            "comparison": {"priority": 3, "base_duration": 40, "required": False},
-            "concept-map": {"priority": 2, "base_duration": 50, "required": False},
-            "list": {"priority": 2, "base_duration": 25, "required": False},
-            "formula": {"priority": 2, "base_duration": 35, "required": False},
-            "summary": {"priority": 1, "base_duration": 20, "required": True}
-        }
+        # 9-section lesson structure with precise template mapping
+        self.lesson_sections = [
+            {
+                "content_type": "title-objective",
+                "name": "Title + Objective",
+                "template_id": "title-objective-1",
+                "base_duration": 10,
+                "priority": 1,
+                "required": True,
+                "description": "Lesson title and clear learning objectives"
+            },
+            {
+                "content_type": "context-motivation", 
+                "name": "Context / Motivation",
+                "template_id": "context-motivation-1",
+                "base_duration": 15,
+                "priority": 1,
+                "required": True,
+                "description": "Why this topic matters and real-world relevance"
+            },
+            {
+                "content_type": "analogy",
+                "name": "Analogy", 
+                "template_id": "analogy-1",
+                "base_duration": 20,
+                "priority": 2,
+                "required": True,
+                "description": "Relatable comparison to help understanding"
+            },
+            {
+                "content_type": "definition",
+                "name": "Definition",
+                "template_id": "definition-1", 
+                "base_duration": 15,
+                "priority": 1,
+                "required": True,
+                "description": "Clear definition of key concepts"
+            },
+            {
+                "content_type": "step-by-step",
+                "name": "Step-by-step Explanation / Theory",
+                "template_id": "step-by-step-1",
+                "base_duration": 30,
+                "priority": 1,
+                "required": True,
+                "description": "Detailed explanation or process breakdown"
+            },
+            {
+                "content_type": "examples",
+                "name": "Examples",
+                "template_id": "examples-1",
+                "base_duration": 25,
+                "priority": 1,
+                "required": True,
+                "description": "Concrete examples and applications"
+            },
+            {
+                "content_type": "common-mistakes",
+                "name": "Common mistakes",
+                "template_id": "common-mistakes-1",
+                "base_duration": 15,
+                "priority": 2,
+                "required": True,
+                "description": "Common pitfalls and how to avoid them"
+            },
+            {
+                "content_type": "mini-recap",
+                "name": "Mini Recap",
+                "template_id": "mini-recap-1", 
+                "base_duration": 10,
+                "priority": 1,
+                "required": True,
+                "description": "Summary of key points covered"
+            },
+            {
+                "content_type": "things-to-ponder",
+                "name": "Some things to ponder",
+                "template_id": "things-to-ponder-1",
+                "base_duration": 10,
+                "priority": 2,
+                "required": True,
+                "description": "Thought-provoking questions and extensions"
+            }
+        ]
         
         self.difficulty_multipliers = {
-            "beginner": 1.0,
-            "intermediate": 1.2, 
-            "advanced": 1.5
+            "beginner": 0.8,      # Shorter, simpler explanations
+            "intermediate": 1.0,   # Standard timing
+            "advanced": 1.3       # More detailed, longer explanations
         }
     
     async def analyze_topic_structure(
@@ -67,319 +147,288 @@ class LessonStructureService:
         difficulty_level: str, 
         target_duration: float
     ) -> LessonStructure:
-        """Analyze topic and generate optimal lesson structure"""
-        logger.info(f"Analyzing lesson structure for: {topic}")
+        """Generate structured 9-section lesson for the given topic"""
+        logger.info(f"Generating 9-section lesson structure for: {topic}")
         
-        # Get topic complexity analysis from LLM
-        complexity_analysis = await self._analyze_topic_complexity(
+        # Get topic analysis to inform content generation
+        topic_analysis = await self._analyze_topic_for_sections(
             topic, difficulty_level, target_duration
         )
         
-        # Determine required slide types based on topic
-        required_slide_types = await self._determine_slide_types(
-            topic, difficulty_level, complexity_analysis
+        # Determine which sections to include based on duration
+        selected_sections = self._select_sections_for_duration(
+            target_duration, difficulty_level, topic_analysis
         )
         
-        # Calculate slide distribution and timing
-        slide_structures = await self._calculate_slide_distribution(
-            topic, difficulty_level, target_duration, required_slide_types
+        # Generate slide structures for selected sections
+        slide_structures = await self._generate_slide_structures(
+            topic, difficulty_level, target_duration, selected_sections, topic_analysis
         )
         
-        # Optimize slide order for pedagogical flow
-        optimized_slides = self._optimize_slide_order(slide_structures)
-        
-        total_duration = sum(slide.estimated_duration for slide in optimized_slides)
+        total_duration = sum(slide.estimated_duration for slide in slide_structures)
         
         return LessonStructure(
             topic=topic,
             difficulty_level=difficulty_level,
-            total_slides=len(optimized_slides),
+            total_slides=len(slide_structures),
             estimated_total_duration=total_duration,
-            slides=optimized_slides,
-            teaching_strategy=complexity_analysis.get("strategy", "progressive"),
-            content_flow=[slide.content_type for slide in optimized_slides]
+            slides=slide_structures,
+            teaching_strategy=topic_analysis.get("strategy", "structured"),
+            content_flow=[slide.content_type for slide in slide_structures]
         )
     
-    async def _analyze_topic_complexity(
+    async def _analyze_topic_for_sections(
         self, topic: str, difficulty_level: str, target_duration: float
     ) -> Dict[str, Any]:
-        """Analyze topic complexity using LLM"""
+        """Analyze topic to inform 9-section lesson structure"""
         prompt = f"""
-        Analyze the educational topic "{topic}" for {difficulty_level} level learners.
-        Target lesson duration: {target_duration} seconds.
+        Analyze the educational topic "{topic}" for a {difficulty_level} level lesson.
+        Target duration: {target_duration} seconds.
         
-        Determine:
+        This will be structured as a 9-section lesson:
+        1. Title + Objective
+        2. Context / Motivation  
+        3. Analogy
+        4. Definition
+        5. Step-by-step Explanation / Theory
+        6. Examples
+        7. Common mistakes
+        8. Mini Recap
+        9. Some things to ponder
+        
+        Analyze:
         1. Topic complexity (1-5 scale)
-        2. Key concepts that need explanation
-        3. Prerequisites students should know
-        4. Best teaching strategy (visual, step-by-step, example-driven, etc.)
-        5. Whether topic needs: definitions, processes, examples, comparisons, formulas
-        6. Estimated cognitive load (low/medium/high)
+        2. Key concepts to cover
+        3. Best teaching approach
+        4. What analogies might work well
+        5. Common misconceptions students have
+        6. Real-world applications/motivation
+        7. Practical examples that would help
         
         Respond in JSON format:
         {{
             "complexity": 3,
             "key_concepts": ["concept1", "concept2"],
-            "prerequisites": ["prereq1"], 
-            "strategy": "visual",
-            "needs_definitions": true,
-            "needs_processes": false,
-            "needs_examples": true,
-            "needs_comparisons": false,
-            "needs_formulas": false,
-            "cognitive_load": "medium",
-            "reasoning": "explanation of analysis"
+            "teaching_approach": "visual", 
+            "good_analogies": ["analogy suggestion"],
+            "common_misconceptions": ["misconception1"],
+            "real_world_relevance": "why this matters",
+            "good_examples": ["example1", "example2"],
+            "strategy": "structured",
+            "reasoning": "analysis explanation"
         }}
         """
         
         try:
-            response = await ollama_service.generate_content(
-                prompt=prompt,
-                user_id="system",
-                response_format="json"
-            )
+            response = await ollama_service._make_request(prompt, "system")
             
-            if response and response.get("content"):
-                content = response["content"]
-                
-                # If generate_content already parsed JSON, use it directly
-                if response.get("format") == "json" and isinstance(content, dict):
-                    return content
-                
-                # Otherwise, try to parse as JSON string
-                if isinstance(content, str):
-                    try:
-                        # Clean up markdown code blocks if present
-                        cleaned_content = self._extract_json_from_markdown(content)
-                        return json.loads(cleaned_content)
-                    except json.JSONDecodeError:
-                        logger.warning(f"Failed to parse LLM response as JSON: {content[:100]}...")
-                        return self._fallback_complexity_analysis(topic, difficulty_level)
-                
-                # If content is neither dict nor string, use fallback
-                return self._fallback_complexity_analysis(topic, difficulty_level)
+            if response:
+                try:
+                    # Clean up markdown code blocks if present
+                    cleaned_content = self._extract_json_from_markdown(response)
+                    return json.loads(cleaned_content)
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse LLM response as JSON: {response[:100]}...")
+                    return self._fallback_topic_analysis(topic, difficulty_level)
             else:
-                # Fallback analysis
-                return self._fallback_complexity_analysis(topic, difficulty_level)
+                return self._fallback_topic_analysis(topic, difficulty_level)
                 
         except Exception as e:
-            logger.warning(f"LLM complexity analysis failed: {e}")
-            return self._fallback_complexity_analysis(topic, difficulty_level)
+            logger.warning(f"LLM topic analysis failed: {e}")
+            return self._fallback_topic_analysis(topic, difficulty_level)
     
-    def _fallback_complexity_analysis(self, topic: str, difficulty_level: str) -> Dict[str, Any]:
-        """Fallback complexity analysis when LLM fails"""
+    def _fallback_topic_analysis(self, topic: str, difficulty_level: str) -> Dict[str, Any]:
+        """Fallback topic analysis when LLM fails"""
         complexity_map = {"beginner": 2, "intermediate": 3, "advanced": 4}
-        
-        # Simple heuristics based on topic keywords
-        needs_formulas = any(word in topic.lower() for word in 
-                           ["equation", "formula", "calculate", "math", "physics"])
-        needs_processes = any(word in topic.lower() for word in 
-                            ["process", "how to", "steps", "method", "procedure"])
-        needs_examples = not needs_formulas  # Most topics benefit from examples
         
         return {
             "complexity": complexity_map.get(difficulty_level, 3),
             "key_concepts": [topic],
-            "prerequisites": [],
-            "strategy": "progressive",
-            "needs_definitions": True,
-            "needs_processes": needs_processes,
-            "needs_examples": needs_examples, 
-            "needs_comparisons": False,
-            "needs_formulas": needs_formulas,
-            "cognitive_load": difficulty_level,
+            "teaching_approach": "structured",
+            "good_analogies": [f"Think of {topic} like..."],
+            "common_misconceptions": [f"Students often confuse {topic} with..."],
+            "real_world_relevance": f"{topic} helps us understand everyday phenomena",
+            "good_examples": [f"A common example of {topic} is..."],
+            "strategy": "structured",
             "reasoning": "Fallback analysis based on heuristics"
         }
     
-    async def _determine_slide_types(
-        self, topic: str, difficulty_level: str, analysis: Dict[str, Any]
-    ) -> List[str]:
-        """Determine what types of slides are needed"""
-        slide_types = ["title-objective"]  # Always start with title
+    def _select_sections_for_duration(
+        self, target_duration: float, difficulty_level: str, topic_analysis: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Select which lesson sections to include based on target duration"""
         
-        # Add content slides based on analysis
-        if analysis.get("needs_definitions", True):
-            slide_types.append("definition")
-            
-        if analysis.get("needs_processes", False):
-            slide_types.append("process")
-            
-        if analysis.get("needs_examples", True):
-            slide_types.append("example")
-            
-        if analysis.get("needs_formulas", False):
-            slide_types.append("formula")
-            
-        if analysis.get("needs_comparisons", False):
-            slide_types.append("comparison")
-            
-        # Add concept map for complex topics
-        if analysis.get("complexity", 3) >= 4:
-            slide_types.append("concept-map")
-            
-        # Always end with summary
-        slide_types.append("summary")
+        # For short lessons (< 90 seconds), use core sections only
+        if target_duration < 90:
+            core_sections = ["title-objective", "definition", "examples", "mini-recap"]
+            return [section for section in self.lesson_sections 
+                   if section["content_type"] in core_sections]
         
-        return slide_types
+        # For medium lessons (90-180 seconds), add context and analogy
+        elif target_duration < 180:
+            medium_sections = ["title-objective", "context-motivation", "definition", 
+                             "examples", "common-mistakes", "mini-recap"]
+            return [section for section in self.lesson_sections 
+                   if section["content_type"] in medium_sections]
+        
+        # For longer lessons (180+ seconds), use all 9 sections
+        else:
+            return self.lesson_sections.copy()
     
-    async def _calculate_slide_distribution(
+    async def _generate_slide_structures(
         self, 
         topic: str, 
         difficulty_level: str, 
         target_duration: float,
-        slide_types: List[str]
+        selected_sections: List[Dict[str, Any]], 
+        topic_analysis: Dict[str, Any]
     ) -> List[SlideStructure]:
-        """Calculate timing and distribution for slides"""
+        """Generate slide structures for selected sections"""
+        
         slides = []
         difficulty_multiplier = self.difficulty_multipliers.get(difficulty_level, 1.0)
         
-        # Calculate base durations
+        # Calculate total base duration for scaling
         total_base_duration = sum(
-            self.template_categories[slide_type]["base_duration"] * difficulty_multiplier
-            for slide_type in slide_types
+            section["base_duration"] * difficulty_multiplier 
+            for section in selected_sections
         )
         
-        # Scale to target duration
+        # Scale durations to fit target
         duration_scale = target_duration / total_base_duration if total_base_duration > 0 else 1.0
         
-        for i, slide_type in enumerate(slide_types):
-            template_info = self.template_categories[slide_type]
-            base_duration = template_info["base_duration"] * difficulty_multiplier
+        for i, section in enumerate(selected_sections):
+            base_duration = section["base_duration"] * difficulty_multiplier
             scaled_duration = base_duration * duration_scale
             
-            # Get template for this slide type
-            template_id = self._get_template_id_for_type(slide_type)
-            template_name = self._get_template_name_for_type(slide_type)
+            # Intelligently select the best template for this section
+            selected_template = self._select_optimal_template(
+                section, topic, difficulty_level, topic_analysis
+            )
+            
+            # Generate content prompts for this section
+            content_prompts = self._generate_section_prompts(
+                section["content_type"], topic, difficulty_level, topic_analysis
+            )
             
             slide = SlideStructure(
                 slide_number=i + 1,
-                template_id=template_id,
-                template_name=template_name,
-                content_type=slide_type,
-                estimated_duration=max(10.0, scaled_duration),  # Minimum 10 seconds
-                content_prompts=self._generate_content_prompts(slide_type, topic, difficulty_level),
-                layout_hints={"slide_position": i, "total_slides": len(slide_types)},
-                priority=template_info["priority"]
+                template_id=selected_template["id"],
+                template_name=selected_template["name"],
+                content_type=section["content_type"],
+                estimated_duration=max(8.0, scaled_duration),  # Minimum 8 seconds
+                content_prompts=content_prompts,
+                layout_hints={
+                    "slide_position": i,
+                    "total_slides": len(selected_sections),
+                    "section_description": section["description"],
+                    "template_variant": selected_template.get("templateVariant", 1)
+                },
+                priority=section["priority"]
             )
             slides.append(slide)
         
         return slides
     
-    async def _select_template_for_type(self, slide_type: str) -> Optional[Dict[str, Any]]:
-        """Select appropriate template for slide type"""
-        try:
-            templates = template_service.get_templates_by_category(slide_type)
-            if templates:
-                # For now, select first template in category
-                # TODO: Add more sophisticated selection logic
-                return templates[0]
-        except Exception as e:
-            logger.warning(f"Failed to get template for {slide_type}: {e}")
+    def _select_optimal_template(
+        self, 
+        section: Dict[str, Any], 
+        topic: str, 
+        difficulty_level: str, 
+        topic_analysis: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Select the optimal template for a lesson section"""
         
-        return None
+        # Calculate content complexity based on topic analysis
+        complexity = topic_analysis.get("complexity", 3)
+        
+        # Try intelligent template selection first
+        selected_template = template_service.select_best_template(
+            category=section["content_type"],
+            topic=topic,
+            difficulty_level=difficulty_level,
+            content_complexity=complexity,
+            topic_analysis=topic_analysis
+        )
+        
+        if selected_template:
+            logger.debug(f"Intelligently selected template {selected_template['id']} for {section['content_type']}")
+            return selected_template
+        
+        # Fallback to default template from section configuration  
+        default_template = template_service.get_template_with_fallback(
+            primary_template_id=section["template_id"],
+            category=section["content_type"],
+            topic=topic,
+            difficulty_level=difficulty_level
+        )
+        
+        logger.debug(f"Using fallback template {default_template['id']} for {section['content_type']}")
+        return default_template
     
-    def _generate_content_prompts(
-        self, slide_type: str, topic: str, difficulty_level: str
+    def _generate_section_prompts(
+        self, 
+        section_type: str, 
+        topic: str, 
+        difficulty_level: str, 
+        topic_analysis: Dict[str, Any]
     ) -> Dict[str, str]:
-        """Generate LLM prompts for each content field in the slide"""
-        base_context = f"Topic: {topic}. Difficulty: {difficulty_level}."
+        """Generate LLM prompts for each section type"""
         
-        prompt_templates = {
+        base_context = f"Topic: {topic}. Difficulty: {difficulty_level}."
+        key_concepts = ", ".join(topic_analysis.get("key_concepts", [topic]))
+        
+        # Section-specific prompts that map to the 9-section structure
+        section_prompts = {
             "title-objective": {
-                "heading": f"{base_context} Create a clear, engaging lesson title (max 65 chars).",
-                "content": f"{base_context} Write 1-2 clear learning objectives students will achieve."
+                "heading": f"{base_context} Create a clear, engaging lesson title about {topic} (max 60 chars).",
+                "content": f"{base_context} Write 1-2 specific learning objectives. What will students be able to do/understand after this lesson about {topic}?"
+            },
+            "context-motivation": {
+                "heading": f"{base_context} Create a heading about why {topic} matters.",
+                "content": f"{base_context} Real-world relevance: {topic_analysis.get('real_world_relevance', f'Why {topic} is important')}. Explain why students should care about learning {topic}. Include practical applications."
+            },
+            "analogy": {
+                "heading": f"{base_context} Create a heading for an analogy about {topic}.",
+                "content": f"{base_context} Good analogies: {', '.join(topic_analysis.get('good_analogies', []))}. Create a relatable analogy to help students understand {topic}. Compare it to something familiar."
             },
             "definition": {
-                "heading": f"{base_context} Create a heading for the main definition section.",
-                "content": f"{base_context} Provide a clear, concise definition with key characteristics."
+                "heading": f"{base_context} Create a heading for defining {topic}.",
+                "content": f"{base_context} Key concepts: {key_concepts}. Provide a clear, concise definition of {topic} with essential characteristics. Avoid jargon."
             },
-            "process": {
-                "heading": f"{base_context} Create a heading for the process/steps section.",
-                "content": f"{base_context} Break down into 3-5 clear, sequential steps."
+            "step-by-step": {
+                "heading": f"{base_context} Create a heading for the step-by-step explanation of {topic}.",
+                "content": f"{base_context} Break down {topic} into 3-5 clear, logical steps or explain the core theory. Make it easy to follow for {difficulty_level} learners."
             },
-            "example": {
-                "heading": f"{base_context} Create a heading for the example section.",
-                "content": f"{base_context} Provide a concrete, relatable example with explanation."
+            "examples": {
+                "heading": f"{base_context} Create a heading for examples of {topic}.",
+                "content": f"{base_context} Good examples: {', '.join(topic_analysis.get('good_examples', []))}. Provide 2-3 concrete, relatable examples that illustrate {topic} clearly."
             },
-            "formula": {
-                "heading": f"{base_context} Create a heading for the formula section.",
-                "content": f"{base_context} Present the key formula with variable explanations."
+            "common-mistakes": {
+                "heading": f"{base_context} Create a heading about common mistakes with {topic}.",
+                "content": f"{base_context} Common misconceptions: {', '.join(topic_analysis.get('common_misconceptions', []))}. List 2-3 common mistakes students make with {topic} and how to avoid them."
             },
-            "comparison": {
-                "heading": f"{base_context} Create a heading for the comparison section.",
-                "content": f"{base_context} Compare 2-3 related concepts highlighting differences."
+            "mini-recap": {
+                "heading": f"{base_context} Create a heading for summarizing {topic}.",
+                "content": f"{base_context} Summarize the 3-4 most important points about {topic} that students should remember. Keep it concise but comprehensive."
             },
-            "concept-map": {
-                "heading": f"{base_context} Create a heading for the concept overview.",
-                "content": f"{base_context} Show relationships between key concepts and ideas."
-            },
-            "summary": {
-                "heading": f"{base_context} Create a heading for the lesson summary.",
-                "content": f"{base_context} Summarize 3-4 key takeaways students should remember."
+            "things-to-ponder": {
+                "heading": f"{base_context} Create a heading for thinking deeper about {topic}.",
+                "content": f"{base_context} Pose 2-3 thought-provoking questions about {topic} that encourage deeper thinking or connection to other concepts."
             }
         }
         
-        return prompt_templates.get(slide_type, {
-            "heading": f"{base_context} Create an appropriate heading.",
-            "content": f"{base_context} Create relevant content for this section."
+        return section_prompts.get(section_type, {
+            "heading": f"{base_context} Create an appropriate heading for {section_type}.",
+            "content": f"{base_context} Create relevant content for {section_type} about {topic}."
         })
     
-    def _optimize_slide_order(self, slides: List[SlideStructure]) -> List[SlideStructure]:
-        """Optimize slide order for pedagogical effectiveness"""
-        # Define optimal teaching sequence
-        optimal_order = [
-            "title-objective",
-            "definition", 
-            "example",
-            "process",
-            "formula",
-            "concept-map",
-            "comparison",
-            "summary"
-        ]
-        
-        # Sort slides based on optimal order
-        sorted_slides = []
-        for content_type in optimal_order:
-            for slide in slides:
-                if slide.content_type == content_type:
-                    sorted_slides.append(slide)
-        
-        # Update slide numbers
-        for i, slide in enumerate(sorted_slides):
-            slide.slide_number = i + 1
-            slide.layout_hints["slide_position"] = i
-            slide.layout_hints["total_slides"] = len(sorted_slides)
-        
-        return sorted_slides
-    
-    def _get_template_id_for_type(self, slide_type: str) -> str:
-        """Map slide content type to existing template ID"""
-        template_mapping = {
-            "title-objective": "title-objective-1",
-            "definition": "definition-1", 
-            "process": "step-by-step-1",
-            "example": "examples-1",  # Note: using 'examples' not 'example'
-            "formula": "definition-2",  # Use definition template for formulas
-            "comparison": "definition-3",  # Use definition template for comparisons
-            "concept-map": "analogy-1",  # Use analogy template for concept maps
-            "summary": "mini-recap-1"  # Use mini-recap instead of summary
-        }
-        return template_mapping.get(slide_type, "title-objective-1")
-    
-    def _get_template_name_for_type(self, slide_type: str) -> str:
-        """Map slide content type to template display name"""
-        template_names = {
-            "title-objective": "Clean Title & Objective",
-            "definition": "Definition", 
-            "process": "Step by Step",
-            "example": "Examples",
-            "formula": "Formula",
-            "comparison": "Comparison",
-            "concept-map": "Concept Map",
-            "summary": "Mini Recap"
-        }
-        return template_names.get(slide_type, slide_type.title())
+    def _get_section_by_type(self, content_type: str) -> Optional[Dict[str, Any]]:
+        """Get section configuration by content type"""
+        for section in self.lesson_sections:
+            if section["content_type"] == content_type:
+                return section
+        return None
     
     def _extract_json_from_markdown(self, content: str) -> str:
         """Extract JSON content from markdown code blocks"""
