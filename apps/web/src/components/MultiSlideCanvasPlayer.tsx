@@ -79,7 +79,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   autoPlay = false,
   showControls = true,
   enableAudio = true,
-  crossfadeDuration = 500,
+  crossfadeDuration = 1500,
   onSlideChange,
   onPlaybackStart,
   onPlaybackEnd,

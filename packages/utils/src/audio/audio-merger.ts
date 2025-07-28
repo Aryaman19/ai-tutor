@@ -40,7 +40,7 @@ export class AudioMerger {
 
   constructor(options: Partial<CrossfadeOptions> = {}) {
     this.options = {
-      crossfadeDuration: 0.5, // 500ms default
+      crossfadeDuration: 1.5, // 1500ms default for smoother transitions
       outputSampleRate: 44100,
       outputFormat: 'wav',
       fadeType: 'exponential',

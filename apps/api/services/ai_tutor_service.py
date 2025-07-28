@@ -12,6 +12,7 @@ import json
 import logging
 import asyncio
 import time
+import re
 from typing import Dict, List, Any, Optional, AsyncGenerator, Tuple
 from dataclasses import dataclass, asdict
 from services.lesson_structure_service import lesson_structure_service, LessonStructure, SlideStructure
@@ -61,7 +62,7 @@ class AITutorService:
     def __init__(self):
         self.slide_width = 1200  # Standard slide width
         self.slide_spacing = 100  # Space between slides
-        self.crossfade_duration = 0.5  # 500ms crossfade between audio segments
+        self.crossfade_duration = 1.5  # 1500ms crossfade between audio segments for smoother transitions
         
     async def generate_ai_tutor_lesson(
         self, 
@@ -249,12 +250,10 @@ class AITutorService:
                 "difficulty": difficulty_level
             })
             
-            # Use enhanced template filling with structured prompts
-            filled_template = await template_filler.fill_template_with_prompts(
+            # Use template's built-in LLM prompts (including narration)
+            filled_template = await template_filler.fill_template(
                 template=template,
-                content_prompts=slide_structure.content_prompts,
                 topic=topic,
-                difficulty_level=difficulty_level,
                 slide_index=0,
                 container_size={"width": self.slide_width, "height": 800}
             )
@@ -487,37 +486,106 @@ class AITutorService:
                 
             return []
     
+    def _sanitize_text_for_tts(self, text: str) -> str:
+        """Sanitize text for TTS by removing markdown formatting and problematic characters"""
+        if not text:
+            return text
+        
+        # Remove markdown bold formatting
+        text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+        
+        # Remove markdown italic formatting
+        text = re.sub(r'\*(.*?)\*', r'\1', text)
+        
+        # Remove markdown underscores
+        text = re.sub(r'__(.*?)__', r'\1', text)
+        text = re.sub(r'_(.*?)_', r'\1', text)
+        
+        # Clean up colons that aren't part of proper sentences
+        # Keep colons that are followed by a space and lowercase letter (likely definitions)
+        # Remove colons at the end of lines or followed by markdown
+        text = re.sub(r':\s*\*\*', ': ', text)  # Remove colon before bold
+        text = re.sub(r':\s*\*', ': ', text)    # Remove colon before italic
+        text = re.sub(r':\s*$', '.', text, flags=re.MULTILINE)  # Replace colon at end of line with period
+        
+        # Remove extra hash symbols from markdown headers
+        text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+        
+        # Remove markdown code blocks
+        text = re.sub(r'```[^`]*```', '', text, flags=re.DOTALL)
+        text = re.sub(r'`([^`]*)`', r'\1', text)
+        
+        # Remove markdown links but keep the text
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        
+        # Clean up bullet points - replace markdown bullets with periods for better speech flow
+        text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)
+        
+        # Clean up multiple spaces and normalize whitespace
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Remove extra periods and normalize sentence endings
+        text = re.sub(r'\.{2,}', '.', text)
+        text = re.sub(r'\s*\.\s*\.', '.', text)
+        
+        # Clean up common TTS problematic sequences
+        text = text.replace('e.g.', 'for example')
+        text = text.replace('i.e.', 'that is')
+        text = text.replace('etc.', 'and so on')
+        
+        return text.strip()
+    
     async def _generate_slide_narration(
         self, filled_content: Dict[str, str], slide_structure: SlideStructure
     ) -> str:
-        """Generate narration text for the slide"""
-        # Combine content fields into cohesive narration
+        """Generate narration text for the slide using dedicated narration field"""
+        
+        # First priority: Use the dedicated narration field if available
+        if "narration" in filled_content and filled_content["narration"]:
+            raw_narration = filled_content["narration"].strip()
+            if raw_narration:
+                # Sanitize the dedicated narration text for TTS
+                narration = self._sanitize_text_for_tts(raw_narration)
+                
+                # Ensure proper sentence ending
+                if narration and not narration.endswith(('.', '!', '?')):
+                    narration += "."
+                
+                logger.debug(f"Using dedicated narration field: {narration[:100]}...")
+                return narration
+        
+        logger.warning(f"No narration field found for slide {slide_structure.slide_number}, falling back to content combination")
+        
+        # Fallback: Combine key content fields only if narration field is missing/empty
         content_parts = []
         
         if "heading" in filled_content and filled_content["heading"]:
-            content_parts.append(filled_content["heading"])
+            # Sanitize heading before adding
+            sanitized_heading = self._sanitize_text_for_tts(filled_content["heading"])
+            content_parts.append(sanitized_heading)
             
         if "content" in filled_content and filled_content["content"]:
-            content_parts.append(filled_content["content"])
+            # Sanitize content before adding
+            sanitized_content = self._sanitize_text_for_tts(filled_content["content"])
+            content_parts.append(sanitized_content)
         
-        # Add other content fields
-        for key, value in filled_content.items():
-            if key not in ["heading", "content"] and value:
-                content_parts.append(value)
+        # Don't add all other fields - only use heading and content as fallback
+        # This prevents the verbose combination of every template field
         
         if not content_parts:
             return f"This slide covers {slide_structure.content_type.replace('-', ' ')}."
         
-        # Create natural narration flow
+        # Create natural narration flow from key fields only
         narration = ". ".join(content_parts)
         
-        # Clean up narration
-        narration = narration.replace("...", ".").replace("..", ".")
-        narration = narration.strip()
+        # Apply final sanitization to the complete narration
+        narration = self._sanitize_text_for_tts(narration)
         
-        if not narration.endswith("."):
+        # Ensure proper sentence ending
+        if narration and not narration.endswith(('.', '!', '?')):
             narration += "."
             
+        logger.debug(f"Generated fallback narration: {narration[:100]}...")
         return narration
     
     async def _generate_unified_audio(self, slides: List[GeneratedSlide]) -> Dict[str, Any]:

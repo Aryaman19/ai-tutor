@@ -330,12 +330,45 @@ class TemplateFiller:
         
         enhanced_prompt += difficulty_instructions.get(difficulty_level, "")
         
+        # Add strict topic adherence instruction to prevent off-topic content
+        enhanced_prompt += " IMPORTANT: Stay strictly on the given topic. Do not include unrelated examples, analogies, or information from other subjects."
+        
+        # Add formatting instruction to prevent markdown
+        enhanced_prompt += " Use plain text only - no markdown formatting, asterisks, or special symbols."
+        
         # Add format instructions
         format_type = constraints.get("format", "text")
         if format_type == "bullets":
             enhanced_prompt += " Format as bullet points using • symbols."
         
         return enhanced_prompt
+    
+    def _sanitize_llm_output(self, content: str) -> str:
+        """Sanitize LLM output by removing markdown formatting immediately after generation"""
+        if not content:
+            return content
+        
+        # Remove markdown bold formatting
+        content = re.sub(r'\*\*(.*?)\*\*', r'\1', content)
+        
+        # Remove markdown italic formatting
+        content = re.sub(r'\*(.*?)\*', r'\1', content)
+        
+        # Remove markdown underscores
+        content = re.sub(r'__(.*?)__', r'\1', content)
+        content = re.sub(r'_(.*?)_', r'\1', content)
+        
+        # Remove markdown headers
+        content = re.sub(r'^#+\s*', '', content, flags=re.MULTILINE)
+        
+        # Clean up colons followed by formatting
+        content = re.sub(r':\s*\*\*', ': ', content)
+        content = re.sub(r':\s*\*', ': ', content)
+        
+        # Normalize whitespace
+        content = re.sub(r'\s+', ' ', content)
+        
+        return content.strip()
     
     async def _call_llm_with_retry(
         self,
@@ -344,27 +377,39 @@ class TemplateFiller:
         field_name: str,
         max_retries: int = 2
     ) -> str:
-        """Call LLM with retry logic for better reliability"""
+        """Call LLM with retry logic for better reliability and topic adherence"""
+        
+        original_prompt = prompt
         
         for attempt in range(max_retries + 1):
             try:
-                content = await self._call_llm(prompt, constraints)
+                # Enhance prompt with topic focus on retries
+                if attempt > 0:
+                    focused_prompt = f"{original_prompt} Focus strictly on the specified topic. Avoid unrelated content or examples from other domains."
+                    raw_content = await self._call_llm(focused_prompt, constraints)
+                else:
+                    raw_content = await self._call_llm(prompt, constraints)
+                
+                # Sanitize the LLM output immediately to remove markdown formatting
+                content = self._sanitize_llm_output(raw_content)
                 
                 logger.debug(f"Generated content for {field_name}: '{content}' (length: {len(content)})")
                 
-                # Validate content quality
+                # Validate content quality and topic relevance
                 if self._is_content_acceptable(content, field_name):
                     logger.debug(f"Content accepted for {field_name}")
                     return content
                 else:
                     logger.warning(f"Content quality check failed for {field_name}, attempt {attempt + 1}. Content: '{content}'")
                     if attempt == max_retries:
-                        logger.warning(f"Using potentially low-quality content for {field_name} after {max_retries + 1} attempts")
-                        return content  # Return anyway on final attempt
+                        logger.warning(f"All attempts failed for {field_name}, using fallback content")
+                        # Use fallback instead of potentially bad content on final attempt
+                        return self._get_fallback_content(field_name)
                     
             except Exception as e:
                 if attempt == max_retries:
-                    raise e
+                    logger.error(f"LLM generation completely failed for {field_name}: {e}")
+                    return self._get_fallback_content(field_name)
                 logger.warning(f"LLM call failed for {field_name}, attempt {attempt + 1}: {e}")
                 
         return self._get_fallback_content(field_name)
@@ -386,6 +431,26 @@ class TemplateFiller:
             if indicator in content_lower:
                 return False
         
+        # Check for obvious off-topic content indicators
+        # These are common signs of content contamination from different topics
+        off_topic_indicators = [
+            "dna", "genetic", "biology", "chromosome",  # Biology terms when not relevant
+            "cooking", "recipe", "ingredient",  # Cooking terms when not relevant
+            "weather", "climate", "temperature",  # Weather terms when not relevant
+            "sports", "football", "basketball",  # Sports terms when not relevant
+        ]
+        
+        # Only flag as off-topic if multiple indicators are present (avoids false positives)
+        off_topic_count = sum(1 for indicator in off_topic_indicators if indicator in content_lower)
+        if off_topic_count >= 2:
+            logger.warning(f"Content appears off-topic for {field_name}: {content[:100]}...")
+            return False
+        
+        # Check for remaining markdown formatting after sanitization (should be rare now)
+        if '**' in content or content.count('*') > 3:  # Increased threshold since we pre-sanitize
+            logger.warning(f"Content contains excessive markdown formatting for {field_name}: {content[:50]}...")
+            return False
+        
         # Much more relaxed minimum length requirements
         min_lengths = {
             "heading": 3,  # Reduced from 5
@@ -402,19 +467,21 @@ class TemplateFiller:
         return True
     
     def _get_fallback_content(self, field_name: str) -> str:
-        """Get fallback content when LLM generation fails"""
+        """Get high-quality fallback content when LLM generation fails"""
+        # Improved fallback content that's more engaging and specific
         fallback_content = {
-            "heading": "Educational Content",
-            "title": "Learning Topic",
-            "content": "This section contains important information about the topic that will help you understand the key concepts.",
-            "body": "Educational content will be presented here to help students learn effectively.",
-            "text": "Key information about this topic.",
-            "description": "Important details about the subject matter.",
-            "summary": "Key points summarized for easy understanding.",
-            "objective": "Students will learn important concepts."
+            "heading": "Key Learning Concepts",
+            "title": "Understanding the Topic",
+            "content": "This section covers essential information that builds your understanding of the key concepts step by step.",
+            "body": "Important educational content is presented here to support effective learning and comprehension.",
+            "text": "Essential information about the core concepts.",
+            "description": "Detailed explanation of the fundamental principles.",
+            "summary": "Key takeaways that reinforce your understanding.",
+            "objective": "Students will gain clear understanding of essential concepts."
         }
         
-        return fallback_content.get(field_name, "Educational content will be displayed here.")
+        logger.info(f"Using improved fallback content for {field_name}")
+        return fallback_content.get(field_name, "Quality educational content supports effective learning.")
     
     def _build_prompt(
         self, 

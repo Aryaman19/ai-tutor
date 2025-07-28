@@ -217,7 +217,7 @@ export const useMultiSlideAudio = (): UseMultiSlideAudioResult => {
    */
   const mergeAudioWithCrossfade = useCallback(async (
     slideAudios: SlideAudioData[],
-    crossfadeDuration: number = 500
+    crossfadeDuration: number = 1500
   ): Promise<AudioMergeResult> => {
     logger.debug('Starting audio merge with real crossfade', { 
       slideCount: slideAudios.length,

@@ -379,6 +379,8 @@ class LessonStructureService:
         key_concepts = ", ".join(topic_analysis.get("key_concepts", [topic]))
         
         # Section-specific prompts that map to the 9-section structure
+        # NOTE: These prompts are no longer used since we switched to using template's built-in llmPrompts
+        # Keeping for potential future use or reference
         section_prompts = {
             "title-objective": {
                 "heading": f"{base_context} Create a clear, engaging lesson title about {topic} (max 60 chars).",
