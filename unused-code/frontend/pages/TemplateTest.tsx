@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import { createComponentLogger } from '@ai-tutor/utils';
 import TemplateSelector from '../components/templates/TemplateSelector';
@@ -53,10 +53,31 @@ interface RenderedTemplate {
   };
 }
 
+interface FilledTemplate {
+  templateId: string;
+  templateName: string;
+  topic: string;
+  slideIndex: number;
+  filledContent: {
+    heading: string;
+    content: string;
+    narration: string;
+  };
+  containerSize: {
+    width: number;
+    height: number;
+    breakpoint: string;
+  };
+  elements: TemplateElement[];
+  metadata: any;
+  isFallback: boolean;
+}
 
 const TemplateTest: React.FC = () => {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [slideIndex, setSlideIndex] = useState(0);
+  const [topic, setTopic] = useState<string>('');
+  const [useGeneratedContent, setUseGeneratedContent] = useState<boolean>(false);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 450 });
   const [scaleFactor, setScaleFactor] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -102,7 +123,36 @@ const TemplateTest: React.FC = () => {
 
       return response.json();
     },
-    enabled: !!selectedTemplateId
+    enabled: !!selectedTemplateId && !useGeneratedContent
+  });
+
+  // LLM content generation mutation
+  const fillTemplateMutation = useMutation({
+    mutationFn: async (topicInput: string): Promise<FilledTemplate> => {
+      if (!selectedTemplateId || !topicInput.trim()) {
+        throw new Error('Template and topic required');
+      }
+
+      const response = await fetch(`/api/templates/${selectedTemplateId}/fill`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topic: topicInput.trim(),
+          container_size: {
+            width: 800,
+            height: 600
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate content');
+      }
+
+      return response.json();
+    }
   });
 
   // Auto-select first template when templates load
@@ -111,6 +161,13 @@ const TemplateTest: React.FC = () => {
       setSelectedTemplateId(templatesData.templates[0].id);
     }
   }, [templatesData, selectedTemplateId]);
+
+  // Auto-switch to generated content when generation completes
+  useEffect(() => {
+    if (fillTemplateMutation.isSuccess && fillTemplateMutation.data) {
+      setUseGeneratedContent(true);
+    }
+  }, [fillTemplateMutation.isSuccess, fillTemplateMutation.data]);
 
   // Responsive canvas sizing
   useEffect(() => {
@@ -226,6 +283,17 @@ const TemplateTest: React.FC = () => {
   const handleTemplateChange = (templateId: string) => {
     setSelectedTemplateId(templateId);
     setSlideIndex(0); // Reset to first slide
+    setUseGeneratedContent(false); // Reset to fallback preview
+  };
+
+  const handleGenerateContent = () => {
+    if (topic.trim() && selectedTemplateId) {
+      fillTemplateMutation.mutate(topic);
+    }
+  };
+
+  const handleToggleContentType = () => {
+    setUseGeneratedContent(!useGeneratedContent);
   };
 
   const handleToggleFullscreen = () => {
@@ -253,8 +321,10 @@ const TemplateTest: React.FC = () => {
     };
   }, [isFullscreen]);
 
-  // Use rendered template data
-  const currentTemplate = renderedTemplate;
+  // Determine which template data to show
+  const currentTemplate = useGeneratedContent 
+    ? fillTemplateMutation.data 
+    : renderedTemplate;
 
   const excalidrawElements = currentTemplate 
     ? convertToExcalidrawElements(currentTemplate.elements)
@@ -297,34 +367,34 @@ const TemplateTest: React.FC = () => {
     }, 200);
     
     return () => clearTimeout(timer);
-  }, [selectedTemplateId, currentTemplate]);
+  }, [selectedTemplateId, useGeneratedContent, currentTemplate]);
 
   if (templatesLoading) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Loading templates...</p>
+          <p className="text-gray-600">Loading templates...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
+    <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
+      <div className="bg-white border-b border-gray-200 p-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Template Browser</h1>
-            <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
+            <h1 className="text-2xl font-bold text-gray-900">Template Browser</h1>
+            <p className="text-gray-600 text-sm mt-1">
               Browse and preview educational templates
             </p>
           </div>
           
           {currentTemplate && (
             <div className="text-right">
-              <div className="text-sm text-gray-500 dark:text-gray-400">
+              <div className="text-sm text-gray-500">
                 {currentTemplate.templateName}
               </div>
             </div>
@@ -333,7 +403,7 @@ const TemplateTest: React.FC = () => {
       </div>
 
       {/* Controls */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
+      <div className="bg-white border-b border-gray-200 p-4 space-y-4">
         <div className="flex flex-wrap items-center gap-4">
           <TemplateSelector
             templates={templatesData?.templates || []}
@@ -341,17 +411,19 @@ const TemplateTest: React.FC = () => {
             onTemplateChange={handleTemplateChange}
             disabled={templatesLoading}
           />
+          
         </div>
+
       </div>
 
       {/* Preview Area */}
       <div className="flex-1 overflow-hidden">
-        {renderLoading ? (
+        {(renderLoading || fillTemplateMutation.isPending) ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
               <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Rendering template...
+              <p className="text-gray-600 text-sm">
+                {fillTemplateMutation.isPending ? 'Generating content...' : 'Rendering template...'}
               </p>
             </div>
           </div>
@@ -383,7 +455,7 @@ const TemplateTest: React.FC = () => {
                     }}
                   >
                     <Excalidraw
-                      key={`${selectedTemplateId}-${slideIndex}-${scaleFactor}-fullscreen`}
+                      key={`${selectedTemplateId}-${slideIndex}-${useGeneratedContent}-${scaleFactor}-fullscreen`}
                       initialData={{
                         elements: excalidrawElements,
                         appState: {
@@ -424,7 +496,7 @@ const TemplateTest: React.FC = () => {
               {/* Canvas Preview */}
               <div 
                 ref={!isFullscreen ? canvasContainerRef : undefined}
-                className="flex-1 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex items-center justify-center relative"
+                className="flex-1 bg-white border-r border-gray-200 flex items-center justify-center relative"
               >
                 {/* Fullscreen button */}
                 <button
@@ -443,7 +515,7 @@ const TemplateTest: React.FC = () => {
                   }}
                 >
                 <Excalidraw
-                  key={`${selectedTemplateId}-${slideIndex}-${scaleFactor}`}
+                  key={`${selectedTemplateId}-${slideIndex}-${useGeneratedContent}-${scaleFactor}`}
                   initialData={{
                     elements: excalidrawElements,
                     appState: {
@@ -478,17 +550,17 @@ const TemplateTest: React.FC = () => {
             </div>
 
             {/* Metadata Panel */}
-            <div className={`bg-gray-50 dark:bg-gray-800 overflow-y-auto transition-all duration-300 ${
+            <div className={`bg-gray-50 overflow-y-auto transition-all duration-300 ${
               showTemplateDetails ? 'w-80' : 'w-12'
             }`}>
               <div className="p-4">
                 <div className="flex items-center justify-between mb-4">
                   {showTemplateDetails && (
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">Template Details</h3>
+                    <h3 className="font-semibold text-gray-900">Template Details</h3>
                   )}
                   <button
                     onClick={() => setShowTemplateDetails(!showTemplateDetails)}
-                    className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                    className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded transition-colors"
                     title={showTemplateDetails ? "Hide Details" : "Show Details"}
                   >
                     {showTemplateDetails ? '→' : '←'}
@@ -499,8 +571,8 @@ const TemplateTest: React.FC = () => {
                   <div className="space-y-4">
                     {/* Template Info */}
                     <div>
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Template</h4>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Template</h4>
+                      <div className="text-sm text-gray-600">
                         <div><strong>ID:</strong> {currentTemplate.templateId}</div>
                         <div><strong>Name:</strong> {currentTemplate.templateName}</div>
                         <div><strong>Slide:</strong> {currentTemplate.slideIndex + 1}</div>
@@ -510,9 +582,15 @@ const TemplateTest: React.FC = () => {
 
                     {/* Content Type Info */}
                     <div>
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Content Type</h4>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        <div><strong>Mode:</strong> Fallback</div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Content Type</h4>
+                      <div className="text-sm text-gray-600">
+                        <div><strong>Mode:</strong> {useGeneratedContent ? 'Generated' : 'Fallback'}</div>
+                        {useGeneratedContent && fillTemplateMutation.data && (
+                          <>
+                            <div><strong>Topic:</strong> {fillTemplateMutation.data.topic}</div>
+                            <div><strong>Status:</strong> {fillTemplateMutation.data.isFallback ? 'Fallback (LLM Failed)' : 'Generated'}</div>
+                          </>
+                        )}
                         <div><strong>Breakpoint:</strong> {currentTemplate.containerSize.breakpoint}</div>
                         <div><strong>Canvas:</strong> {Math.round(canvasSize.width)}×{Math.round(canvasSize.height)}</div>
                       </div>
@@ -520,15 +598,15 @@ const TemplateTest: React.FC = () => {
 
                     {/* Elements */}
                     <div>
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Elements ({currentTemplate.elements.length})</h4>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">Elements ({currentTemplate.elements.length})</h4>
                       <div className="space-y-2">
                         {currentTemplate.elements.map((element, index) => (
-                          <div key={index} className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-200 dark:border-gray-600 text-xs">
-                            <div className="text-gray-900 dark:text-gray-100"><strong>Type:</strong> {element.type}</div>
-                            <div className="text-gray-900 dark:text-gray-100"><strong>Position:</strong> ({Math.round(element.x)}, {Math.round(element.y)})</div>
-                            <div className="text-gray-900 dark:text-gray-100"><strong>Size:</strong> {Math.round(element.width)}×{Math.round(element.height)}</div>
-                            <div className="text-gray-900 dark:text-gray-100"><strong>Font:</strong> {element.fontSize}px</div>
-                            <div className="mt-1 text-gray-600 dark:text-gray-400 break-words">
+                          <div key={index} className="bg-white p-2 rounded border text-xs">
+                            <div><strong>Type:</strong> {element.type}</div>
+                            <div><strong>Position:</strong> ({Math.round(element.x)}, {Math.round(element.y)})</div>
+                            <div><strong>Size:</strong> {Math.round(element.width)}×{Math.round(element.height)}</div>
+                            <div><strong>Font:</strong> {element.fontSize}px</div>
+                            <div className="mt-1 text-gray-600 break-words">
                               <strong>Text:</strong> {element.text.substring(0, 50)}...
                             </div>
                           </div>
@@ -538,28 +616,30 @@ const TemplateTest: React.FC = () => {
 
                     {/* Content Data */}
                     <div>
-                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Fallback Data
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">
+                        {useGeneratedContent ? 'Generated Content' : 'Fallback Data'}
                       </h4>
-                      <div className="bg-white dark:bg-gray-700 p-2 rounded border border-gray-200 dark:border-gray-600 text-xs">
+                      <div className="bg-white p-2 rounded border text-xs">
                         {(() => {
-                          const contentData = currentTemplate.metadata.fallbackData;
+                          const contentData = useGeneratedContent && fillTemplateMutation.data 
+                            ? fillTemplateMutation.data.filledContent
+                            : currentTemplate.metadata.fallbackData;
                           
-                          if (!contentData) return <div className="text-gray-900 dark:text-gray-100">No content data available</div>;
+                          if (!contentData) return <div>No content data available</div>;
                           
                           return (
                             <>
                               <div className="mb-2">
-                                <strong className="text-gray-900 dark:text-gray-100">Heading:</strong>
-                                <div className="text-gray-600 dark:text-gray-400 mt-1">{contentData.heading}</div>
+                                <strong>Heading:</strong>
+                                <div className="text-gray-600 mt-1">{contentData.heading}</div>
                               </div>
                               <div className="mb-2">
-                                <strong className="text-gray-900 dark:text-gray-100">Content:</strong>
-                                <div className="text-gray-600 dark:text-gray-400 mt-1">{contentData.content?.substring(0, 100)}...</div>
+                                <strong>Content:</strong>
+                                <div className="text-gray-600 mt-1">{contentData.content?.substring(0, 100)}...</div>
                               </div>
                               <div>
-                                <strong className="text-gray-900 dark:text-gray-100">Narration:</strong>
-                                <div className="text-gray-600 dark:text-gray-400 mt-1">{contentData.narration?.substring(0, 100)}...</div>
+                                <strong>Narration:</strong>
+                                <div className="text-gray-600 mt-1">{contentData.narration?.substring(0, 100)}...</div>
                               </div>
                             </>
                           );
@@ -574,7 +654,7 @@ const TemplateTest: React.FC = () => {
           </>
         ) : (
           <div className="h-full flex items-center justify-center">
-            <div className="text-center text-gray-500 dark:text-gray-400">
+            <div className="text-center text-gray-500">
               <div className="text-6xl mb-4">📐</div>
               <p>Select a template to preview</p>
             </div>

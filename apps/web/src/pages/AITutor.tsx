@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@ai-tutor/ui';
-import { ExcalidrawPlayerProgressive } from '../components/ExcalidrawPlayerProgressive';
-import { UnifiedPlayer } from '../components/UnifiedPlayer';
 import AITutorPlayer from '../components/AITutorPlayer';
 import MultiSlideCanvasPlayer from '../components/MultiSlideCanvasPlayer';
 import { lessonsApi, ttsApi } from '@ai-tutor/api-client';
@@ -853,48 +851,48 @@ function AITutorContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100 mb-2">
             🤖 AI Tutor
           </h1>
-          <p className="text-xl text-gray-600">
+          <p className="text-xl text-gray-600 dark:text-gray-300">
             Learn any topic with AI-generated lessons and interactive visuals
           </p>
         </div>
 
         {/* Lesson Configuration */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-6">📚 Create Your Lesson</h2>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+          <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-6">📚 Create Your Lesson</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
             {/* Topic Input */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 What would you like to learn? *
               </label>
               <input
                 type="text"
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
                 placeholder="e.g., Photosynthesis, Solar System, Democracy..."
-                disabled={isGenerating || createLessonMutation.isPending}
+                disabled={isGeneratingAITutor}
               />
               
               {/* Example topics */}
               <div className="mt-3">
-                <p className="text-sm text-gray-600 mb-2">💡 Try these examples:</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">💡 Try these examples:</p>
                 <div className="flex flex-wrap gap-2">
                   {exampleTopics.map((example, index) => (
                     <button
                       key={index}
                       onClick={() => setTopic(example)}
-                      className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full transition-colors duration-200 disabled:opacity-50"
-                      disabled={isGenerating || createLessonMutation.isPending}
+                      className="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-full transition-colors duration-200 disabled:opacity-50"
+                      disabled={isGeneratingAITutor}
                     >
                       {example}
                     </button>
@@ -939,191 +937,83 @@ function AITutorContent() {
             </div>
           </div>
 
-          {/* Mode Selection */}
+
+
+          {/* Canvas Player Mode Toggle */}
           <div className="mb-6">
-            <div className="flex items-center justify-center space-x-1 bg-gray-100 rounded-lg p-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+              🎨 Canvas Player Mode
+            </label>
+            <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
               <button
-                onClick={() => setMode('interactive')}
-                className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 ${
-                  mode === 'interactive'
-                    ? 'bg-white shadow-sm text-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
+                onClick={() => setUseCanvasPlayer(false)}
+                className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
+                  !useCanvasPlayer
+                    ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400'
+                    : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100'
                 }`}
-                disabled={isGenerating || createLessonMutation.isPending || isGeneratingAITutor}
+                disabled={isGeneratingAITutor}
               >
-                🎮 Play Now
+                🤖 AI Tutor Player
               </button>
               <button
-                onClick={() => setMode('create')}
-                className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 ${
-                  mode === 'create'
-                    ? 'bg-white shadow-sm text-green-600'
-                    : 'text-gray-600 hover:text-gray-900'
+                onClick={() => setUseCanvasPlayer(true)}
+                className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
+                  useCanvasPlayer
+                    ? 'bg-white dark:bg-gray-600 shadow-sm text-orange-600 dark:text-orange-400'
+                    : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100'
                 }`}
-                disabled={isGenerating || createLessonMutation.isPending || isGeneratingAITutor}
+                disabled={isGeneratingAITutor}
               >
-                📚 Save Lesson
+                🎨 Multi-Slide Canvas
               </button>
             </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              {useCanvasPlayer 
+                ? "🎨 POC-style multi-slide canvas player with timer-based progression"
+                : "🤖 Standard AI tutor player with audio synchronization"
+              }
+            </p>
           </div>
 
-          {/* AI Tutor Mode Toggle (only for interactive mode) */}
-          {mode === 'interactive' && (
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                🤖 Lesson Generation Mode
-              </label>
-              <div className="flex bg-gray-100 rounded-lg p-1">
-                <button
-                  onClick={() => setUseMultiSlideMode(true)}
-                  className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
-                    useMultiSlideMode
-                      ? 'bg-white shadow-sm text-purple-600'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                  disabled={isGenerating || isGeneratingAITutor}
-                >
-                  🎯 AI Tutor (Multi-Slide)
-                </button>
-                <button
-                  onClick={() => setUseMultiSlideMode(false)}
-                  className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
-                    !useMultiSlideMode
-                      ? 'bg-white shadow-sm text-blue-600'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                  disabled={isGenerating || isGeneratingAITutor}
-                >
-                  ⚡ Stream Mode (Legacy)
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                {useMultiSlideMode 
-                  ? "🎯 Structured lessons with multiple slides, templates, and synchronized audio"
-                  : "⚡ Traditional streaming mode with timeline events"
-                }
-              </p>
-            </div>
-          )}
-
-          {/* Canvas Player Mode Toggle (only for multi-slide mode) */}
-          {mode === 'interactive' && useMultiSlideMode && (
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                🎨 Canvas Player Mode
-              </label>
-              <div className="flex bg-gray-100 rounded-lg p-1">
-                <button
-                  onClick={() => setUseCanvasPlayer(false)}
-                  className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
-                    !useCanvasPlayer
-                      ? 'bg-white shadow-sm text-blue-600'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                  disabled={isGenerating || isGeneratingAITutor}
-                >
-                  🤖 AI Tutor Player
-                </button>
-                <button
-                  onClick={() => setUseCanvasPlayer(true)}
-                  className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
-                    useCanvasPlayer
-                      ? 'bg-white shadow-sm text-orange-600'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                  disabled={isGenerating || isGeneratingAITutor}
-                >
-                  🎨 Multi-Slide Canvas
-                </button>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                {useCanvasPlayer 
-                  ? "🎨 POC-style multi-slide canvas player with timer-based progression"
-                  : "🤖 Standard AI tutor player with audio synchronization"
-                }
-              </p>
-            </div>
-          )}
-
           {/* Action buttons */}
-          <div className="flex gap-4">
-            {mode === 'interactive' ? (
-              <>
-                <Button
-                  onClick={useMultiSlideMode ? generateAITutorLesson : generateLesson}
-                  disabled={(useMultiSlideMode ? isGeneratingAITutor : isGenerating) || !topic.trim()}
-                  className={`flex-1 ${
-                    useMultiSlideMode 
-                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700' 
-                      : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
-                  } text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 text-lg`}
-                >
-                  {(useMultiSlideMode ? isGeneratingAITutor : isGenerating) ? (
-                    <div className="flex items-center justify-center space-x-3">
-                      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>
-                        {useMultiSlideMode 
-                          ? 'Generating AI Tutor Lesson...' 
-                          : 'Generating Interactive Content...'
-                        }
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center space-x-3">
-                      <span className="text-xl">
-                        {useMultiSlideMode ? '🎯' : '🎮'}
-                      </span>
-                      <span>
-                        {useMultiSlideMode 
-                          ? 'Generate AI Tutor Lesson' 
-                          : 'Generate & Play Now'
-                        }
-                      </span>
-                    </div>
-                  )}
-                </Button>
-                
-                {/* Load Dummy Templates Button - only show in multi-slide mode */}
-                {useMultiSlideMode && (
-                  <Button
-                    onClick={generateDummyTemplateLesson}
-                    disabled={isGeneratingAITutor || isGenerating}
-                    className="flex-none bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 text-lg"
-                    title="Load a multi-slide lesson using template fallback data without LLM generation"
-                  >
-                    {isGeneratingAITutor && aiTutorProgress.includes('dummy') ? (
-                      <div className="flex items-center justify-center space-x-3">
-                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Loading Templates...</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-center space-x-3">
-                        <span className="text-xl">📐</span>
-                        <span>Load Dummy Templates</span>
-                      </div>
-                    )}
-                  </Button>
-                )}
-              </>
-            ) : (
-              <Button
-                onClick={() => createLessonMutation.mutate(topic.trim())}
-                disabled={createLessonMutation.isPending || !topic.trim()}
-                className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 text-lg"
-              >
-                {createLessonMutation.isPending ? (
-                  <div className="flex items-center justify-center space-x-3">
-                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Creating Lesson...</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center space-x-3">
-                    <span className="text-xl">📚</span>
-                    <span>Create & Save Lesson</span>
-                  </div>
-                )}
-              </Button>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Button
+              onClick={generateAITutorLesson}
+              disabled={isGeneratingAITutor || !topic.trim()}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 text-lg"
+            >
+              {isGeneratingAITutor ? (
+                <div className="flex items-center justify-center space-x-3">
+                  <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Generating AI Tutor Lesson...</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center space-x-3">
+                  <span className="text-xl">🎯</span>
+                  <span>Generate AI Tutor Lesson</span>
+                </div>
+              )}
+            </Button>
+            
+            <Button
+              onClick={generateDummyTemplateLesson}
+              disabled={isGeneratingAITutor}
+              className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-medium py-4 px-6 rounded-lg transition-all duration-200 disabled:opacity-50 text-lg"
+              title="Load a multi-slide lesson using template fallback data without LLM generation"
+            >
+              {isGeneratingAITutor && aiTutorProgress.includes('dummy') ? (
+                <div className="flex items-center justify-center space-x-3">
+                  <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Loading Templates...</span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center space-x-3">
+                  <span className="text-xl">📐</span>
+                  <span>Load Dummy Templates</span>
+                </div>
+              )}
+            </Button>
             
             {(timelineEvents.length > 0 || aiTutorLesson || error) && (
               <Button
@@ -1138,24 +1028,24 @@ function AITutorContent() {
           </div>
 
           {/* Progress indicator */}
-          {(generationProgress || aiTutorProgress) && (
-            <div className={`mt-4 p-3 ${
-              aiTutorProgress 
-                ? 'bg-purple-50 border border-purple-200' 
-                : 'bg-blue-50 border border-blue-200'
+          {(generationProgress || aiTutorProgress || isGeneratingAITutor) && (
+            <div className={`mt-4 p-4 ${
+              aiTutorProgress || isGeneratingAITutor
+                ? 'bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800' 
+                : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800'
             } rounded-lg`}>
-              <div className="flex items-center space-x-2">
-                <div className={`w-4 h-4 border-2 ${
-                  aiTutorProgress 
-                    ? 'border-purple-600' 
-                    : 'border-blue-600'
+              <div className="flex items-center space-x-3">
+                <div className={`w-5 h-5 border-2 ${
+                  aiTutorProgress || isGeneratingAITutor
+                    ? 'border-purple-600 dark:border-purple-400' 
+                    : 'border-blue-600 dark:border-blue-400'
                 } border-t-transparent rounded-full animate-spin`}></div>
                 <span className={`${
-                  aiTutorProgress 
-                    ? 'text-purple-800' 
-                    : 'text-blue-800'
-                } font-medium`}>
-                  {aiTutorProgress || generationProgress}
+                  aiTutorProgress || isGeneratingAITutor
+                    ? 'text-purple-800 dark:text-purple-200' 
+                    : 'text-blue-800 dark:text-blue-200'
+                } font-medium text-lg`}>
+                  {aiTutorProgress || generationProgress || 'Generating AI Tutor Lesson...'}
                 </span>
               </div>
               {isProcessingEngines && (
@@ -1334,22 +1224,6 @@ function AITutorContent() {
                     className="w-full h-full"
                   />
                 )
-              ) : unifiedAudioResult && audioEngine && layoutEngine ? (
-                <UnifiedPlayer
-                  audioEngine={audioEngine}
-                  layoutEngine={layoutEngine}
-                  unifiedAudioResult={unifiedAudioResult}
-                  canvasStates={canvasStates}
-                  autoPlay={false}
-                  showControls={true}
-                  width={1200}
-                  height={700}
-                  onPlaybackStart={handlePlaybackStart}
-                  onPlaybackEnd={handlePlaybackEnd}
-                  onSeek={handleSeek}
-                  onError={handleError}
-                  className="w-full h-full"
-                />
               ) : (
                 <div className="w-full h-full bg-gray-50 flex items-center justify-center">
                   <div className="text-center">

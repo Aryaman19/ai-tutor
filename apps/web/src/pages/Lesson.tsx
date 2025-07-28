@@ -15,8 +15,6 @@ import { Card, CardHeader, CardTitle, CardContent } from "@ai-tutor/ui";
 import { cn, createComponentLogger } from "@ai-tutor/utils";
 import { lessonsApi } from "@ai-tutor/api-client";
 import type { Lesson as LessonType } from "@ai-tutor/types";
-import { EditableTitle } from "../components/EditableTitle";
-import ExcalidrawPlayer from "../components/ExcalidrawPlayer";
 
 type ViewMode = "video" | "notes" | "mindmap" | "quiz";
 
