@@ -36,8 +36,6 @@ export interface MultiSlideCanvasPlayerProps {
   slides: SlideData[];
   autoPlay?: boolean;
   showControls?: boolean;
-  width?: number;
-  height?: number;
   onSlideChange?: (slideIndex: number) => void;
   onPlaybackStart?: () => void;
   onPlaybackEnd?: () => void;
@@ -50,8 +48,6 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   slides,
   autoPlay = false,
   showControls = true,
-  width = 1200,
-  height = 700,
   onSlideChange,
   onPlaybackStart,
   onPlaybackEnd,
@@ -67,7 +63,9 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [allSlidesLoaded, setAllSlidesLoaded] = useState(false);
-  const [containerSize, setContainerSize] = useState({ width, height });
+  const [containerSize, setContainerSize] = useState({ width: 800, height: 450 });
+  const [scaleFactor, setScaleFactor] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Refs for POC-style management
   const accumulatedElements = useRef<any[]>([]);
@@ -152,6 +150,8 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     logger.debug("Loading all slides with positioning...");
 
     const allElements: any[] = [];
+    // Use a fixed base width for slide positioning to prevent repositioning on resize
+    const baseWidth = 800; // Fixed base width for slide spacing
     let currentOffset = 0;
 
     slides.forEach((slide, slideIndex) => {
@@ -165,8 +165,8 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
       // Fix elements format
       const fixedElements = inspectAndFixElements(slideElements);
 
-      // Apply positioning offset to each element (much larger spacing)
-      const slideOffset = slideIndex * (containerSize.width * 2); // Much larger spacing between slides
+      // Apply positioning offset to each element (use fixed base width for consistent spacing)
+      const slideOffset = slideIndex * (baseWidth * 2); // Much larger spacing between slides
       const positionedElements = fixedElements.map((el, elementIndex) => {
         const newX = el.x + slideOffset;
         logger.debug(
@@ -202,23 +202,22 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
 
       allElements.push(...positionedElements);
 
-      // Calculate offset for next slide (use slide's position_offset or default spacing)
-      // For now, let's use a simple calculation
-      currentOffset = slideIndex * (containerSize.width + 100);
+      // Calculate offset for next slide (use fixed base width for consistent spacing)
+      currentOffset = slideIndex * (baseWidth + 100);
 
       logger.debug(
         `Slide ${slideIndex + 1} positioned at offset ${
-          currentOffset - (containerSize.width + 100)
+          currentOffset - (baseWidth + 100)
         }`,
         {
           elementsCount: positionedElements.length,
-          slideOffset: currentOffset - (containerSize.width + 100),
+          slideOffset: currentOffset - (baseWidth + 100),
         }
       );
     });
 
     return allElements;
-  }, [slides, inspectAndFixElements, containerSize.width]);
+  }, [slides, inspectAndFixElements]); // Remove containerSize.width dependency
 
   // Move camera to specific slide position (like POC's scrollToContent)
   const moveToSlide = useCallback(
@@ -226,7 +225,9 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
       if (!excalidrawAPI || slideIndex >= slides.length) return;
 
       const slide = slides[slideIndex];
-      const slideOffset = slideIndex * (containerSize.width * 2);
+      // Use the same fixed base width as in loadAllSlides
+      const baseWidth = 800;
+      const slideOffset = slideIndex * (baseWidth * 2);
 
       logger.debug(`Moving camera to slide ${slideIndex + 1} (zero-based index: ${slideIndex})`, {
         slideOffset,
@@ -284,37 +285,109 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
         );
       }
     },
-    [excalidrawAPI, slides, containerSize.width]
+    [excalidrawAPI, slides] // Remove containerSize.width dependency
   );
 
-  // Container size observer for responsive behavior
+  // Responsive canvas sizing with aspect ratio maintenance
   useEffect(() => {
-    if (!containerRef.current) return;
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) {
-        const { width: newWidth, height: newHeight } = entry.contentRect;
-
-        setContainerSize((prevSize) => {
-          if (prevSize.width !== newWidth || prevSize.height !== newHeight) {
-            logger.debug("Container size changed", {
-              from: prevSize,
-              to: { width: newWidth, height: newHeight },
-            });
-            return { width: newWidth, height: newHeight };
-          }
-          return prevSize;
-        });
+    const updateCanvasSize = () => {
+      if (!containerRef.current) return;
+      
+      const container = containerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      
+      // Base canvas size (16:9 aspect ratio)
+      const baseWidth = 800;
+      const baseHeight = 450;
+      const aspectRatio = baseWidth / baseHeight;
+      
+      let maxWidth, maxHeight;
+      
+      if (isFullscreen) {
+        // Use full viewport dimensions for fullscreen
+        maxWidth = window.innerWidth * 0.95;
+        maxHeight = window.innerHeight * 0.95;
+      } else {
+        // Use container dimensions for normal mode, accounting for controls
+        maxWidth = containerRect.width * 0.95;
+        maxHeight = (containerRect.height - (showControls ? 80 : 0)) * 0.95;
       }
+      
+      // Calculate new dimensions maintaining aspect ratio
+      let newWidth = maxWidth;
+      let newHeight = newWidth / aspectRatio;
+      
+      if (newHeight > maxHeight) {
+        newHeight = maxHeight;
+        newWidth = newHeight * aspectRatio;
+      }
+      
+      // Ensure minimum size
+      const minWidth = 320;
+      const minHeight = 180;
+      
+      if (newWidth < minWidth) {
+        newWidth = minWidth;
+        newHeight = newWidth / aspectRatio;
+      }
+      
+      // Calculate scale factor for content scaling
+      const scale = Math.min(newWidth / baseWidth, newHeight / baseHeight);
+      
+      setContainerSize({ width: newWidth, height: newHeight });
+      setScaleFactor(scale);
+      
+      logger.debug("Canvas size updated", {
+        containerSize: { width: containerRect.width, height: containerRect.height },
+        canvasSize: { width: newWidth, height: newHeight },
+        scaleFactor: scale,
+        isFullscreen
+      });
+    };
+    
+    // Initial size calculation with a small delay to ensure DOM is ready
+    const timer = setTimeout(updateCanvasSize, 100);
+    
+    // Add window resize listener for immediate response
+    window.addEventListener('resize', updateCanvasSize);
+    
+    // Add resize observer for container changes
+    const resizeObserver = new ResizeObserver(() => {
+      // Use timeout to debounce rapid resize events
+      clearTimeout(timer);
+      setTimeout(updateCanvasSize, 50);
     });
-
-    resizeObserver.observe(containerRef.current);
-
+    
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    
+    // Cleanup
     return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', updateCanvasSize);
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [isFullscreen, showControls]);
+
+  // Update Excalidraw view when container size changes to fix current slide scaling
+  useEffect(() => {
+    if (!excalidrawAPI || !allSlidesLoaded) return;
+
+    // Add a small delay to ensure the canvas has been resized
+    const timer = setTimeout(() => {
+      logger.debug("Container size changed, updating current slide view", {
+        containerSize,
+        currentSlideIndex,
+        scaleFactor
+      });
+      
+      // Re-fit the current slide to the new container size
+      moveToSlide(currentSlideIndex);
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [containerSize, excalidrawAPI, allSlidesLoaded, currentSlideIndex, moveToSlide, scaleFactor]);
 
   // Create simple test elements to verify updateScene works
   const createTestElements = useCallback(() => {
@@ -551,7 +624,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     [excalidrawAPI, regenerateIndices]
   );
 
-  // Show next slide (updated to use camera movement)
+  // Show next slide (handles timing and progression only)
   const showNextSlide = useCallback(() => {
     if (
       !excalidrawAPI ||
@@ -575,16 +648,18 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
       allSlidesLoaded,
     });
 
-    // Move camera to current slide position
-    moveToSlide(currentSlideIndex);
-
-    // Notify slide change
-    onSlideChange?.(currentSlideIndex);
-
     // Schedule next slide based on estimated duration
     const duration = Math.max(2000, slide.estimated_duration * 1000); // Minimum 2 seconds
     slideProgressTimerRef.current = setTimeout(() => {
-      setCurrentSlideIndex((prev) => prev + 1);
+      setCurrentSlideIndex((prev) => {
+        const nextIndex = prev + 1;
+        if (nextIndex >= slides.length) {
+          setIsPlaying(false);
+          onPlaybackEnd?.();
+          return prev; // Don't increment past the last slide
+        }
+        return nextIndex;
+      });
     }, duration);
   }, [
     excalidrawAPI,
@@ -592,8 +667,6 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     slides,
     isPlaying,
     allSlidesLoaded,
-    moveToSlide,
-    onSlideChange,
     onPlaybackEnd,
   ]);
 
@@ -614,7 +687,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
               zoom: { value: 1 as any },
               scrollX: 0,
               scrollY: 0,
-              zenModeEnabled: true,
+              zenModeEnabled: false,
               viewModeEnabled: true,
             },
           });
@@ -658,7 +731,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                   zoom: { value: 1 as any },
                   scrollX: 0,
                   scrollY: 0,
-                  zenModeEnabled: true,
+                  zenModeEnabled: false,
                   viewModeEnabled: true,
                 },
               });
@@ -694,7 +767,8 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
           const slideElements = cleanedAllElements.filter(
             (el) => el.customData?.slideIndex === index
           );
-          const calculatedOffset = index * (containerSize.width * 2);
+          const baseWidth = 800; // Use same fixed base width
+          const calculatedOffset = index * (baseWidth * 2);
           
           logger.debug(`SLIDE ${index} (${slide.template_name}):`, {
             slideIndex: index,
@@ -723,7 +797,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
               zoom: { value: 1 as any },
               scrollX: 0,
               scrollY: 0,
-              zenModeEnabled: true,
+              zenModeEnabled: false, // Keep zen mode disabled for controls visibility
               viewModeEnabled: true,
             },
           });
@@ -776,18 +850,26 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     createTestElements,
     loadAllSlides,
     moveToSlide,
-    containerSize,
+    // Remove containerSize dependency to prevent slide reloading on resize
   ]);
 
-  // Handle slide progression
+  // Handle slide progression - only trigger on play state change
   useEffect(() => {
-    if (isPlaying && currentSlideIndex < slides.length) {
-      const timer = setTimeout(() => {
-        showNextSlide();
-      }, 200); // Small delay to work better with debouncing
-      return () => clearTimeout(timer);
+    if (isPlaying && allSlidesLoaded) {
+      // Start the slide progression when play starts
+      showNextSlide();
     }
-  }, [isPlaying, currentSlideIndex, showNextSlide]);
+  }, [isPlaying, allSlidesLoaded, showNextSlide]); 
+
+  // Handle camera movement when slide index changes (without triggering showNextSlide)
+  useEffect(() => {
+    if (allSlidesLoaded && excalidrawAPI) {
+      // Just move camera when slide index changes, don't schedule next slide
+      moveToSlide(currentSlideIndex);
+      // Notify slide change
+      onSlideChange?.(currentSlideIndex);
+    }
+  }, [currentSlideIndex, allSlidesLoaded, excalidrawAPI, moveToSlide, onSlideChange]);
 
   // Toggle play/pause
   const togglePlayPause = useCallback(() => {
@@ -799,10 +881,10 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
       }
     } else {
       if (currentSlideIndex >= slides.length) {
-        // Restart from beginning if at end
+        // Restart from beginning if at end - don't clear the elements!
         setCurrentSlideIndex(0);
-        accumulatedElements.current = [];
-
+        // Don't clear accumulatedElements - they should stay loaded
+        
         // Clear pending updates
         if (debounceTimerRef.current) {
           clearTimeout(debounceTimerRef.current);
@@ -810,11 +892,10 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
         }
         pendingUpdateRef.current = null;
 
-        if (excalidrawAPI) {
-          excalidrawAPI.updateScene({
-            elements: [],
-            appState: { viewBackgroundColor: "#fafafa" },
-          });
+        // Don't clear the canvas - just move back to first slide
+        if (excalidrawAPI && allSlidesLoaded) {
+          // Move camera back to first slide instead of clearing
+          setTimeout(() => moveToSlide(0), 100);
         }
       }
       setIsPlaying(true);
@@ -826,6 +907,8 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     slides.length,
     excalidrawAPI,
     onPlaybackStart,
+    allSlidesLoaded,
+    moveToSlide,
   ]);
 
   // Reset lesson
@@ -849,6 +932,32 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
       moveToSlide(0);
     }
   }, [allSlidesLoaded, moveToSlide]);
+
+  // Toggle fullscreen
+  const handleToggleFullscreen = useCallback(() => {
+    setIsFullscreen(!isFullscreen);
+  }, [isFullscreen]);
+
+  // Handle escape key to exit fullscreen
+  useEffect(() => {
+    const handleEscapeKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+
+    if (isFullscreen) {
+      document.addEventListener('keydown', handleEscapeKey);
+      document.body.style.overflow = 'hidden'; // Prevent body scroll in fullscreen
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscapeKey);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isFullscreen]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -889,132 +998,196 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className={`relative ${className}`}
-      style={{ height }}
-    >
-      {/* Excalidraw Canvas */}
+    <>
+      {/* Container that switches between normal and fullscreen */}
       <div
-        className="w-full h-full overflow-hidden"
-        style={{ position: "relative" }}
+        ref={containerRef}
+        className={`relative ${className} ${isFullscreen ? 'fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center' : 'h-full'}`}
       >
-        <Excalidraw
-          excalidrawAPI={(api) => setExcalidrawAPI(api)}
-          initialData={{
-            elements: [],
-            appState: {
-              viewBackgroundColor: "#fafafa",
-              currentItemFontFamily: 1,
-              zenModeEnabled: false,
-              gridModeEnabled: false,
-            },
-          }}
-          viewModeEnabled={true}
-          theme="light"
-        />
-      </div>
+        {/* Fullscreen exit button */}
+        {isFullscreen && (
+          <div className="absolute top-4 right-4 z-10 flex space-x-2">
+            <button
+              onClick={handleToggleFullscreen}
+              className="px-3 py-2 bg-white bg-opacity-20 text-white rounded-md hover:bg-opacity-30 transition-all duration-200 backdrop-blur-sm"
+              title="Exit Fullscreen (ESC)"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        
+        {/* Normal fullscreen button */}
+        {!isFullscreen && (
+          <button
+            onClick={handleToggleFullscreen}
+            className="absolute top-4 right-4 z-10 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors duration-200 shadow-md"
+            title="Enter Fullscreen"
+          >
+            ⛶
+          </button>
+        )}
+        {/* Excalidraw Canvas - Responsive container */}
+        <div className={`w-full h-full flex items-center justify-center ${isFullscreen ? 'bg-transparent' : 'bg-gray-50'}`}>
+          <div
+            className={`bg-white transition-all duration-300 overflow-hidden ${
+              isFullscreen 
+                ? 'shadow-2xl border border-gray-300' 
+                : 'shadow-lg border border-gray-300'
+            }`}
+            style={{
+              width: containerSize.width,
+              height: containerSize.height,
+            }}
+          >
+            <Excalidraw
+              excalidrawAPI={(api) => setExcalidrawAPI(api)}
+              initialData={{
+                elements: [],
+                appState: {
+                  viewBackgroundColor: "#fafafa",
+                  currentItemFontFamily: 1,
+                  zenModeEnabled: false, // Keep consistent zen mode setting
+                  gridModeEnabled: false,
+                  viewModeEnabled: true,
+                  zoom: { value: 1 as any },
+                  scrollX: 0,
+                  scrollY: 0,
+                },
+              }}
+              viewModeEnabled={true}
+              theme="light"
+              UIOptions={{
+                canvasActions: {
+                  loadScene: false,
+                  saveToActiveFile: false,
+                  export: false,
+                  saveAsImage: false,
+                  clearCanvas: false,
+                  changeViewBackgroundColor: false,
+                  toggleTheme: false,
+                },
+                tools: { image: false },
+                welcomeScreen: false,
+              }}
+              detectScroll={false}
+              handleKeyboardGlobally={false}
+            />
+          </div>
+        </div>
 
-      {/* Player Controls */}
-      {showControls && (
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent z-50 pointer-events-auto">
-          <div className="px-6 py-4">
-            {/* Control buttons and info */}
-            <div className="flex items-center gap-4 overflow-hidden">
-              {/* Left side - Control buttons */}
-              <div className="flex items-center space-x-4 flex-shrink-0">
-                {/* Play/Pause */}
-                <button
-                  onClick={togglePlayPause}
-                  className="flex items-center justify-center w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full transition-colors pointer-events-auto"
-                >
-                  {isPlaying ? (
-                    <svg
-                      className="w-6 h-6 text-white"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  ) : (
-                    <svg
-                      className="w-6 h-6 text-white ml-0.5"
-                      fill="currentColor"
-                      viewBox="0 0 20 20"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  )}
-                </button>
-
-                {/* Reset */}
-                <button
-                  onClick={resetLesson}
-                  className="flex items-center justify-center w-8 h-8 bg-white/20 hover:bg-white/30 rounded transition-colors pointer-events-auto"
-                >
-                  <svg
-                    className="w-4 h-4 text-white"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
+        {/* Player Controls */}
+        {showControls && (
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent z-50 pointer-events-auto">
+            <div className="px-6 py-4">
+              {/* Control buttons and info */}
+              <div className="flex items-center gap-4 overflow-hidden">
+                {/* Left side - Control buttons */}
+                <div className="flex items-center space-x-4 flex-shrink-0">
+                  {/* Play/Pause */}
+                  <button
+                    onClick={togglePlayPause}
+                    className="flex items-center justify-center w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full transition-colors pointer-events-auto"
                   >
-                    <path
-                      fillRule="evenodd"
-                      d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </button>
-              </div>
+                    {isPlaying ? (
+                      <svg
+                        className="w-6 h-6 text-white"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    ) : (
+                      <svg
+                        className="w-6 h-6 text-white ml-0.5"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    )}
+                  </button>
 
-              {/* Center spacer */}
-              <div className="flex-1"></div>
+                  {/* Reset */}
+                  <button
+                    onClick={resetLesson}
+                    className="flex items-center justify-center w-8 h-8 bg-white/20 hover:bg-white/30 rounded transition-colors pointer-events-auto"
+                  >
+                    <svg
+                      className="w-4 h-4 text-white"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
 
-              {/* Right side - Slide info */}
-              <div className="flex items-center gap-2 text-white text-sm min-w-0 flex-shrink">
-                {/* Slide indicator */}
-                <div className="bg-purple-500/30 px-3 py-1 rounded-full whitespace-nowrap">
-                  <span className="text-white/90 text-sm font-medium">
-                    🎯 Slide {Math.min(currentSlideIndex + 1, slides.length)} /{" "}
-                    {slides.length}
-                  </span>
+                  {/* Fullscreen toggle - only show in normal mode */}
+                  {!isFullscreen && (
+                    <button
+                      onClick={handleToggleFullscreen}
+                      className="flex items-center justify-center w-8 h-8 bg-white/20 hover:bg-white/30 rounded transition-colors pointer-events-auto"
+                      title="Enter Fullscreen"
+                    >
+                      <span className="text-white text-sm">⛶</span>
+                    </button>
+                  )}
                 </div>
 
-                {/* Current slide info */}
-                {slides[Math.min(currentSlideIndex, slides.length - 1)] && (
-                  <div className="bg-white/20 px-3 py-1 rounded-full whitespace-nowrap">
-                    <span className="text-white/80 text-sm">
-                      {
-                        slides[Math.min(currentSlideIndex, slides.length - 1)]
-                          .template_name
-                      }
+                {/* Center spacer */}
+                <div className="flex-1"></div>
+
+                {/* Right side - Slide info */}
+                <div className="flex items-center gap-2 text-white text-sm min-w-0 flex-shrink">
+                  {/* Slide indicator */}
+                  <div className="bg-purple-500/30 px-3 py-1 rounded-full whitespace-nowrap">
+                    <span className="text-white/90 text-sm font-medium">
+                      🎯 Slide {Math.min(currentSlideIndex + 1, slides.length)} /{" "}
+                      {slides.length}
                     </span>
                   </div>
-                )}
 
-                <div className="flex items-center gap-1 whitespace-nowrap">
-                  <div
-                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                      isPlaying ? "bg-green-400" : "bg-yellow-400"
-                    }`}
-                  ></div>
-                  <span className="text-white/80 text-xs hidden sm:inline">
-                    {isPlaying ? "Playing" : "Paused"}
-                  </span>
+                  {/* Current slide info */}
+                  {slides[Math.min(currentSlideIndex, slides.length - 1)] && (
+                    <div className="bg-white/20 px-3 py-1 rounded-full whitespace-nowrap">
+                      <span className="text-white/80 text-sm">
+                        {
+                          slides[Math.min(currentSlideIndex, slides.length - 1)]
+                            .template_name
+                        }
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-1 whitespace-nowrap">
+                    <div
+                      className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        isPlaying ? "bg-green-400" : "bg-yellow-400"
+                      }`}
+                    ></div>
+                    <span className="text-white/80 text-xs hidden sm:inline">
+                      {isPlaying ? "Playing" : "Paused"}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 };
 
