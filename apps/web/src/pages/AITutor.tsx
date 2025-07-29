@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@ai-tutor/ui';
-import AITutorPlayer from '../components/AITutorPlayer';
 import MultiSlideCanvasPlayer from '../components/MultiSlideCanvasPlayer';
 import { lessonsApi, ttsApi } from '@ai-tutor/api-client';
 import { createComponentLogger } from '@ai-tutor/utils';
@@ -131,7 +130,6 @@ function AITutorContent() {
   const [isGeneratingAITutor, setIsGeneratingAITutor] = useState(false);
   const [aiTutorProgress, setAiTutorProgress] = useState<string>('');
   const [useMultiSlideMode, setUseMultiSlideMode] = useState(true);
-  const [useCanvasPlayer, setUseCanvasPlayer] = useState(true);
   
   // Playback State
   const [isPlaying, setIsPlaying] = useState(false);
@@ -630,15 +628,34 @@ function AITutorContent() {
 
   // Generate AI tutor lesson with multi-slide support
   const generateAITutorLesson = async () => {
+    console.log('generateAITutorLesson called', { topic: topic.trim() });
+    
     if (!topic.trim()) {
       setError('Please enter a topic to generate a lesson');
       return;
     }
 
+    console.log('Setting isGeneratingAITutor to true');
     setIsGeneratingAITutor(true);
     setError('');
     setAiTutorProgress('Starting AI tutor lesson generation...');
-    resetLesson();
+    
+    // Reset only the previous lesson data, but keep the generating state
+    setTimelineEvents([]);
+    setStreamingChunks([]);
+    setIsStreamingComplete(false);
+    setIsPlaying(false);
+    setCurrentPosition(0);
+    setGenerationProgress('');
+    setAudioEngine(null);
+    setLayoutEngine(null);
+    setUnifiedAudioResult(null);
+    setCanvasStates([]);
+    setIsProcessingEngines(false);
+    setCompleteSemanticData(null);
+    setAiTutorLesson(null);
+    
+    console.log('State should be updated now, isGeneratingAITutor should be true');
 
     try {
       logger.debug('Starting AI tutor lesson generation', { topic, difficulty, targetDuration });
@@ -850,6 +867,15 @@ function AITutorContent() {
     setError(`Playback error: ${error.message}`);
   };
 
+  // Debug logging
+  console.log('AITutor render state:', {
+    isGeneratingAITutor,
+    aiTutorLesson: !!aiTutorLesson,
+    aiTutorProgress,
+    topic: topic.substring(0, 20),
+    error: !!error
+  });
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
       <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -886,12 +912,12 @@ function AITutorContent() {
               {/* Example topics */}
               <div className="mt-3">
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">💡 Try these examples:</p>
-                <div className="flex flex-wrap gap-2">
+                <div className="grid grid-cols-2 gap-1">
                   {exampleTopics.map((example, index) => (
                     <button
                       key={index}
                       onClick={() => setTopic(example)}
-                      className="px-3 py-1 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-full transition-colors duration-200 disabled:opacity-50"
+                      className="px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded transition-colors duration-200 disabled:opacity-50 text-left"
                       disabled={isGeneratingAITutor}
                     >
                       {example}
@@ -939,42 +965,6 @@ function AITutorContent() {
 
 
 
-          {/* Canvas Player Mode Toggle */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-              🎨 Canvas Player Mode
-            </label>
-            <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-              <button
-                onClick={() => setUseCanvasPlayer(false)}
-                className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
-                  !useCanvasPlayer
-                    ? 'bg-white dark:bg-gray-600 shadow-sm text-blue-600 dark:text-blue-400'
-                    : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100'
-                }`}
-                disabled={isGeneratingAITutor}
-              >
-                🤖 AI Tutor Player
-              </button>
-              <button
-                onClick={() => setUseCanvasPlayer(true)}
-                className={`flex-1 px-4 py-2 rounded-md font-medium transition-all duration-200 text-sm ${
-                  useCanvasPlayer
-                    ? 'bg-white dark:bg-gray-600 shadow-sm text-orange-600 dark:text-orange-400'
-                    : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100'
-                }`}
-                disabled={isGeneratingAITutor}
-              >
-                🎨 Multi-Slide Canvas
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              {useCanvasPlayer 
-                ? "🎨 POC-style multi-slide canvas player with timer-based progression"
-                : "🤖 Standard AI tutor player with audio synchronization"
-              }
-            </p>
-          </div>
 
           {/* Action buttons */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1198,48 +1188,30 @@ function AITutorContent() {
             {/* Player */}
             <div className="h-[700px] relative">
               {aiTutorLesson && aiTutorLesson.slides ? (
-                useCanvasPlayer ? (
-                  <MultiSlideCanvasPlayer
-                    slides={aiTutorLesson.slides}
-                    autoPlay={false}
-                    showControls={true}
-                    onSlideChange={(slideIndex) => logger.debug('Canvas slide changed:', slideIndex)}
-                    onPlaybackStart={handlePlaybackStart}
-                    onPlaybackEnd={handlePlaybackEnd}
-                    onError={handleError}
-                    className="w-full h-full"
-                    testMode={false} // Set to true to test with simple elements
-                  />
-                ) : (
-                  <AITutorPlayer
-                    slides={aiTutorLesson.slides}
-                    autoPlay={false}
-                    showControls={true}
-                    width={1200}
-                    height={700}
-                    onPlaybackStart={handlePlaybackStart}
-                    onPlaybackEnd={handlePlaybackEnd}
-                    onSlideChange={(slideIndex) => logger.debug('AI tutor slide changed:', slideIndex)}
-                    onError={handleError}
-                    className="w-full h-full"
-                  />
-                )
+                <MultiSlideCanvasPlayer
+                  slides={aiTutorLesson.slides}
+                  autoPlay={false}
+                  showControls={true}
+                  onSlideChange={(slideIndex) => logger.debug('Canvas slide changed:', slideIndex)}
+                  onPlaybackStart={handlePlaybackStart}
+                  onPlaybackEnd={handlePlaybackEnd}
+                  onError={handleError}
+                  className="w-full h-full"
+                  testMode={false} // Set to true to test with simple elements
+                />
               ) : (
                 <div className="w-full h-full bg-gray-50 flex items-center justify-center">
                   <div className="text-center">
                     <div className="w-12 h-12 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                     <h3 className="text-xl font-semibold text-gray-900 mb-2">
                       {aiTutorLesson 
-                        ? (useCanvasPlayer ? 'Preparing Multi-Slide Canvas Player' : 'Preparing AI Tutor Player')
+                        ? 'Preparing Multi-Slide Canvas Player'
                         : 'Preparing Unified Player'
                       }
                     </h3>
                     <p className="text-gray-600 mb-4">
                       {aiTutorLesson 
-                        ? (useCanvasPlayer 
-                          ? 'Setting up POC-style multi-slide canvas player...' 
-                          : 'Setting up AI tutor lesson player...'
-                        )
+                        ? 'Setting up multi-slide canvas player...'
                         : 'Processing lesson with unified audio and layout engines...'
                       }
                     </p>
@@ -1346,6 +1318,49 @@ function AITutorContent() {
                   </span>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {isGeneratingAITutor && !aiTutorLesson && (
+          <div className="bg-white rounded-xl shadow-lg p-12 text-center">
+            <div className="text-6xl mb-4">⚡</div>
+            <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+              Generating Your AI Lesson
+            </h3>
+            <p className="text-gray-600 text-lg mb-6">
+              Creating a personalized lesson about "{topic}" with interactive visuals and narration.
+            </p>
+            
+            {/* Loading Spinner */}
+            <div className="flex justify-center mb-6">
+              <div className="w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+            </div>
+            
+            {/* Progress Message */}
+            {aiTutorProgress && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+                <p className="text-purple-800 font-medium">
+                  {aiTutorProgress}
+                </p>
+              </div>
+            )}
+            
+            {/* Generation Steps */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-500">
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="font-medium text-gray-700 mb-1">🤖 AI Generation</div>
+                <div>Creating lesson content and structure</div>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="font-medium text-gray-700 mb-1">🎨 Visual Design</div>
+                <div>Building interactive canvas elements</div>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <div className="font-medium text-gray-700 mb-1">🎵 Audio Processing</div>
+                <div>Preparing narration and timing</div>
+              </div>
             </div>
           </div>
         )}

@@ -1,4 +1,4 @@
-# 🧠 Xonera - AI Tutor (Gemma 3n Hackathon)
+# 🧠 AI Tutor (Gemma 3n Hackathon)
 
 **An intelligent tutoring system powered by Gemma 3n that creates interactive visual lessons and solves student doubts in real-time.**
 

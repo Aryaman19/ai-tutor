@@ -109,9 +109,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             >
               <MenuIcon className="h-4 w-4" />
             </Button>
-            <img src={ASSET_IMAGES.logoIcon} alt="logo" className="h-8 w-8" />
+            <div className="bg-white rounded-lg p-1 border border-gray-200">
+              <img src={ASSET_IMAGES.logoIcon} alt="logo" className="h-8 w-8" />
+            </div>
             <h1 className="text-xl font-bold font-heading text-foreground">
-              Xonera
+              AI Tutor
             </h1>
           </div>
         </div>
@@ -261,9 +263,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <MenuIcon className="h-5 w-5" />
               )}
             </Button>
-            <img src={ASSET_IMAGES.logoIcon} alt="logo" className="h-8 w-8" />
+            <div className="bg-white rounded-lg p-1 border border-gray-200">
+              <img src={ASSET_IMAGES.logoIcon} alt="logo" className="h-8 w-8" />
+            </div>
             <h1 className="text-xl font-bold font-heading text-foreground">
-              Xonera
+              AI Tutor
             </h1>
           </div>
         </div>

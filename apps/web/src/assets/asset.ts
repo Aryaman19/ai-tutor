@@ -1,4 +1,4 @@
-import logoIcon from "./xonera-logo.jpg";
+import logoIcon from "./ai-tutor-logo.png";
 
 export const ASSET_IMAGES = {
   logoIcon,

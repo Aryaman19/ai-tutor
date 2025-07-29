@@ -13,7 +13,6 @@ import Layout from "./components/Layout";
 import Home from "./pages/Home";
 import Lesson from "./pages/Lesson";
 import Settings from "./pages/Settings";
-import { SystemStatus } from "./pages/SystemStatus";
 import AITutor from "./pages/AITutor";
 import TemplateTest from "./pages/TemplateTest";
 import NotFound from "./pages/NotFound";
@@ -34,9 +33,6 @@ function App() {
         <Router>
           <div className="h-screen bg-background transition-colors overflow-hidden">
             <Routes>
-              {/* System Status - Full page, no layout */}
-              <Route path="/status" element={<SystemStatus />} />
-
               {/* Routes with layout */}
               <Route path="/" element={<AppLayout />}>
                 <Route index element={<Home />} />
