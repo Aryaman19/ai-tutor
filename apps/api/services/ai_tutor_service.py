@@ -129,6 +129,9 @@ class AITutorService:
             # Final completion update
             yield await self._progress_update("Lesson generation complete!", 1.0, total_slides), None
             
+            # Properly terminate the async generator
+            return
+            
         except Exception as e:
             logger.error(f"AI tutor lesson generation failed: {e}")
             yield {
@@ -139,6 +142,7 @@ class AITutorService:
                 "message": f"Generation failed: {str(e)}",
                 "error": str(e)
             }, None
+            return
     
     async def _generate_single_slide(
         self, 

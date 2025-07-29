@@ -15,6 +15,8 @@ import { Card, CardHeader, CardTitle, CardContent } from "@ai-tutor/ui";
 import { cn, createComponentLogger } from "@ai-tutor/utils";
 import { lessonsApi } from "@ai-tutor/api-client";
 import type { Lesson as LessonType } from "@ai-tutor/types";
+import { EditableTitle } from "../components/EditableTitle";
+import { MultiSlideCanvasPlayer } from "../components/MultiSlideCanvasPlayer";
 
 type ViewMode = "video" | "notes" | "mindmap" | "quiz";
 
@@ -42,11 +44,17 @@ const Lesson: React.FC = () => {
 
   // Generate lesson content mutation
   const generateContentMutation = useMutation({
-    mutationFn: (lessonId: string) => lessonsApi.generateLessonContent(lessonId),
+    mutationFn: (lessonId: string) => 
+      fetch(`/api/lesson/${lessonId}/generate`, { method: 'POST' })
+        .then(res => {
+          if (!res.ok) throw new Error('Failed to generate lesson content');
+          return res.json();
+        }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["lesson", id] });
       queryClient.invalidateQueries({ queryKey: ["lessons"] });
     },
+    retry: false, // Disable retries to prevent infinite loops on timeout
   });
 
   // Generate lesson script mutation
@@ -73,29 +81,29 @@ const Lesson: React.FC = () => {
     },
   });
 
-  // Auto-generate content if lesson exists but has no steps
+  // Auto-generate content if lesson exists but has no slides
   useEffect(() => {
-    if (lesson && lesson.steps.length === 0 && !generateContentMutation.isPending) {
+    if (lesson && lesson.slides.length === 0 && !generateContentMutation.isPending) {
       generateContentMutation.mutate(lesson.id!);
     }
   }, [lesson, generateContentMutation]);
 
-  const isGeneratingContent = generateContentMutation.isPending || (lesson && lesson.steps.length === 0);
+  const isGeneratingContent = generateContentMutation.isPending || (lesson && lesson.slides.length === 0);
   const isGeneratingScript = generateScriptMutation.isPending;
-  const hasNarrationContent = lesson?.steps?.some(step => step.narration);
+  const hasNarrationContent = lesson?.slides?.some(slide => slide.narration);
   
   // Debug logging to understand lesson state
   console.log('🎯 Lesson Debug Info:', {
     lessonExists: !!lesson,
-    stepsCount: lesson?.steps?.length || 0,
+    slidesCount: lesson?.slides?.length || 0,
     hasNarrationContent,
     isGeneratingContent,
-    firstStepStructure: lesson?.steps?.[0] ? {
-      hasNarration: !!lesson.steps[0].narration,
-      hasVisualElements: !!lesson.steps[0].visual_elements,
-      hasInstructions: !!lesson.steps[0].content,
-      stepType: typeof lesson.steps[0],
-      stepKeys: Object.keys(lesson.steps[0])
+    firstSlideStructure: lesson?.slides?.[0] ? {
+      hasNarration: !!lesson.slides[0].narration,
+      hasElements: !!lesson.slides[0].elements,
+      templateId: lesson.slides[0].template_id,
+      slideType: typeof lesson.slides[0],
+      slideKeys: Object.keys(lesson.slides[0])
     } : null
   });
 
@@ -210,130 +218,145 @@ const Lesson: React.FC = () => {
                   </div>
                 </CardContent>
               </Card>
-            ) : viewMode === "video" && (
-              isLoadingLesson ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2Icon className="h-8 w-8 animate-spin text-primary" />
-                  <span className="ml-2 text-lg">Loading lesson content...</span>
-                </div>
-              ) : isGeneratingContent ? (
-                <Card className="border-border">
-                  <CardContent className="p-8">
-                    <div className="flex flex-col items-center justify-center space-y-6 text-center">
-                      <div className="flex items-center space-x-3">
-                        <Loader2Icon className="h-8 w-8 animate-spin text-primary" />
-                        <span className="text-xl font-semibold">Generating lesson content...</span>
-                      </div>
-                      <div className="max-w-md">
-                        <p className="text-muted-foreground mb-4">
-                          Our AI is creating personalized content for "{lesson?.topic}" just for you.
-                        </p>
-                        <div className="flex justify-center space-x-2">
-                          <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '0ms'}}></div>
-                          <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '150ms'}}></div>
-                          <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '300ms'}}></div>
+            ) : (
+              <>
+              {/* Video View - Always render to preserve component state */}
+              <div className={viewMode === "video" ? "block" : "hidden"}>
+                {isLoadingLesson ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2Icon className="h-8 w-8 animate-spin text-primary" />
+                    <span className="ml-2 text-lg">Loading lesson content...</span>
+                  </div>
+                ) : isGeneratingContent ? (
+                  <Card className="border-border">
+                    <CardContent className="p-8">
+                      <div className="flex flex-col items-center justify-center space-y-6 text-center">
+                        <div className="flex items-center space-x-3">
+                          <Loader2Icon className="h-8 w-8 animate-spin text-primary" />
+                          <span className="text-xl font-semibold">Generating lesson content...</span>
                         </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : isGeneratingScript ? (
-                <Card className="border-border">
-                  <CardContent className="p-8">
-                    <div className="flex flex-col items-center justify-center space-y-6 text-center">
-                      <div className="flex items-center space-x-3">
-                        <Loader2Icon className="h-8 w-8 animate-spin text-primary" />
-                        <span className="text-xl font-semibold">Generating interactive script...</span>
-                      </div>
-                      <div className="max-w-md">
-                        <p className="text-muted-foreground mb-4">
-                          Creating an interactive visual lesson with narration and drawings for "{lesson?.topic}".
-                        </p>
-                        <div className="flex justify-center space-x-2">
-                          <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '0ms'}}></div>
-                          <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '150ms'}}></div>
-                          <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '300ms'}}></div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : lesson?.steps && lesson.steps.length > 0 ? (
-                <div className="space-y-4">
-                  <Card className="border-border">
-                    <CardHeader>
-                      <CardTitle className="text-card-foreground font-heading">
-                        Interactive Lesson Player
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <ExcalidrawPlayer 
-                        mode="flexible"
-                        steps={lesson.steps}
-                        autoPlay={false}
-                        speechRate={1}
-                        speechVolume={0.8}
-                        userId="default"
-                        onStepChange={(stepIndex: number) => {
-                        }}
-                        onComplete={() => {
-                          logger.info('Lesson completed!');
-                        }}
-                      />
-                    </CardContent>
-                  </Card>
-                </div>
-              ) : lesson?.steps && lesson.steps.length > 0 ? (
-                <div className="space-y-4">
-                  <Card className="border-border">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold">Lesson Content</h3>
-                        <Button 
-                          onClick={handleGenerateScript}
-                          disabled={generateScriptMutation.isPending}
-                          size="sm"
-                          variant="outline"
-                        >
-                          <WandIcon className="h-4 w-4 mr-2" />
-                          Generate Interactive Script
-                        </Button>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        This lesson has basic content. Generate an interactive script with narration and visual elements for a better learning experience.
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card className="border-border">
-                    <CardContent className="p-6">
-                      <div className="space-y-6">
-                        {lesson.steps.map((step, index) => (
-                          <div key={index} className="border-l-4 border-primary pl-6 py-4">
-                            <h3 className="font-semibold text-lg mb-3">{step.title}</h3>
-                            <div className="text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                              {step.explanation || step.content || "No content available"}
-                            </div>
+                        <div className="max-w-md">
+                          <p className="text-muted-foreground mb-4">
+                            Our AI is creating personalized content for "{lesson?.topic}" just for you.
+                          </p>
+                          <div className="flex justify-center space-x-2">
+                            <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '0ms'}}></div>
+                            <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '150ms'}}></div>
+                            <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '300ms'}}></div>
                           </div>
-                        ))}
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
-                </div>
-              ) : (
-                <Card className="border-border">
-                  <CardContent className="p-8">
-                    <div className="flex flex-col items-center justify-center space-y-6 text-center">
-                      <div>
-                        <p className="text-muted-foreground mb-4">
-                          No lesson content available yet.
-                        </p>
+                ) : isGeneratingScript ? (
+                  <Card className="border-border">
+                    <CardContent className="p-8">
+                      <div className="flex flex-col items-center justify-center space-y-6 text-center">
+                        <div className="flex items-center space-x-3">
+                          <Loader2Icon className="h-8 w-8 animate-spin text-primary" />
+                          <span className="text-xl font-semibold">Generating interactive script...</span>
+                        </div>
+                        <div className="max-w-md">
+                          <p className="text-muted-foreground mb-4">
+                            Creating an interactive visual lesson with narration and drawings for "{lesson?.topic}".
+                          </p>
+                          <div className="flex justify-center space-x-2">
+                            <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '0ms'}}></div>
+                            <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '150ms'}}></div>
+                            <div className="animate-bounce h-2 w-2 bg-primary rounded-full" style={{animationDelay: '300ms'}}></div>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            )}
-
+                    </CardContent>
+                  </Card>
+                ) : lesson?.slides && lesson.slides.length > 0 ? (
+                  <div className="space-y-4">
+                    <Card className="border-border">
+                      <CardHeader>
+                        <CardTitle className="text-card-foreground font-heading">
+                          Interactive Lesson Player
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-6">
+                        <div className="h-[700px] relative">
+                          <MultiSlideCanvasPlayer 
+                            slides={lesson.slides}
+                            autoPlay={false}
+                            showControls={true}
+                            enableAudio={true}
+                            onSlideChange={(slideIndex: number) => {
+                              logger.debug('Lesson slide changed:', slideIndex);
+                            }}
+                            onPlaybackStart={() => {
+                              logger.debug('Lesson playback started');
+                            }}
+                            onPlaybackEnd={() => {
+                              logger.info('Lesson completed!');
+                            }}
+                            onError={(error: Error) => {
+                              logger.error('Lesson player error:', error);
+                            }}
+                            className="w-full h-full"
+                            testMode={false}
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : lesson?.slides && lesson.slides.length > 0 ? (
+                  <div className="space-y-4">
+                    <Card className="border-border">
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-lg font-semibold">Lesson Content</h3>
+                          <Button 
+                            onClick={handleGenerateScript}
+                            disabled={generateScriptMutation.isPending}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <WandIcon className="h-4 w-4 mr-2" />
+                            Generate Interactive Script
+                          </Button>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          This lesson has basic content. Generate an interactive script with narration and visual elements for a better learning experience.
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card className="border-border">
+                      <CardContent className="p-6">
+                        <div className="space-y-6">
+                          {lesson.slides.map((slide, index) => (
+                            <div key={index} className="border-l-4 border-primary pl-6 py-4">
+                              <h3 className="font-semibold text-lg mb-3">Slide {slide.slide_number}: {slide.content_type}</h3>
+                              <div className="text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                                {slide.narration || "No content available"}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-2">
+                                Template: {slide.template_name} | Duration: {slide.estimated_duration}s
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ) : (
+                  <Card className="border-border">
+                    <CardContent className="p-8">
+                      <div className="flex flex-col items-center justify-center space-y-6 text-center">
+                        <div>
+                          <p className="text-muted-foreground mb-4">
+                            No lesson content available yet.
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+              
             {viewMode === "notes" && !isLessonNotFound && (
               <Card className="bg-card border-border h-full flex flex-col">
                 <CardHeader className="flex-shrink-0">
@@ -347,14 +370,17 @@ const Lesson: React.FC = () => {
                       <Loader2Icon className="h-6 w-6 animate-spin text-primary mr-2" />
                       <span>Generating notes...</span>
                     </div>
-                  ) : lesson?.steps && lesson.steps.length > 0 ? (
+                  ) : lesson?.slides && lesson.slides.length > 0 ? (
                     <div className="space-y-6">
-                      {lesson?.steps?.map((step, index) => (
+                      {lesson?.slides?.map((slide, index) => (
                         <div key={index} className="border-b pb-4 last:border-b-0">
-                          <h4 className="font-semibold mb-3 text-lg">Step {step.step_number}: {step.title}</h4>
+                          <h4 className="font-semibold mb-3 text-lg">Slide {slide.slide_number}: {slide.content_type}</h4>
                           <p className="text-muted-foreground leading-relaxed">
-                            {step.explanation || step.content || "No content available"}
+                            {slide.narration || "No content available"}
                           </p>
+                          <div className="text-xs text-muted-foreground mt-2">
+                            Template: {slide.template_name} | Duration: {slide.estimated_duration}s
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -397,6 +423,8 @@ const Lesson: React.FC = () => {
                   </p>
                 </CardContent>
               </Card>
+            )}
+              </>
             )}
             </div>
           </div>

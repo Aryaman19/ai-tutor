@@ -1,45 +1,40 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from beanie import Document
 from pydantic import BaseModel, Field
 from bson import ObjectId
 
 
-class CanvasStep(BaseModel):
-    """Canvas step model for lesson visualization"""
-    step_number: int
-    title: str
-    explanation: Optional[str] = None  # Primary field for explanation text
-    content: Optional[str] = None  # Legacy field for backward compatibility
-    narration: Optional[str] = None  # Script content for narration
-    canvas_data: Optional[dict] = None
-    visual_elements: Optional[List[dict]] = None
-    elements: Optional[List[dict]] = None  # Excalidraw elements
-    duration: Optional[float] = None  # Estimated duration in seconds
-    audio_url: Optional[str] = None  # Audio file URL
-    audio_id: Optional[str] = None  # TTS audio cache ID
-    tts_voice: Optional[str] = None  # TTS voice used for generation
-    tts_generated: Optional[bool] = None  # Whether TTS audio was generated
-    tts_error: Optional[str] = None  # TTS generation error if any
-    
-    def get_explanation(self) -> str:
-        """Get explanation text, falling back to content for backward compatibility"""
-        return self.explanation or self.content or ""
+class AITutorSlide(BaseModel):
+    """AI Tutor slide model for lesson visualization"""
+    slide_number: int
+    template_id: str
+    template_name: str
+    content_type: str
+    filled_content: Dict[str, str]
+    elements: List[Dict[str, Any]]
+    narration: str
+    estimated_duration: float
+    position_offset: float
+    metadata: Dict[str, Any]
+    generation_time: float
+    status: str
+    error_message: Optional[str] = None
         
-    def migrate_content(self) -> "CanvasStep":
-        """Migrate legacy content field to explanation"""
-        if self.content and not self.explanation:
-            return self.copy(update={"explanation": self.content})
-        return self
-        
-    def validate_step(self) -> List[str]:
-        """Validate step data and return list of errors"""
+    def validate_slide(self) -> List[str]:
+        """Validate slide data and return list of errors"""
         errors = []
-        if not self.title.strip():
-            errors.append("Title is required")
-        if self.step_number <= 0:
-            errors.append("Step number must be positive")
+        if self.slide_number <= 0:
+            errors.append("Slide number must be positive")
+        if not self.template_id.strip():
+            errors.append("Template ID is required")
+        if not self.narration.strip():
+            errors.append("Narration is required")
         return errors
+
+
+# Compatibility alias for legacy code that still uses CanvasStep
+CanvasStep = AITutorSlide
 
 
 class Doubt(BaseModel):
@@ -56,7 +51,9 @@ class Lesson(Document):
     topic: str
     title: Optional[str] = None
     difficulty_level: Optional[str] = "beginner"
-    steps: List[CanvasStep] = Field(default_factory=list)
+    slides: List[AITutorSlide] = Field(default_factory=list)
+    merged_audio_url: Optional[str] = None  # URL to the merged audio file
+    audio_duration: Optional[float] = None  # Total duration of merged audio in seconds
     doubts: Optional[List[Doubt]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
@@ -71,38 +68,37 @@ class Lesson(Document):
             data['id'] = str(self.id)
         return data
         
-    def migrate_legacy_data(self) -> "Lesson":
-        """Migrate legacy data to new format"""
-        migrated_steps = [step.migrate_content() for step in self.steps]
-        return self.copy(update={"steps": migrated_steps})
+    def get_total_estimated_duration(self) -> float:
+        """Calculate total estimated duration from all slides"""
+        return sum(slide.estimated_duration for slide in self.slides)
         
     def validate_lesson(self) -> List[str]:
         """Validate lesson data and return list of errors"""
         errors = []
         if not self.topic.strip():
             errors.append("Topic is required")
-        if not self.steps:
-            errors.append("At least one step is required")
+        if not self.slides:
+            errors.append("At least one slide is required")
             
-        for i, step in enumerate(self.steps):
-            step_errors = step.validate_step()
-            if step_errors:
-                errors.extend([f"Step {i+1}: {error}" for error in step_errors])
-            if step.step_number != i + 1:
-                errors.append(f"Step {i+1}: Step number mismatch")
+        for i, slide in enumerate(self.slides):
+            slide_errors = slide.validate_slide()
+            if slide_errors:
+                errors.extend([f"Slide {i+1}: {error}" for error in slide_errors])
+            if slide.slide_number != i + 1:
+                errors.append(f"Slide {i+1}: Slide number mismatch")
                 
         return errors
         
     def normalize_data(self) -> "Lesson":
         """Normalize lesson data for consistency"""
-        normalized_steps = []
-        for i, step in enumerate(self.steps):
-            normalized_step = step.migrate_content()
-            normalized_step.step_number = i + 1
-            normalized_steps.append(normalized_step)
+        normalized_slides = []
+        for i, slide in enumerate(self.slides):
+            # Ensure slide numbers are sequential
+            slide.slide_number = i + 1
+            normalized_slides.append(slide)
             
         return self.copy(update={
-            "steps": normalized_steps,
+            "slides": normalized_slides,
             "title": self.title or self.topic,
             "updated_at": self.updated_at or self.created_at,
         })
@@ -114,7 +110,9 @@ class LessonResponse(BaseModel):
     topic: str
     title: Optional[str] = None
     difficulty_level: Optional[str] = "beginner"
-    steps: List[CanvasStep] = Field(default_factory=list)
+    slides: List[AITutorSlide] = Field(default_factory=list)
+    merged_audio_url: Optional[str] = None
+    audio_duration: Optional[float] = None
     doubts: Optional[List[Doubt]] = Field(default_factory=list)
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -130,5 +128,7 @@ class UpdateLessonRequest(BaseModel):
     """Request model for updating lesson"""
     title: Optional[str] = None
     difficulty_level: Optional[str] = None
-    steps: Optional[List[CanvasStep]] = None
+    slides: Optional[List[AITutorSlide]] = None
+    merged_audio_url: Optional[str] = None
+    audio_duration: Optional[float] = None
     doubts: Optional[List[Doubt]] = None

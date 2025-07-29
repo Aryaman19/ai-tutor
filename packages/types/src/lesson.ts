@@ -1,27 +1,40 @@
-import { CanvasStep, migrateStepContent } from "./canvas";
 import { Doubt } from "./doubt";
 
 export type DifficultyLevel = "beginner" | "intermediate" | "advanced";
+
+// Re-export for compatibility
+export type { AITutorSlide as Slide };
+
+export interface AITutorSlide {
+  slide_number: number;
+  template_id: string;
+  template_name: string;
+  content_type: string;
+  filled_content: Record<string, string>;
+  elements: any[];
+  narration: string;
+  estimated_duration: number;
+  position_offset: number;
+  metadata: Record<string, any>;
+  generation_time: number;
+  status: string;
+  error_message?: string;
+}
 
 export interface Lesson {
   id?: string;
   topic: string;
   title?: string;
   difficulty_level?: DifficultyLevel;
-  steps: CanvasStep[];
+  slides: AITutorSlide[];
+  merged_audio_url?: string;
+  audio_duration?: number;
   created_at: Date;
   updated_at?: Date;
   doubts?: Doubt[];
 }
 
 // Helper functions for lesson data consistency
-export function migrateLessonData(lesson: Lesson): Lesson {
-  return {
-    ...lesson,
-    steps: lesson.steps.map(migrateStepContent),
-  };
-}
-
 export function validateLessonData(lesson: Lesson): string[] {
   const errors: string[] = [];
   
@@ -29,16 +42,19 @@ export function validateLessonData(lesson: Lesson): string[] {
     errors.push("Topic is required");
   }
   
-  if (lesson.steps.length === 0) {
-    errors.push("At least one step is required");
+  if (lesson.slides.length === 0) {
+    errors.push("At least one slide is required");
   }
   
-  lesson.steps.forEach((step, index) => {
-    if (!step.title.trim()) {
-      errors.push(`Step ${index + 1}: Title is required`);
+  lesson.slides.forEach((slide, index) => {
+    if (!slide.narration.trim()) {
+      errors.push(`Slide ${index + 1}: Narration is required`);
     }
-    if (step.step_number !== index + 1) {
-      errors.push(`Step ${index + 1}: Step number mismatch`);
+    if (slide.slide_number !== index + 1) {
+      errors.push(`Slide ${index + 1}: Slide number mismatch`);
+    }
+    if (!slide.template_id.trim()) {
+      errors.push(`Slide ${index + 1}: Template ID is required`);
     }
   });
   
@@ -47,13 +63,17 @@ export function validateLessonData(lesson: Lesson): string[] {
 
 export function normalizeLessonData(lesson: Lesson): Lesson {
   return {
-    ...migrateLessonData(lesson),
+    ...lesson,
     difficulty_level: lesson.difficulty_level || "beginner",
     title: lesson.title || lesson.topic,
     updated_at: lesson.updated_at || lesson.created_at,
-    steps: lesson.steps.map((step, index) => ({
-      ...step,
-      step_number: index + 1,
+    slides: lesson.slides.map((slide, index) => ({
+      ...slide,
+      slide_number: index + 1,
     })),
   };
+}
+
+export function getTotalEstimatedDuration(lesson: Lesson): number {
+  return lesson.slides.reduce((total, slide) => total + slide.estimated_duration, 0);
 }

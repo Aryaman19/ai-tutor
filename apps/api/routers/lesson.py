@@ -149,7 +149,7 @@ async def create_lesson(request: CreateLessonRequest):
             topic=request.topic,
             title=request.topic,  # Default title to topic
             difficulty_level=request.difficulty_level,
-            steps=[],  # Empty steps initially
+            slides=[],  # Empty slides initially
             created_at=datetime.utcnow()
         )
         
@@ -161,7 +161,9 @@ async def create_lesson(request: CreateLessonRequest):
             topic=lesson.topic,
             title=lesson.title,
             difficulty_level=lesson.difficulty_level,
-            steps=lesson.steps,
+            slides=lesson.slides,
+            merged_audio_url=lesson.merged_audio_url,
+            audio_duration=lesson.audio_duration,
             doubts=lesson.doubts or [],
             created_at=lesson.created_at,
             updated_at=lesson.updated_at
@@ -177,7 +179,7 @@ async def create_lesson(request: CreateLessonRequest):
 
 @router.post("/lesson/{lesson_id}/generate", response_model=LessonResponse)
 async def generate_lesson_content(lesson_id: str):
-    """Generate content for an existing lesson"""
+    """Generate content for an existing lesson using AI tutor service"""
     try:
         if not ObjectId.is_valid(lesson_id):
             raise HTTPException(status_code=400, detail="Invalid lesson ID")
@@ -186,22 +188,48 @@ async def generate_lesson_content(lesson_id: str):
         if not lesson:
             raise HTTPException(status_code=404, detail="Lesson not found")
         
-        # Generate lesson steps using Ollama
-        steps = await ollama_service.generate_eli5_lesson(
+        logger.info(f"Starting AI tutor lesson generation for lesson: {lesson_id}")
+        
+        # Generate lesson slides using AI tutor service
+        slides = []
+        total_duration = 0.0
+        
+        async for progress_update, slide_result in ai_tutor_service.generate_ai_tutor_lesson(
             topic=lesson.topic,
             difficulty_level=lesson.difficulty_level,
-            user_id="default"  # TODO: Add user authentication
-        )
+            target_duration=120.0,  # Default 2 minutes
+            container_size=ContainerSize(width=1200, height=800)
+        ):
+            if slide_result:
+                # Convert slide result to AITutorSlide model
+                slide_data = {
+                    "slide_number": slide_result.slide_number,
+                    "template_id": slide_result.template_id,
+                    "template_name": slide_result.template_name,
+                    "content_type": slide_result.content_type,
+                    "filled_content": slide_result.filled_content,
+                    "elements": slide_result.elements,
+                    "narration": slide_result.narration,
+                    "estimated_duration": slide_result.estimated_duration,
+                    "position_offset": slide_result.position_offset,
+                    "metadata": slide_result.metadata,
+                    "generation_time": slide_result.generation_time,
+                    "status": slide_result.status,
+                    "error_message": slide_result.error_message
+                }
+                slides.append(slide_data)
+                total_duration += slide_result.estimated_duration
         
-        if not steps:
+        if not slides:
             raise HTTPException(
                 status_code=503, 
                 detail="Failed to generate lesson content. AI service may be unavailable."
             )
         
-        # Update lesson with generated content
+        # Update lesson with generated slides
         await lesson.update({"$set": {
-            "steps": steps,
+            "slides": slides,
+            "audio_duration": total_duration,
             "updated_at": datetime.utcnow()
         }})
         
@@ -213,7 +241,9 @@ async def generate_lesson_content(lesson_id: str):
             topic=lesson.topic,
             title=lesson.title,
             difficulty_level=lesson.difficulty_level,
-            steps=lesson.steps,
+            slides=lesson.slides,
+            merged_audio_url=lesson.merged_audio_url,
+            audio_duration=lesson.audio_duration,
             doubts=lesson.doubts or [],
             created_at=lesson.created_at,
             updated_at=lesson.updated_at
@@ -240,7 +270,9 @@ async def get_lessons(
                 topic=lesson.topic,
                 title=lesson.title,
                 difficulty_level=lesson.difficulty_level,
-                steps=lesson.steps,
+                slides=lesson.slides,
+                merged_audio_url=lesson.merged_audio_url,
+                audio_duration=lesson.audio_duration,
                 doubts=lesson.doubts or [],
                 created_at=lesson.created_at,
                 updated_at=lesson.updated_at
@@ -273,7 +305,9 @@ async def get_lesson(lesson_id: str):
             topic=lesson.topic,
             title=lesson.title,
             difficulty_level=lesson.difficulty_level,
-            steps=lesson.steps,
+            slides=lesson.slides,
+            merged_audio_url=lesson.merged_audio_url,
+            audio_duration=lesson.audio_duration,
             doubts=lesson.doubts or [],
             created_at=lesson.created_at,
             updated_at=lesson.updated_at
