@@ -29,6 +29,16 @@ export interface Lesson {
   slides: AITutorSlide[];
   merged_audio_url?: string;
   audio_duration?: number;
+  audio_segments?: Array<{
+    slide_number: number;
+    text: string;
+    start_time: number;
+    duration: number;
+    end_time: number;
+    audio_id?: string;
+    audio_url?: string;
+  }>;
+  audio_generated?: boolean;
   created_at: Date;
   updated_at?: Date;
   doubts?: Doubt[];

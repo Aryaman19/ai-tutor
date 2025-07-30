@@ -32,12 +32,11 @@
  */
 
 import "@excalidraw/excalidraw/index.css";
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from "react";
 import { Excalidraw } from "@excalidraw/excalidraw";
 import { createComponentLogger } from "@ai-tutor/utils";
-import { useMultiSlideAudio } from "@ai-tutor/hooks/src/useMultiSlideAudio";
-import { useSlideProgression } from "@ai-tutor/hooks/src/useSlideProgression";
-import { AudioSeekBar } from "@ai-tutor/ui/src/components/AudioSeekBar";
+// Removed complex useSlideProgression - using simple audio player instead
+import { SimpleAudioPlayer, type AudioSegment } from "./SimpleAudioPlayer";
 
 const logger = createComponentLogger("MultiSlideCanvasPlayer");
 
@@ -60,6 +59,16 @@ interface SlideData {
 
 export interface MultiSlideCanvasPlayerProps {
   slides: SlideData[];
+  existingAudioSegments?: Array<{
+    slide_number: number;
+    text: string;
+    start_time: number;
+    duration: number;
+    end_time: number;
+    audio_id?: string;
+    audio_url?: string;
+  }>; // Pre-generated audio segments from backend
+  mergedAudioUrl?: string; // Pre-merged audio file URL from backend
   autoPlay?: boolean;
   showControls?: boolean;
   enableAudio?: boolean; // Enable audio generation and playback
@@ -76,6 +85,8 @@ export interface MultiSlideCanvasPlayerProps {
 
 export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   slides,
+  existingAudioSegments,
+  mergedAudioUrl,
   autoPlay = false,
   showControls = true,
   enableAudio = true,
@@ -112,40 +123,43 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   const slideProgressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Audio system integration
-  const {
-    status: audioStatus,
-    slideAudioData,
-    mergedAudio,
-    audioElement,
-    currentSlideIndex: audioSlideIndex,
-    generateMultiSlideAudio,
-    seekToSlide: audioSeekToSlide,
-    seekToTime: audioSeekToTime,
-    getCurrentSlideFromTime,
-    reset: resetAudio
-  } = useMultiSlideAudio();
+  // Simple audio state management (replacing complex useMultiSlideAudio)
+  const [audioReady, setAudioReady] = useState(false);
+  
+  // Convert existingAudioSegments to SimpleAudioPlayer format (memoized to prevent re-renders)
+  const audioSegments: AudioSegment[] = useMemo(() => {
+    return (existingAudioSegments || []).map(segment => ({
+      slide_number: segment.slide_number,
+      start_time: segment.start_time,
+      end_time: segment.end_time,
+      text: segment.text
+    }));
+  }, [existingAudioSegments]);
 
-  // Prepare slide segments for useSlideProgression
-  const slideSegments = slideAudioData.map(slide => ({
-    slideNumber: slide.slideNumber,
-    startTime: slide.startTime,
-    endTime: slide.endTime,
-    text: slide.narration
-  }));
+  // Visual-only mode detection (memoized to prevent re-renders)
+  const isVisualOnlyMode = useMemo(() => {
+    return !enableAudio || !mergedAudioUrl || audioSegments.length === 0;
+  }, [enableAudio, mergedAudioUrl, audioSegments.length]);
 
-  // Unified slide progression system (hybrid approach)
-  const slideProgression = useSlideProgression(slideSegments, audioElement, {
-    debounceDelay: 200,
-    enableDebugLogging: true
+  // Debug: Log audio setup
+  logger.debug("Simple audio setup", {
+    enableAudio,
+    mergedAudioUrl,
+    audioSegmentsCount: audioSegments.length,
+    isVisualOnlyMode,
+    audioReady
   });
 
-  // Extract progression state and actions
-  const {
-    state: progressionState,
-    actions: progressionActions,
-    events: progressionEvents
-  } = slideProgression;
+  // Simple audio initialization 
+  useEffect(() => {
+    if (enableAudio && mergedAudioUrl && audioSegments.length > 0) {
+      setAudioReady(true);
+      logger.debug("Audio ready with merged URL", { mergedAudioUrl, segmentCount: audioSegments.length });
+    } else if (!enableAudio || isVisualOnlyMode) {
+      setAudioReady(true); // Allow visual-only mode
+      logger.debug("Visual-only mode ready");
+    }
+  }, [enableAudio, mergedAudioUrl, audioSegments.length, isVisualOnlyMode]);
 
   // Inspect and fix dummy template elements format
   const inspectAndFixElements = useCallback((elements: any[]) => {
@@ -216,6 +230,33 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
 
       return baseElement;
     });
+  }, []);
+
+  // Validate that elements are properly loaded
+  const validateElementsLoaded = useCallback(() => {
+    const elements = accumulatedElements.current;
+    if (!elements || elements.length === 0) {
+      logger.debug("No elements loaded yet");
+      return false;
+    }
+    
+    // Check that all elements have required properties
+    const validElements = elements.every(el => 
+      el.id && 
+      el.type && 
+      typeof el.x === 'number' && 
+      typeof el.y === 'number' &&
+      el.versionNonce &&
+      el.index
+    );
+    
+    if (!validElements) {
+      logger.warn("Some elements are missing required properties");
+      return false;
+    }
+    
+    logger.debug(`All ${elements.length} elements validated successfully`);
+    return true;
   }, []);
 
   // Load all slides at once with proper positioning (like POC)
@@ -290,7 +331,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     });
 
     return allElements;
-  }, [slides, inspectAndFixElements]); // Remove containerSize.width dependency
+  }, [slides, inspectAndFixElements, validateElementsLoaded]); // Remove containerSize.width dependency
 
   // Move camera to specific slide position (like POC's scrollToContent)
   const moveToSlide = useCallback(
@@ -461,6 +502,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
 
     return () => clearTimeout(timer);
   }, [containerSize, excalidrawAPI, allSlidesLoaded, currentSlideIndex, moveToSlide, scaleFactor]);
+
 
   // Create simple test elements to verify updateScene works
   const createTestElements = useCallback(() => {
@@ -743,118 +785,75 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     onPlaybackEnd,
   ]);
 
-  // Initialize audio generation when slides are loaded (prevent continuous loop)
+  // Memoized callback for audio slide changes to prevent re-renders
+  const handleAudioSlideChange = useCallback((slideIndex: number) => {
+    logger.debug('🎯 Slide change callback called', { slideIndex });
+    // Only move the canvas - don't update currentSlideIndex to prevent re-renders
+    moveToSlide(slideIndex);
+    onSlideChange?.(slideIndex);
+  }, [moveToSlide, onSlideChange]);
+
+  // Initialize audio - either from existing segments or generate new
   const slidesRef = useRef<typeof slides>([]);
   const hasInitializedRef = useRef(false);
   
+  // Removed complex audio initialization - using simple audio player instead
+
+  // Separate canvas initialization - always load canvas elements regardless of audio
   useEffect(() => {
-    // Only trigger if slides actually changed or haven't been initialized
-    const slidesChanged = JSON.stringify(slides) !== JSON.stringify(slidesRef.current);
-    
-    if (enableAudio && slides.length > 0 && !audioStatus.isReady && !audioStatus.isProcessing && 
-        (slidesChanged || !hasInitializedRef.current)) {
-      
-      logger.debug("Initializing audio generation for slides", { 
-        slideCount: slides.length,
-        slidesChanged,
-        hasInitialized: hasInitializedRef.current
+    // ALWAYS log this to see what's happening
+    logger.debug("Canvas initialization useEffect running", {
+      slidesCount: slides.length,
+      hasExcalidrawAPI: !!excalidrawAPI,
+      allSlidesLoaded,
+      shouldLoadCanvas: slides.length > 0 && excalidrawAPI && !allSlidesLoaded
+    });
+
+    if (slides.length > 0 && excalidrawAPI && !allSlidesLoaded) {
+      logger.debug("Loading canvas elements independently of audio", {
+        slidesCount: slides.length,
+        hasExcalidrawAPI: !!excalidrawAPI,
+        allSlidesLoaded
       });
       
-      // Mark as initialized to prevent continuous retries
-      hasInitializedRef.current = true;
-      slidesRef.current = slides;
-      
-      const audioSlides = slides.map(slide => ({
-        slide_number: slide.slide_number,
-        narration: slide.narration || "",
-        estimated_duration: slide.estimated_duration
-      }));
-      
-      generateMultiSlideAudio(audioSlides, {
-        separatorPause: crossfadeDuration
-      }).catch(error => {
-        logger.error("Audio generation failed:", error);
-        onAudioError?.(error instanceof Error ? error.message : 'Audio generation failed');
-        // Reset initialization flag to allow retry if slides change
-        hasInitializedRef.current = false;
-      });
+      const allElements = loadAllSlides();
+      if (allElements && allElements.length > 0) {
+        excalidrawAPI.updateScene({
+          elements: allElements,
+          appState: {
+            viewBackgroundColor: "#ffffff",
+            zoom: { value: scaleFactor }
+          }
+        });
+        
+        setAllSlidesLoaded(true);
+        accumulatedElements.current = allElements;
+        logger.debug("Canvas elements loaded successfully", { elementCount: allElements.length });
+      }
     }
-  }, [slides, enableAudio, audioStatus.isReady, audioStatus.isProcessing, generateMultiSlideAudio, crossfadeDuration, onAudioError]);
+  }, [slides, excalidrawAPI, allSlidesLoaded, loadAllSlides, scaleFactor]);
 
   // Notify when audio is ready
   useEffect(() => {
-    if (audioStatus.isReady && audioStatus.currentPhase === 'ready') {
+    if (audioReady) {
       logger.debug("Audio is ready for playback");
       onAudioReady?.();
     }
-  }, [audioStatus.isReady, audioStatus.currentPhase, onAudioReady]);
+  }, [audioReady, onAudioReady]);
 
   // Set up slide progression event listeners
   useEffect(() => {
-    if (!enableAudio && !audioStatus.isReady) return;
+    if (!enableAudio && !audioReady) return;
 
-    // Listen for slide changes from the unified progression system
-    const unsubscribeSlideChange = progressionEvents.onSlideChange((slideIndex) => {
-      logger.debug("Slide changed via progression system", { slideIndex });
-      setCurrentSlideIndex(slideIndex);
-      onSlideChange?.(slideIndex);
-    });
+    // Simple slide change handler - just call callback when currentSlideIndex changes
+    // (No complex progression system needed)
+  }, [enableAudio, audioReady, currentSlideIndex, onSlideChange]);
 
-    // Listen for time updates
-    const unsubscribeTimeUpdate = progressionEvents.onTimeUpdate((time, slideIndex) => {
-      setCurrentAudioTime(time);
-      if (slideIndex !== currentSlideIndex) {
-        setCurrentSlideIndex(slideIndex);
-        onSlideChange?.(slideIndex);
-      }
-    });
+  // Simple audio time sync (handled by SimpleAudioPlayer)
+  // No complex audio element management needed
 
-    return () => {
-      if (typeof unsubscribeSlideChange === 'function') {
-        unsubscribeSlideChange();
-      }
-      if (typeof unsubscribeTimeUpdate === 'function') {
-        unsubscribeTimeUpdate();
-      }
-    };
-  }, [enableAudio, audioStatus.isReady, progressionEvents, currentSlideIndex, onSlideChange]);
-
-  // Sync audio time and duration for seekbar
-  useEffect(() => {
-    if (!enableAudio || !audioElement) return;
-
-    const handleTimeUpdate = () => {
-      setCurrentAudioTime(audioElement.currentTime);
-    };
-
-    const handleLoadedMetadata = () => {
-      setAudioDuration(audioElement.duration || 0);
-    };
-
-    const handleDurationChange = () => {
-      setAudioDuration(audioElement.duration || 0);
-    };
-
-    // Add event listeners
-    audioElement.addEventListener('timeupdate', handleTimeUpdate);
-    audioElement.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audioElement.addEventListener('durationchange', handleDurationChange);
-
-    // Initial sync if data is already available
-    if (audioElement.duration) {
-      setAudioDuration(audioElement.duration);
-    }
-    setCurrentAudioTime(audioElement.currentTime);
-
-    return () => {
-      audioElement.removeEventListener('timeupdate', handleTimeUpdate);
-      audioElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audioElement.removeEventListener('durationchange', handleDurationChange);
-    };
-  }, [enableAudio, audioElement]);
-
-  // Initialize slides when component mounts
-  useEffect(() => {
+  // Initialize slides when component mounts (using useLayoutEffect for synchronous loading)
+  useLayoutEffect(() => {
     if (excalidrawAPI) {
       if (testMode) {
         // Test mode: use simple test elements
@@ -875,7 +874,15 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
             },
           });
           logger.debug("Test elements loaded successfully:", testElements);
-          setAllSlidesLoaded(true);
+          
+          // Validate test elements before marking as loaded
+          if (validateElementsLoaded()) {
+            setAllSlidesLoaded(true);
+            logger.debug("Test mode: slides marked as loaded after validation");
+          } else {
+            logger.error("Test mode: element validation failed");
+            setAllSlidesLoaded(false);
+          }
         } catch (error) {
           logger.error("Failed to load test elements:", error);
         }
@@ -919,8 +926,16 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                 },
               });
               logger.debug("Fallback: First slide loaded successfully");
-              setAllSlidesLoaded(true);
-              setCurrentSlideIndex(0);
+              
+              // Validate elements before marking as loaded
+              if (validateElementsLoaded()) {
+                setAllSlidesLoaded(true);
+                setCurrentSlideIndex(0);
+                logger.debug("Fallback: slide marked as loaded after validation");
+              } else {
+                logger.error("Fallback: element validation failed");
+                setAllSlidesLoaded(false);
+              }
             } catch (error) {
               logger.error("Fallback: Failed to load first slide:", error);
             }
@@ -986,8 +1001,15 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
           });
           logger.debug("All slides loaded to canvas successfully");
 
-          // Mark all slides as loaded
-          setAllSlidesLoaded(true);
+          // Validate all elements before marking as loaded
+          if (validateElementsLoaded()) {
+            setAllSlidesLoaded(true);
+            logger.debug("All slides marked as loaded after validation");
+          } else {
+            logger.error("Main loading: element validation failed");
+            setAllSlidesLoaded(false);
+            return; // Don't proceed with view initialization if validation failed
+          }
 
           // Move to first slide and ensure proper zoom
           setTimeout(() => {
@@ -1033,22 +1055,11 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     createTestElements,
     loadAllSlides,
     moveToSlide,
+    validateElementsLoaded,
     // Remove containerSize dependency to prevent slide reloading on resize
   ]);
 
-  // Sync progression state with local playing state
-  useEffect(() => {
-    if (progressionState.isPlaying !== isPlaying) {
-      setIsPlaying(progressionState.isPlaying);
-    }
-  }, [progressionState.isPlaying, isPlaying]);
-
-  // Sync progression slide index with local slide index
-  useEffect(() => {
-    if (progressionState.currentSlideIndex !== currentSlideIndex) {
-      setCurrentSlideIndex(progressionState.currentSlideIndex);
-    }
-  }, [progressionState.currentSlideIndex, currentSlideIndex]);
+  // No complex progression state sync needed - using simple state management
 
   // Handle camera movement when slide index changes
   useEffect(() => {
@@ -1058,71 +1069,50 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   }, [currentSlideIndex, allSlidesLoaded, excalidrawAPI, moveToSlide]);
 
   // Check if we're in visual-only mode (audio generation failed)
-  const isVisualOnlyMode = enableAudio && audioStatus.isReady && mergedAudio && !mergedAudio.mergedAudioUrl;
+  // Use simple visual-only mode detection (audio system already defined above)
+  
+  // Debug visual-only mode decision
+  logger.debug("Visual-only mode check", {
+    enableAudio,
+    audioReady,
+    mergedAudioUrl,
+    audioSegmentsCount: audioSegments.length,
+    isVisualOnlyMode
+  });
 
-  // Toggle play/pause with unified progression system
+  // Simple toggle play/pause (no complex progression system)
   const togglePlayPause = useCallback(() => {
+    logger.debug("Play button clicked", {
+      enableAudio,
+      audioReady,
+      isVisualOnlyMode
+    });
+
     // Check if audio is required and ready (but allow visual-only mode)
-    if (enableAudio && !audioStatus.isReady && !isVisualOnlyMode) {
-      logger.warn("Cannot play: audio not ready", { 
-        audioStatus: audioStatus.currentPhase,
-        isProcessing: audioStatus.isProcessing
-      });
+    if (enableAudio && !audioReady && !isVisualOnlyMode) {
+      logger.warn("Cannot play: audio not ready");
       return;
     }
 
-    if (progressionState.isPlaying) {
-      // Pause using progression system
-      progressionActions.pause();
-      logger.debug("Playback paused via progression system");
-    } else {
-      if (currentSlideIndex >= slides.length) {
-        // Reset to beginning if at end
-        progressionActions.reset();
-        
-        // Clear pending updates
-        if (debounceTimerRef.current) {
-          clearTimeout(debounceTimerRef.current);
-          debounceTimerRef.current = null;
-        }
-        pendingUpdateRef.current = null;
-
-        // Move camera back to first slide
-        if (excalidrawAPI && allSlidesLoaded) {
-          setTimeout(() => moveToSlide(0), 100);
-        }
-      }
-      
-      // Start playback using progression system
-      progressionActions.play();
-      logger.debug("Playback started via progression system", {
-        mode: progressionState.mode,
-        currentSlide: progressionState.currentSlideIndex
-      });
-      
+    // Simple play/pause toggle
+    setIsPlaying(!isPlaying);
+    
+    if (!isPlaying) {
       onPlaybackStart?.();
     }
   }, [
-    progressionState.isPlaying,
-    progressionState.mode,
-    progressionState.currentSlideIndex,
-    currentSlideIndex,
-    slides.length,
-    excalidrawAPI,
-    onPlaybackStart,
-    allSlidesLoaded,
-    moveToSlide,
     enableAudio,
-    audioStatus.isReady,
+    audioReady,
     isVisualOnlyMode,
-    progressionActions,
+    isPlaying,
+    onPlaybackStart
   ]);
 
-  // Reset lesson with unified progression system
+  // Simple reset lesson
   const resetLesson = useCallback(() => {
-    // Reset using progression system
-    progressionActions.reset();
-    logger.debug("Lesson reset via progression system");
+    setIsPlaying(false);
+    setCurrentSlideIndex(0);
+    logger.debug("Lesson reset");
 
     // Clear all timers
     if (slideProgressTimerRef.current) {
@@ -1139,7 +1129,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     if (allSlidesLoaded) {
       moveToSlide(0);
     }
-  }, [allSlidesLoaded, moveToSlide, progressionActions]);
+  }, [allSlidesLoaded, moveToSlide]);
 
   // Toggle fullscreen
   const handleToggleFullscreen = useCallback(() => {
@@ -1179,28 +1169,28 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     };
   }, []);
 
-  // Get play button text with audio status
+  // Get play button text with simple audio and canvas status
   const getPlayButtonText = () => {
-    if (enableAudio && !audioStatus.isReady) {
-      if (audioStatus.isProcessing) {
-        return `🔄 ${audioStatus.progress || 'Preparing audio...'}`;
-      }
-      if (audioStatus.error) {
-        return "❌ Audio Error";
-      }
+    if (!allSlidesLoaded) {
+      return "⏳ Loading slides...";
+    }
+    
+    if (isVisualOnlyMode) {
+      return "📖 Visual mode ready";
+    }
+    
+    if (enableAudio && !audioReady) {
       return "⏳ Loading audio...";
     }
     
-    if (isPlaying) return "⏸️ Pause";
-    if (currentSlideIndex === 0) return "▶️ Play";
-    if (currentSlideIndex >= slides.length) return "🔄 Restart";
-    return "▶️ Resume";
+    return "▶️ Ready to play";
   };
 
   // Check if play button should be disabled
   const isPlayButtonDisabled = () => {
     if (slides.length === 0) return true;
-    if (enableAudio && !audioStatus.isReady && !isVisualOnlyMode) return true;
+    if (!allSlidesLoaded) return true; // Ensure canvas elements are loaded
+    if (enableAudio && !isVisualOnlyMode && !audioReady) return true;
     return false;
   };
 
@@ -1305,30 +1295,17 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
         {showControls && (
           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent z-50 pointer-events-auto">
             <div className="px-6 py-4">
-              {/* Audio seekbar (only show when audio is enabled and ready with audio) */}
-              {enableAudio && audioStatus.isReady && mergedAudio && mergedAudio.mergedAudioUrl && (
-                <div className="mb-4">
-                  <AudioSeekBar
-                    currentTime={currentAudioTime}
-                    duration={audioDuration || mergedAudio.totalDuration}
-                    isPlaying={isPlaying}
-                    slideMarkers={mergedAudio.slideSegments.map((segment, index) => ({
-                      slideNumber: segment.slideNumber,
-                      startTime: segment.startTime,
-                      endTime: segment.endTime,
-                      text: segment.text
-                    }))}
-                    currentSlideIndex={currentSlideIndex}
-                    onSeek={(time) => {
-                      progressionActions.seekToTime(time);
-                      audioSeekToTime(time);
-                    }}
-                    onSlideClick={(slideIndex) => {
-                      progressionActions.seekToSlide(slideIndex);
-                      audioSeekToSlide(slideIndex);
-                    }}
-                    showSlideMarkers={true}
-                    showTimeLabels={true}
+              {/* Simple Audio Player (replaces complex AudioSeekBar) */}
+              {enableAudio && mergedAudioUrl && audioSegments.length > 0 && (
+                <div className="mb-4 bg-white/10 rounded-lg p-3">
+                  <SimpleAudioPlayer
+                    audioUrl={mergedAudioUrl}
+                    audioSegments={audioSegments}
+                    onSlideChange={handleAudioSlideChange}
+                    onPlaybackStart={onPlaybackStart}
+                    onPlaybackEnd={onPlaybackEnd}
+                    onError={onError}
+                    autoPlay={autoPlay}
                     className="w-full"
                   />
                 </div>
@@ -1344,32 +1321,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                 </div>
               )}
 
-              {/* Audio loading progress (show when audio is being generated) */}
-              {enableAudio && audioStatus.isProcessing && (
-                <div className="mb-4">
-                  <div className="text-xs text-white/70 mb-2 flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
-                    <span>{audioStatus.progress}</span>
-                    <span className="text-white/50">({Math.round(audioStatus.generationProgress)}%)</span>
-                  </div>
-                  <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-purple-400 to-pink-400 transition-all duration-300"
-                      style={{ width: `${audioStatus.generationProgress}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Audio error state */}
-              {enableAudio && audioStatus.error && (
-                <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg">
-                  <div className="text-sm text-red-200 flex items-center gap-2">
-                    <span>❌</span>
-                    <span>Audio Error: {audioStatus.error}</span>
-                  </div>
-                </div>
-              )}
+              {/* Simplified audio status (no complex progress) */}
 
               {/* Control buttons and info */}
               <div className="flex items-center gap-4 overflow-hidden">
@@ -1382,12 +1334,12 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                     className={`flex items-center justify-center w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full transition-colors pointer-events-auto ${
                       isPlayButtonDisabled() ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
-                    title={enableAudio && !audioStatus.isReady ? audioStatus.progress : undefined}
+                    title={enableAudio && !audioReady ? "Loading..." : undefined}
                   >
-                    {enableAudio && !audioStatus.isReady ? (
+                    {enableAudio && !audioReady ? (
                       // Loading state for audio
                       <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    ) : progressionState.isPlaying ? (
+                    ) : isPlaying ? (
                       <svg
                         className="w-6 h-6 text-white"
                         fill="currentColor"
@@ -1472,17 +1424,12 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                   <div className="flex items-center gap-1 whitespace-nowrap">
                     <div
                       className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                        progressionState.isPlaying ? "bg-green-400" : "bg-yellow-400"
+                        isPlaying ? "bg-green-400" : "bg-yellow-400"
                       }`}
                     ></div>
                     <span className="text-white/80 text-xs hidden sm:inline">
-                      {progressionState.isPlaying ? "Playing" : "Paused"}
+                      {isPlaying ? "Playing" : "Paused"}
                     </span>
-                    {progressionState.mode !== 'idle' && (
-                      <span className="text-white/60 text-xs hidden md:inline ml-1">
-                        ({progressionState.mode})
-                      </span>
-                    )}
                   </div>
                 </div>
               </div>

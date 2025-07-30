@@ -14,7 +14,7 @@ import { Button } from "@ai-tutor/ui";
 import { Card, CardHeader, CardTitle, CardContent } from "@ai-tutor/ui";
 import { cn, createComponentLogger } from "@ai-tutor/utils";
 import { lessonsApi } from "@ai-tutor/api-client";
-import type { Lesson as LessonType } from "@ai-tutor/types";
+import type { Lesson } from "@ai-tutor/types";
 import { EditableTitle } from "../components/EditableTitle";
 import { MultiSlideCanvasPlayer } from "../components/MultiSlideCanvasPlayer";
 
@@ -86,26 +86,33 @@ const Lesson: React.FC = () => {
     if (lesson && lesson.slides.length === 0 && !generateContentMutation.isPending) {
       generateContentMutation.mutate(lesson.id!);
     }
-  }, [lesson, generateContentMutation]);
+  }, [lesson?.id, lesson?.slides?.length]); // Remove generateContentMutation from deps to prevent loops
 
   const isGeneratingContent = generateContentMutation.isPending || (lesson && lesson.slides.length === 0);
   const isGeneratingScript = generateScriptMutation.isPending;
   const hasNarrationContent = lesson?.slides?.some(slide => slide.narration);
   
   // Debug logging to understand lesson state
-  console.log('🎯 Lesson Debug Info:', {
-    lessonExists: !!lesson,
-    slidesCount: lesson?.slides?.length || 0,
-    hasNarrationContent,
-    isGeneratingContent,
-    firstSlideStructure: lesson?.slides?.[0] ? {
-      hasNarration: !!lesson.slides[0].narration,
-      hasElements: !!lesson.slides[0].elements,
-      templateId: lesson.slides[0].template_id,
-      slideType: typeof lesson.slides[0],
-      slideKeys: Object.keys(lesson.slides[0])
-    } : null
-  });
+  useEffect(() => {
+    if (lesson) {
+      logger.debug("🎯 Lesson Debug Info:", {
+        lessonExists: !!lesson,
+        slidesCount: lesson?.slides?.length || 0,
+        hasNarrationContent,
+        isGeneratingContent,
+        audioGenerated: lesson?.audio_generated,
+        mergedAudioUrl: lesson?.merged_audio_url,
+        audioSegments: lesson?.audio_segments?.length || 0,
+        firstSlideStructure: lesson?.slides?.[0] ? {
+          hasNarration: !!lesson.slides[0].narration,
+          hasElements: !!lesson.slides[0].elements,
+          templateId: lesson.slides[0].template_id,
+          slideType: typeof lesson.slides[0],
+          slideKeys: Object.keys(lesson.slides[0])
+        } : null
+      });
+    }
+  }, [lesson, hasNarrationContent, isGeneratingContent]);
 
   // Check if lesson was deleted or not found
   const isLessonNotFound = (lessonError as any)?.response?.status === 404;
@@ -279,8 +286,19 @@ const Lesson: React.FC = () => {
                       </CardHeader>
                       <CardContent className="p-6">
                         <div className="h-[700px] relative">
+                          {(() => {
+                            logger.debug("Passing props to MultiSlideCanvasPlayer", {
+                              slidesCount: lesson.slides?.length || 0,
+                              audioSegmentsCount: lesson.audio_segments?.length || 0,
+                              mergedAudioUrl: lesson.merged_audio_url,
+                              audioGenerated: lesson.audio_generated
+                            });
+                            return null;
+                          })()}
                           <MultiSlideCanvasPlayer 
                             slides={lesson.slides}
+                            existingAudioSegments={lesson.audio_segments}
+                            mergedAudioUrl={lesson.merged_audio_url}
                             autoPlay={false}
                             showControls={true}
                             enableAudio={true}

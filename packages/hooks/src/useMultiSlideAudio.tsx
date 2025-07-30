@@ -49,6 +49,22 @@ export interface UseMultiSlideAudioResult {
     narration: string; 
     estimated_duration: number; 
   }>, options?: Partial<AudioEngineOptions>) => Promise<void>;
+  loadExistingAudio: (audioSegments: Array<{
+    slide_number: number;
+    text: string;
+    start_time: number;
+    duration: number;
+    end_time: number;
+    audio_id?: string;
+    audio_url?: string;
+  }>) => void;
+  loadMergedAudio: (mergedAudioUrl: string, audioSegments: Array<{
+    slide_number: number;
+    text: string;
+    start_time: number;
+    duration: number;
+    end_time: number;
+  }>) => void;
   seekToSlide: (slideIndex: number) => void;
   seekToTime: (time: number) => void;
   getCurrentSlideFromTime: (time: number) => number;
@@ -527,6 +543,132 @@ export const useMultiSlideAudio = (): UseMultiSlideAudioResult => {
   /**
    * Reset all audio data and state
    */
+  /**
+   * Load existing audio segments from lesson data (backend-generated)
+   */
+  const loadExistingAudio = useCallback((audioSegments: Array<{
+    slide_number: number;
+    text: string;
+    start_time: number;
+    duration: number;
+    end_time: number;
+    audio_id?: string;
+    audio_url?: string;
+  }>) => {
+    logger.debug('Loading existing audio segments from lesson data', { segmentCount: audioSegments.length });
+    
+    // Convert backend audio segments to SlideAudioData format
+    const slideAudioData: SlideAudioData[] = audioSegments.map(segment => ({
+      slideNumber: segment.slide_number,
+      narration: segment.text,
+      estimatedDuration: segment.duration,
+      actualDuration: segment.duration,
+      startTime: segment.start_time,
+      endTime: segment.end_time,
+      audioId: segment.audio_id,
+      audioUrl: segment.audio_url
+    }));
+    
+    setSlideAudioData(slideAudioData);
+    
+    // Create merged audio result from segments
+    const mergedAudioResult: AudioMergeResult = {
+      mergedAudioUrl: '', // We don't have a merged URL yet - frontend will use individual files
+      totalDuration: Math.max(...audioSegments.map(s => s.end_time)),
+      slideSegments: audioSegments.map(segment => ({
+        slideNumber: segment.slide_number,
+        startTime: segment.start_time,
+        endTime: segment.end_time,
+        text: segment.text
+      }))
+    };
+    
+    setMergedAudio(mergedAudioResult);
+    
+    // Mark as ready if we have valid audio segments
+    const hasValidAudio = audioSegments.some(segment => segment.audio_url);
+    setStatus({
+      isProcessing: false,
+      isReady: true,
+      error: null,
+      progress: hasValidAudio ? 'Audio loaded from lesson data' : 'Visual-only mode (no audio)',
+      currentPhase: 'ready',
+      generationProgress: 100
+    });
+    
+    logger.debug('Successfully loaded existing audio segments', {
+      totalSlides: slideAudioData.length,
+      hasValidAudio,
+      totalDuration: mergedAudioResult.totalDuration
+    });
+  }, []);
+
+  /**
+   * Load merged audio from backend with segment timing information
+   */
+  const loadMergedAudio = useCallback((mergedAudioUrl: string, audioSegments: Array<{
+    slide_number: number;
+    text: string;
+    start_time: number;
+    duration: number;
+    end_time: number;
+  }>) => {
+    logger.debug('Loading merged audio from backend', { 
+      mergedAudioUrl, 
+      segmentCount: audioSegments.length 
+    });
+    
+    // Convert backend audio segments to SlideAudioData format
+    const slideAudioData: SlideAudioData[] = audioSegments.map(segment => ({
+      slideNumber: segment.slide_number,
+      narration: segment.text,
+      estimatedDuration: segment.duration,
+      actualDuration: segment.duration,
+      startTime: segment.start_time,
+      endTime: segment.end_time,
+      audioId: undefined, // Individual audio IDs not needed for merged audio
+      audioUrl: mergedAudioUrl // All segments point to the same merged audio file
+    }));
+    
+    setSlideAudioData(slideAudioData);
+    
+    // Create merged audio result with the actual merged URL
+    const mergedAudioResult: AudioMergeResult = {
+      mergedAudioUrl: mergedAudioUrl,
+      totalDuration: Math.max(...audioSegments.map(s => s.end_time)),
+      slideSegments: audioSegments.map(segment => ({
+        slideNumber: segment.slide_number,
+        startTime: segment.start_time,
+        endTime: segment.end_time,
+        text: segment.text
+      }))
+    };
+    
+    setMergedAudio(mergedAudioResult);
+    
+    // Set up audio element for merged audio
+    if (audioElement) {
+      audioElement.src = mergedAudioUrl;
+      audioElement.load();
+    }
+    
+    // Mark as ready
+    setStatus({
+      isProcessing: false,
+      isReady: true,
+      error: null,
+      progress: 'Merged audio loaded successfully',
+      currentPhase: 'ready',
+      generationProgress: 100
+    });
+    
+    logger.debug('Successfully loaded merged audio', {
+      totalSlides: slideAudioData.length,
+      totalDuration: mergedAudioResult.totalDuration,
+      mergedUrl: mergedAudioUrl
+    });
+  }, [audioElement]);
+
   const reset = useCallback(() => {
     if (audioElement) {
       audioElement.pause();
@@ -572,6 +714,8 @@ export const useMultiSlideAudio = (): UseMultiSlideAudioResult => {
     audioElement,
     currentSlideIndex,
     generateMultiSlideAudio,
+    loadExistingAudio,
+    loadMergedAudio,
     seekToSlide,
     seekToTime,
     getCurrentSlideFromTime,

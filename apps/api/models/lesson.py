@@ -54,6 +54,8 @@ class Lesson(Document):
     slides: List[AITutorSlide] = Field(default_factory=list)
     merged_audio_url: Optional[str] = None  # URL to the merged audio file
     audio_duration: Optional[float] = None  # Total duration of merged audio in seconds
+    audio_segments: Optional[List[Dict[str, Any]]] = None  # Slide timing information for seekbar
+    audio_generated: bool = False  # Whether audio has been generated for this lesson
     doubts: Optional[List[Doubt]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
@@ -113,6 +115,8 @@ class LessonResponse(BaseModel):
     slides: List[AITutorSlide] = Field(default_factory=list)
     merged_audio_url: Optional[str] = None
     audio_duration: Optional[float] = None
+    audio_segments: Optional[List[Dict[str, Any]]] = None
+    audio_generated: bool = False
     doubts: Optional[List[Doubt]] = Field(default_factory=list)
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -131,4 +135,6 @@ class UpdateLessonRequest(BaseModel):
     slides: Optional[List[AITutorSlide]] = None
     merged_audio_url: Optional[str] = None
     audio_duration: Optional[float] = None
+    audio_segments: Optional[List[Dict[str, Any]]] = None
+    audio_generated: Optional[bool] = None
     doubts: Optional[List[Doubt]] = None

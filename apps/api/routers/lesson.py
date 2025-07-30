@@ -164,6 +164,8 @@ async def create_lesson(request: CreateLessonRequest):
             slides=lesson.slides,
             merged_audio_url=lesson.merged_audio_url,
             audio_duration=lesson.audio_duration,
+            audio_segments=lesson.audio_segments,
+            audio_generated=lesson.audio_generated,
             doubts=lesson.doubts or [],
             created_at=lesson.created_at,
             updated_at=lesson.updated_at
@@ -236,6 +238,18 @@ async def generate_lesson_content(lesson_id: str):
         # Refresh lesson from database
         lesson = await Lesson.get(ObjectId(lesson_id))
         
+        # Automatically generate audio for the lesson if TTS is available
+        if TTS_AVAILABLE:
+            try:
+                logger.info(f"Auto-generating audio for lesson {lesson_id}")
+                audio_response = await generate_lesson_merged_audio(lesson_id)
+                # Use the updated lesson from audio generation
+                lesson = await Lesson.get(ObjectId(lesson_id))
+                logger.info(f"Audio auto-generation completed for lesson {lesson_id}")
+            except Exception as audio_error:
+                logger.warning(f"Audio auto-generation failed for lesson {lesson_id}: {audio_error}")
+                # Continue without audio - lesson is still usable
+        
         return LessonResponse(
             id=str(lesson.id),
             topic=lesson.topic,
@@ -244,6 +258,8 @@ async def generate_lesson_content(lesson_id: str):
             slides=lesson.slides,
             merged_audio_url=lesson.merged_audio_url,
             audio_duration=lesson.audio_duration,
+            audio_segments=lesson.audio_segments,
+            audio_generated=lesson.audio_generated,
             doubts=lesson.doubts or [],
             created_at=lesson.created_at,
             updated_at=lesson.updated_at
@@ -273,6 +289,8 @@ async def get_lessons(
                 slides=lesson.slides,
                 merged_audio_url=lesson.merged_audio_url,
                 audio_duration=lesson.audio_duration,
+                audio_segments=lesson.audio_segments,
+                audio_generated=lesson.audio_generated,
                 doubts=lesson.doubts or [],
                 created_at=lesson.created_at,
                 updated_at=lesson.updated_at
@@ -308,6 +326,8 @@ async def get_lesson(lesson_id: str):
             slides=lesson.slides,
             merged_audio_url=lesson.merged_audio_url,
             audio_duration=lesson.audio_duration,
+            audio_segments=lesson.audio_segments,
+            audio_generated=lesson.audio_generated,
             doubts=lesson.doubts or [],
             created_at=lesson.created_at,
             updated_at=lesson.updated_at
@@ -436,6 +456,267 @@ async def generate_lesson_script(lesson_id: str):
         raise HTTPException(
             status_code=500,
             detail="Failed to generate lesson script"
+        )
+
+
+@router.post("/lesson/{lesson_id}/generate-merged-audio", response_model=LessonResponse)
+async def generate_lesson_merged_audio(lesson_id: str):
+    """Generate and merge audio for all lesson slides, store result in lesson"""
+    try:
+        if not TTS_AVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail="TTS service is not available"
+            )
+        
+        lesson_obj_id = ErrorHandler.validate_object_id(lesson_id, "lesson")
+        lesson = await Lesson.get(lesson_obj_id)
+        if not lesson:
+            raise ErrorHandler.handle_not_found("Lesson", lesson_id)
+        
+        # Check if audio is already generated
+        if lesson.audio_generated and lesson.merged_audio_url:
+            logger.info(f"Audio already generated for lesson {lesson_id}, returning existing")
+            return LessonResponse(
+                id=str(lesson.id),
+                topic=lesson.topic,
+                title=lesson.title,
+                difficulty_level=lesson.difficulty_level,
+                slides=lesson.slides,
+                merged_audio_url=lesson.merged_audio_url,
+                audio_duration=lesson.audio_duration,
+                audio_segments=lesson.audio_segments,
+                audio_generated=lesson.audio_generated,
+                doubts=lesson.doubts or [],
+                created_at=lesson.created_at,
+                updated_at=lesson.updated_at
+            )
+        
+        if not lesson.slides:
+            raise HTTPException(status_code=400, detail="Lesson has no slides to generate audio for")
+        
+        # Generate TTS for each slide with narration
+        audio_segments = []
+        individual_audio_ids = []
+        current_time = 0.0
+        
+        logger.info(f"Generating audio for {len(lesson.slides)} slides in lesson {lesson_id}")
+        
+        for slide in lesson.slides:
+            if not slide.narration or not slide.narration.strip():
+                # Add silent segment for slides without narration
+                audio_segments.append({
+                    "slide_number": slide.slide_number,
+                    "text": "",
+                    "start_time": current_time,
+                    "duration": slide.estimated_duration,
+                    "end_time": current_time + slide.estimated_duration,
+                    "audio_id": None,
+                    "audio_url": None
+                })
+                current_time += slide.estimated_duration
+                continue
+            
+            try:
+                # Generate TTS audio for slide
+                audio_id = await piper_tts_service.generate_audio(slide.narration.strip())
+                
+                if audio_id:
+                    audio_url = piper_tts_service._get_audio_url(audio_id)
+                    individual_audio_ids.append(audio_id)
+                    
+                    # Use actual duration if available, otherwise use estimated
+                    audio_path = await piper_tts_service.get_audio_file_path(audio_id)
+                    actual_duration = slide.estimated_duration
+                    if audio_path:
+                        measured_duration = piper_tts_service._measure_audio_duration(audio_path)
+                        if measured_duration:
+                            actual_duration = measured_duration
+                    
+                    audio_segments.append({
+                        "slide_number": slide.slide_number,
+                        "text": slide.narration.strip(),
+                        "start_time": current_time,
+                        "duration": actual_duration,
+                        "end_time": current_time + actual_duration,
+                        "audio_id": audio_id,
+                        "audio_url": audio_url
+                    })
+                    current_time += actual_duration
+                else:
+                    # Failed to generate audio for this slide
+                    logger.warning(f"Failed to generate audio for slide {slide.slide_number}")
+                    audio_segments.append({
+                        "slide_number": slide.slide_number,
+                        "text": slide.narration.strip(),
+                        "start_time": current_time,
+                        "duration": slide.estimated_duration,
+                        "end_time": current_time + slide.estimated_duration,
+                        "audio_id": None,
+                        "audio_url": None
+                    })
+                    current_time += slide.estimated_duration
+                    
+            except Exception as e:
+                logger.error(f"Error generating audio for slide {slide.slide_number}: {e}")
+                # Add failed segment to maintain timing
+                audio_segments.append({
+                    "slide_number": slide.slide_number,
+                    "text": slide.narration.strip(),
+                    "start_time": current_time,
+                    "duration": slide.estimated_duration,
+                    "end_time": current_time + slide.estimated_duration,
+                    "audio_id": None,
+                    "audio_url": None,
+                    "error": str(e)
+                })
+                current_time += slide.estimated_duration
+        
+        # Merge audio files using pydub
+        if individual_audio_ids:
+            try:
+                from utils.audio_merger import AudioMerger
+                import os
+                from pathlib import Path
+                
+                # Create merged audio directory with absolute path
+                base_dir = os.path.dirname(os.path.dirname(__file__))  # Go up to api/ directory
+                merged_audio_dir = Path(base_dir) / "static" / "audio" / "merged"
+                merged_audio_dir.mkdir(parents=True, exist_ok=True)
+                
+                logger.debug(f"Created merged audio directory: {merged_audio_dir}")
+                
+                # Prepare audio file paths for merging
+                audio_file_paths = []
+                segments_with_audio = []
+                
+                for segment in audio_segments:
+                    if segment.get("audio_id"):
+                        audio_path = await piper_tts_service.get_audio_file_path(segment["audio_id"])
+                        if audio_path and audio_path.exists():
+                            audio_file_paths.append(str(audio_path))
+                            segments_with_audio.append(segment)
+                
+                if audio_file_paths:
+                    # Initialize audio merger
+                    merger = AudioMerger(crossfade_duration_ms=1500, output_format="wav")
+                    
+                    # Create output path for merged audio
+                    merged_filename = f"lesson_{lesson_id}_merged.wav"
+                    merged_audio_path = merged_audio_dir / merged_filename
+                    
+                    # Merge audio files
+                    output_path, total_duration, updated_segments = merger.merge_audio_files(
+                        audio_file_paths, 
+                        str(merged_audio_path),
+                        segments_with_audio
+                    )
+                    
+                    # Update segments with new timing information
+                    audio_segments = updated_segments
+                    
+                    # Clean up individual audio files after successful merge
+                    merger.cleanup_individual_files(audio_file_paths)
+                    
+                    # Set merged audio URL
+                    merged_audio_url = f"/api/lesson/{lesson_id}/merged-audio"
+                    
+                    logger.info(f"Successfully merged {len(audio_file_paths)} audio files for lesson {lesson_id}")
+                else:
+                    # No audio files to merge, use placeholder
+                    total_duration = current_time
+                    merged_audio_url = None
+                    logger.warning(f"No audio files found to merge for lesson {lesson_id}")
+                    
+            except Exception as e:
+                logger.error(f"Audio merging failed for lesson {lesson_id}: {e}")
+                # Fallback to individual segments
+                total_duration = current_time
+                merged_audio_url = None
+        else:
+            # No individual audio files, use estimated duration
+            total_duration = current_time
+            merged_audio_url = None
+        
+        # Mark the lesson as having generated audio
+        await lesson.update({"$set": {
+            "audio_segments": audio_segments,
+            "audio_duration": total_duration,
+            "audio_generated": True,
+            "merged_audio_url": merged_audio_url,
+            "updated_at": datetime.utcnow()
+        }})
+        
+        # Refresh lesson from database
+        lesson = await Lesson.get(lesson_obj_id)
+        
+        logger.info(f"Successfully generated audio for lesson {lesson_id}: {len(audio_segments)} segments, {total_duration:.2f}s total")
+        
+        return LessonResponse(
+            id=str(lesson.id),
+            topic=lesson.topic,
+            title=lesson.title,
+            difficulty_level=lesson.difficulty_level,
+            slides=lesson.slides,
+            merged_audio_url=lesson.merged_audio_url,
+            audio_duration=lesson.audio_duration,
+            audio_segments=lesson.audio_segments,
+            audio_generated=lesson.audio_generated,
+            doubts=lesson.doubts or [],
+            created_at=lesson.created_at,
+            updated_at=lesson.updated_at
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating lesson merged audio: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate lesson audio"
+        )
+
+
+@router.get("/lesson/{lesson_id}/merged-audio")
+async def get_lesson_merged_audio(lesson_id: str):
+    """Serve the merged audio file for a lesson"""
+    try:
+        from fastapi.responses import FileResponse
+        from pathlib import Path
+        
+        if not ObjectId.is_valid(lesson_id):
+            raise HTTPException(status_code=400, detail="Invalid lesson ID")
+        
+        lesson = await Lesson.get(ObjectId(lesson_id))
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+        
+        if not lesson.merged_audio_url:
+            raise HTTPException(status_code=404, detail="No merged audio available for this lesson")
+        
+        # Construct file path with absolute path
+        import os
+        base_dir = os.path.dirname(os.path.dirname(__file__))  # Go up to api/ directory
+        merged_audio_dir = Path(base_dir) / "static" / "audio" / "merged"
+        merged_filename = f"lesson_{lesson_id}_merged.wav"
+        merged_audio_path = merged_audio_dir / merged_filename
+        
+        if not merged_audio_path.exists():
+            raise HTTPException(status_code=404, detail="Merged audio file not found")
+        
+        return FileResponse(
+            str(merged_audio_path),
+            media_type="audio/wav",
+            filename=f"lesson_{lesson.topic.replace(' ', '_')}_audio.wav"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error serving merged audio for lesson {lesson_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to serve merged audio"
         )
 
 
