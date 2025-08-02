@@ -413,20 +413,6 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
         </div>
       </div>
       
-      {/* Current slide info */}
-      {audioSegments.length > 0 && (
-        <div className="text-center text-sm text-gray-600">
-          <p>
-            Slide {state.currentSlideIndex + 1} of {audioSegments.length}
-            {audioSegments[state.currentSlideIndex] && (
-              <span className="block mt-1 text-xs text-gray-500">
-                {audioSegments[state.currentSlideIndex].text.substring(0, 100)}
-                {audioSegments[state.currentSlideIndex].text.length > 100 ? '...' : ''}
-              </span>
-            )}
-          </p>
-        </div>
-      )}
     </div>
   );
 };
