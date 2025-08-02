@@ -14,7 +14,7 @@ import { Button } from "@ai-tutor/ui";
 import { Card, CardHeader, CardTitle, CardContent } from "@ai-tutor/ui";
 import { cn, createComponentLogger } from "@ai-tutor/utils";
 import { lessonsApi } from "@ai-tutor/api-client";
-import type { Lesson } from "@ai-tutor/types";
+import type { Lesson, GenerationStatus } from "@ai-tutor/types";
 import { EditableTitle } from "../components/EditableTitle";
 import { MultiSlideCanvasPlayer } from "../components/MultiSlideCanvasPlayer";
 
@@ -27,12 +27,16 @@ const Lesson: React.FC = () => {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>("video");
   const queryClient = useQueryClient();
+  
+  // Create a unique instance ID to prevent cross-component interference
+  const [instanceId] = useState(() => `lesson-${id}-${Date.now()}`);
 
-  // Fetch lesson data
-  const { data: lesson, isLoading: isLoadingLesson, error: lessonError } = useQuery({
+  // Fetch lesson data - removed global polling to prevent cross-lesson interference
+  const { data: lesson, isLoading: isLoadingLesson, error: lessonError, refetch: refetchLesson } = useQuery({
     queryKey: ["lesson", id],
     queryFn: () => lessonsApi.getById(id!),
     enabled: !!id,
+    staleTime: 0, // Always fetch fresh data for lessons to prevent stale state issues
     retry: (failureCount, error) => {
       // Don't retry on 404 errors (lesson not found)
       if ((error as any)?.response?.status === 404) {
@@ -44,75 +48,132 @@ const Lesson: React.FC = () => {
 
   // Generate lesson content mutation
   const generateContentMutation = useMutation({
+    mutationKey: ["generateContent", id], // Add lesson-specific mutation key
     mutationFn: (lessonId: string) => 
       fetch(`/api/lesson/${lessonId}/generate`, { method: 'POST' })
         .then(res => {
           if (!res.ok) throw new Error('Failed to generate lesson content');
           return res.json();
         }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lesson", id] });
+    onSuccess: async () => {
+      // Force immediate refetch to get updated lesson data
+      await refetchLesson();
+      // Invalidate lessons list to show updated status
       queryClient.invalidateQueries({ queryKey: ["lessons"] });
+      // Specifically invalidate this lesson's cache to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: ["lesson", id], exact: true });
     },
     retry: false, // Disable retries to prevent infinite loops on timeout
   });
 
   // Generate lesson script mutation
   const generateScriptMutation = useMutation({
+    mutationKey: ["generateScript", id], // Add lesson-specific mutation key
     mutationFn: (lessonId: string) => 
       fetch(`/api/lesson/${lessonId}/generate-script`, { method: 'POST' })
         .then(res => {
           if (!res.ok) throw new Error('Failed to generate script');
           return res.json();
         }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lesson", id] });
+    onSuccess: async () => {
+      await refetchLesson();
       queryClient.invalidateQueries({ queryKey: ["lessons"] });
     },
   });
 
   // Update lesson title mutation
   const updateTitleMutation = useMutation({
+    mutationKey: ["updateTitle", id], // Add lesson-specific mutation key
     mutationFn: ({ lessonId, title }: { lessonId: string; title: string }) => 
       lessonsApi.updateLesson(lessonId, { title }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lesson", id] });
+    onSuccess: async () => {
+      await refetchLesson();
       queryClient.invalidateQueries({ queryKey: ["lessons"] });
     },
   });
 
-  // Auto-generate content if lesson exists but has no slides
+  // Auto-generate content if lesson exists with pending status
   useEffect(() => {
-    if (lesson && lesson.slides.length === 0 && !generateContentMutation.isPending) {
+    if (lesson && lesson.generation_status === "pending" && !generateContentMutation.isPending) {
       generateContentMutation.mutate(lesson.id!);
     }
-  }, [lesson?.id, lesson?.slides?.length]); // Remove generateContentMutation from deps to prevent loops
+  }, [lesson?.id, lesson?.generation_status]); // Use generation_status instead of slides length
 
-  const isGeneratingContent = generateContentMutation.isPending || (lesson && lesson.slides.length === 0);
+  // Component-specific polling for generating lessons
+  useEffect(() => {
+    let pollInterval: NodeJS.Timeout | null = null;
+
+    // Only poll if current lesson is generating AND this component is active
+    if (lesson?.generation_status === "generating" && id === lesson.id) {
+      logger.debug(`[${instanceId}] Starting polling for generating lesson ${id}`);
+      
+      pollInterval = setInterval(async () => {
+        try {
+          const result = await refetchLesson();
+          logger.debug(`[${instanceId}] Polled lesson ${id} - status: ${result.data?.generation_status}`);
+          
+          // Stop polling if lesson is no longer generating
+          if (result.data?.generation_status !== "generating") {
+            if (pollInterval) {
+              clearInterval(pollInterval);
+              logger.debug(`[${instanceId}] Lesson ${id} completed generation, stopping poll`);
+            }
+          }
+        } catch (error) {
+          logger.error(`[${instanceId}] Polling error for lesson ${id}:`, error);
+        }
+      }, 2000); // Poll every 2 seconds
+    }
+
+    // Cleanup function
+    return () => {
+      if (pollInterval) {
+        logger.debug(`[${instanceId}] Stopping polling for lesson ${id}`);
+        clearInterval(pollInterval);
+      }
+    };
+  }, [lesson?.generation_status, lesson?.id, id, refetchLesson]); // Dependencies to restart polling when needed
+
+  // Improved loading state logic using generation_status
+  const isGeneratingContent = lesson?.generation_status === "generating" || 
+    (lesson?.generation_status === "pending" && generateContentMutation.isPending);
   const isGeneratingScript = generateScriptMutation.isPending;
   const hasNarrationContent = lesson?.slides?.some(slide => slide.narration);
+  const hasGenerationError = lesson?.generation_status === "failed";
+  const isContentReady = lesson?.generation_status === "completed" && lesson.slides.length > 0;
   
   // Debug logging to understand lesson state
   useEffect(() => {
-    if (lesson) {
-      logger.debug("🎯 Lesson Debug Info:", {
-        lessonExists: !!lesson,
-        slidesCount: lesson?.slides?.length || 0,
-        hasNarrationContent,
-        isGeneratingContent,
-        audioGenerated: lesson?.audio_generated,
-        mergedAudioUrl: lesson?.merged_audio_url,
-        audioSegments: lesson?.audio_segments?.length || 0,
-        firstSlideStructure: lesson?.slides?.[0] ? {
-          hasNarration: !!lesson.slides[0].narration,
-          hasElements: !!lesson.slides[0].elements,
-          templateId: lesson.slides[0].template_id,
-          slideType: typeof lesson.slides[0],
-          slideKeys: Object.keys(lesson.slides[0])
-        } : null
-      });
-    }
-  }, [lesson, hasNarrationContent, isGeneratingContent]);
+    logger.debug(`[${instanceId}] 🎯 Lesson Component Loaded:`, {
+      lessonId: id,
+      instanceId,
+      lessonExists: !!lesson,
+      generationStatus: lesson?.generation_status,
+      generationError: lesson?.generation_error,
+      slidesCount: lesson?.slides?.length || 0,
+      hasNarrationContent,
+      isGeneratingContent,
+      hasGenerationError,
+      isContentReady,
+      audioGenerated: lesson?.audio_generated,
+      mergedAudioUrl: lesson?.merged_audio_url,
+      audioSegments: lesson?.audio_segments?.length || 0,
+      firstSlideStructure: lesson?.slides?.[0] ? {
+        hasNarration: !!lesson.slides[0].narration,
+        hasElements: !!lesson.slides[0].elements?.length || 0,
+        templateId: lesson.slides[0].template_id,
+      } : null
+    });
+  }, [lesson, hasNarrationContent, isGeneratingContent, hasGenerationError, isContentReady, instanceId, id]);
+
+  // Cleanup on component unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      // Cancel any pending queries for this lesson to prevent stale updates
+      queryClient.cancelQueries({ queryKey: ["lesson", id] });
+      logger.debug(`[${instanceId}] Cleaned up queries for lesson ${id} on unmount`);
+    };
+  }, [id, queryClient, instanceId]);
 
   // Check if lesson was deleted or not found
   const isLessonNotFound = (lessonError as any)?.response?.status === 404;
@@ -135,6 +196,12 @@ const Lesson: React.FC = () => {
   const handleGenerateScript = () => {
     if (id) {
       generateScriptMutation.mutate(id);
+    }
+  };
+
+  const handleRetryGeneration = () => {
+    if (id) {
+      generateContentMutation.mutate(id);
     }
   };
 
@@ -255,6 +322,39 @@ const Lesson: React.FC = () => {
                       </div>
                     </CardContent>
                   </Card>
+                ) : hasGenerationError ? (
+                  <Card className="border-destructive/20 bg-destructive/5">
+                    <CardContent className="p-8">
+                      <div className="flex flex-col items-center justify-center space-y-6 text-center">
+                        <div className="flex items-center space-x-3">
+                          <AlertCircleIcon className="h-8 w-8 text-destructive" />
+                          <span className="text-xl font-semibold text-destructive">Generation Failed</span>
+                        </div>
+                        <div className="max-w-md">
+                          <p className="text-muted-foreground mb-4">
+                            {lesson?.generation_error || "Failed to generate lesson content. Please try again."}
+                          </p>
+                          <Button 
+                            onClick={handleRetryGeneration}
+                            disabled={generateContentMutation.isPending}
+                            className="mt-4"
+                          >
+                            {generateContentMutation.isPending ? (
+                              <>
+                                <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                                Retrying...
+                              </>
+                            ) : (
+                              <>
+                                <WandIcon className="h-4 w-4 mr-2" />
+                                Retry Generation
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ) : isGeneratingScript ? (
                   <Card className="border-border">
                     <CardContent className="p-8">
@@ -276,7 +376,7 @@ const Lesson: React.FC = () => {
                       </div>
                     </CardContent>
                   </Card>
-                ) : lesson?.slides && lesson.slides.length > 0 ? (
+                ) : isContentReady ? (
                   <div className="space-y-4">
                     <Card className="border-border">
                       <CardHeader>
@@ -296,6 +396,7 @@ const Lesson: React.FC = () => {
                             return null;
                           })()}
                           <MultiSlideCanvasPlayer 
+                            key={`lesson-${lesson.id}-${lesson.slides?.length || 0}`} // Force re-render when slides change
                             slides={lesson.slides}
                             existingAudioSegments={lesson.audio_segments}
                             mergedAudioUrl={lesson.merged_audio_url}

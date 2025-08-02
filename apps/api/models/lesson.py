@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from beanie import Document
 from pydantic import BaseModel, Field
 from bson import ObjectId
@@ -37,6 +37,10 @@ class AITutorSlide(BaseModel):
 CanvasStep = AITutorSlide
 
 
+# Generation status types
+GenerationStatus = Literal["pending", "generating", "completed", "failed"]
+
+
 class Doubt(BaseModel):
     """Doubt model for lesson Q&A"""
     id: str = Field(default_factory=lambda: str(ObjectId()))
@@ -51,11 +55,13 @@ class Lesson(Document):
     topic: str
     title: Optional[str] = None
     difficulty_level: Optional[str] = "beginner"
+    generation_status: GenerationStatus = "pending"  # Track lesson generation progress
     slides: List[AITutorSlide] = Field(default_factory=list)
     merged_audio_url: Optional[str] = None  # URL to the merged audio file
     audio_duration: Optional[float] = None  # Total duration of merged audio in seconds
     audio_segments: Optional[List[Dict[str, Any]]] = None  # Slide timing information for seekbar
     audio_generated: bool = False  # Whether audio has been generated for this lesson
+    generation_error: Optional[str] = None  # Error message if generation failed
     doubts: Optional[List[Doubt]] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
@@ -112,11 +118,13 @@ class LessonResponse(BaseModel):
     topic: str
     title: Optional[str] = None
     difficulty_level: Optional[str] = "beginner"
+    generation_status: GenerationStatus = "pending"
     slides: List[AITutorSlide] = Field(default_factory=list)
     merged_audio_url: Optional[str] = None
     audio_duration: Optional[float] = None
     audio_segments: Optional[List[Dict[str, Any]]] = None
     audio_generated: bool = False
+    generation_error: Optional[str] = None
     doubts: Optional[List[Doubt]] = Field(default_factory=list)
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -132,9 +140,11 @@ class UpdateLessonRequest(BaseModel):
     """Request model for updating lesson"""
     title: Optional[str] = None
     difficulty_level: Optional[str] = None
+    generation_status: Optional[GenerationStatus] = None
     slides: Optional[List[AITutorSlide]] = None
     merged_audio_url: Optional[str] = None
     audio_duration: Optional[float] = None
     audio_segments: Optional[List[Dict[str, Any]]] = None
     audio_generated: Optional[bool] = None
+    generation_error: Optional[str] = None
     doubts: Optional[List[Doubt]] = None

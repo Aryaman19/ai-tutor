@@ -1,6 +1,7 @@
 import { Doubt } from "./doubt";
 
 export type DifficultyLevel = "beginner" | "intermediate" | "advanced";
+export type GenerationStatus = "pending" | "generating" | "completed" | "failed";
 
 // Re-export for compatibility
 export type { AITutorSlide as Slide };
@@ -26,6 +27,7 @@ export interface Lesson {
   topic: string;
   title?: string;
   difficulty_level?: DifficultyLevel;
+  generation_status?: GenerationStatus;
   slides: AITutorSlide[];
   merged_audio_url?: string;
   audio_duration?: number;
@@ -39,6 +41,7 @@ export interface Lesson {
     audio_url?: string;
   }>;
   audio_generated?: boolean;
+  generation_error?: string;
   created_at: Date;
   updated_at?: Date;
   doubts?: Doubt[];

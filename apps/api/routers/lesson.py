@@ -149,6 +149,7 @@ async def create_lesson(request: CreateLessonRequest):
             topic=request.topic,
             title=request.topic,  # Default title to topic
             difficulty_level=request.difficulty_level,
+            generation_status="pending",  # Set initial status
             slides=[],  # Empty slides initially
             created_at=datetime.utcnow()
         )
@@ -161,11 +162,13 @@ async def create_lesson(request: CreateLessonRequest):
             topic=lesson.topic,
             title=lesson.title,
             difficulty_level=lesson.difficulty_level,
+            generation_status=lesson.generation_status,
             slides=lesson.slides,
             merged_audio_url=lesson.merged_audio_url,
             audio_duration=lesson.audio_duration,
             audio_segments=lesson.audio_segments,
             audio_generated=lesson.audio_generated,
+            generation_error=lesson.generation_error,
             doubts=lesson.doubts or [],
             created_at=lesson.created_at,
             updated_at=lesson.updated_at
@@ -191,6 +194,12 @@ async def generate_lesson_content(lesson_id: str):
             raise HTTPException(status_code=404, detail="Lesson not found")
         
         logger.info(f"Starting AI tutor lesson generation for lesson: {lesson_id}")
+        
+        # Update status to generating
+        await lesson.update({"$set": {
+            "generation_status": "generating",
+            "updated_at": datetime.utcnow()
+        }})
         
         # Generate lesson slides using AI tutor service
         slides = []
@@ -223,15 +232,23 @@ async def generate_lesson_content(lesson_id: str):
                 total_duration += slide_result.estimated_duration
         
         if not slides:
+            # Mark as failed
+            await lesson.update({"$set": {
+                "generation_status": "failed",
+                "generation_error": "Failed to generate lesson content. AI service may be unavailable.",
+                "updated_at": datetime.utcnow()
+            }})
             raise HTTPException(
                 status_code=503, 
                 detail="Failed to generate lesson content. AI service may be unavailable."
             )
         
-        # Update lesson with generated slides
+        # Update lesson with generated slides and mark as completed
         await lesson.update({"$set": {
             "slides": slides,
             "audio_duration": total_duration,
+            "generation_status": "completed",
+            "generation_error": None,  # Clear any previous error
             "updated_at": datetime.utcnow()
         }})
         
@@ -255,11 +272,13 @@ async def generate_lesson_content(lesson_id: str):
             topic=lesson.topic,
             title=lesson.title,
             difficulty_level=lesson.difficulty_level,
+            generation_status=lesson.generation_status,
             slides=lesson.slides,
             merged_audio_url=lesson.merged_audio_url,
             audio_duration=lesson.audio_duration,
             audio_segments=lesson.audio_segments,
             audio_generated=lesson.audio_generated,
+            generation_error=lesson.generation_error,
             doubts=lesson.doubts or [],
             created_at=lesson.created_at,
             updated_at=lesson.updated_at
@@ -268,6 +287,17 @@ async def generate_lesson_content(lesson_id: str):
     except HTTPException:
         raise
     except Exception as e:
+        # Mark lesson as failed on unexpected error
+        try:
+            if lesson:
+                await lesson.update({"$set": {
+                    "generation_status": "failed",
+                    "generation_error": f"Unexpected error during generation: {str(e)}",
+                    "updated_at": datetime.utcnow()
+                }})
+        except Exception as update_error:
+            logger.error(f"Failed to update lesson status after error: {update_error}")
+        
         raise ErrorHandler.handle_service_error("generate lesson content", e)
 
 
@@ -286,11 +316,13 @@ async def get_lessons(
                 topic=lesson.topic,
                 title=lesson.title,
                 difficulty_level=lesson.difficulty_level,
+                generation_status=lesson.generation_status,
                 slides=lesson.slides,
                 merged_audio_url=lesson.merged_audio_url,
                 audio_duration=lesson.audio_duration,
                 audio_segments=lesson.audio_segments,
                 audio_generated=lesson.audio_generated,
+                generation_error=lesson.generation_error,
                 doubts=lesson.doubts or [],
                 created_at=lesson.created_at,
                 updated_at=lesson.updated_at
@@ -323,11 +355,13 @@ async def get_lesson(lesson_id: str):
             topic=lesson.topic,
             title=lesson.title,
             difficulty_level=lesson.difficulty_level,
+            generation_status=lesson.generation_status,
             slides=lesson.slides,
             merged_audio_url=lesson.merged_audio_url,
             audio_duration=lesson.audio_duration,
             audio_segments=lesson.audio_segments,
             audio_generated=lesson.audio_generated,
+            generation_error=lesson.generation_error,
             doubts=lesson.doubts or [],
             created_at=lesson.created_at,
             updated_at=lesson.updated_at

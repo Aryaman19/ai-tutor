@@ -122,6 +122,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   const pendingUpdateRef = useRef<any>(null);
   const slideProgressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isLoadingElementsRef = useRef<boolean>(false); // Prevent clearing during loading
 
   // Simple audio state management (replacing complex useMultiSlideAudio)
   const [audioReady, setAudioReady] = useState(false);
@@ -234,9 +235,20 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
 
   // Validate that elements are properly loaded
   const validateElementsLoaded = useCallback(() => {
+    // Protect against clearing during loading process
+    if (isLoadingElementsRef.current) {
+      logger.debug("🔒 Skipping validation during loading process", {
+        isLoading: isLoadingElementsRef.current
+      });
+      return true; // Don't interfere with loading process
+    }
+
     const elements = accumulatedElements.current;
     if (!elements || elements.length === 0) {
-      logger.debug("No elements loaded yet");
+      logger.debug("⚠️ No elements loaded yet", {
+        elementsLength: elements?.length || 0,
+        isLoading: isLoadingElementsRef.current
+      });
       return false;
     }
     
@@ -259,8 +271,14 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     return true;
   }, []);
 
-  // Load all slides at once with proper positioning (like POC)
+  // Load all slides at once with proper positioning (like POC) 
   const loadAllSlides = useCallback(() => {
+    // Protect against concurrent loading attempts
+    if (isLoadingElementsRef.current) {
+      logger.debug("🔒 Loading already in progress, skipping concurrent attempt");
+      return accumulatedElements.current; // Return existing elements
+    }
+
     logger.debug("Loading all slides with positioning...");
 
     const allElements: any[] = [];
@@ -854,6 +872,42 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
 
   // Initialize slides when component mounts (using useLayoutEffect for synchronous loading)
   useLayoutEffect(() => {
+    // Guard: Don't re-run if slides are already successfully loaded
+    if (allSlidesLoaded && accumulatedElements.current.length > 0) {
+      logger.debug("🔒 Slides already loaded, skipping re-initialization", {
+        elementsCount: accumulatedElements.current.length,
+        allSlidesLoaded
+      });
+      
+      // But we still need to restore elements to Excalidraw if the API is available
+      if (excalidrawAPI && accumulatedElements.current.length > 0) {
+        logger.debug("🔄 Restoring elements to Excalidraw after refresh");
+        try {
+          excalidrawAPI.updateScene({
+            elements: accumulatedElements.current,
+            appState: {
+              viewBackgroundColor: "#fafafa",
+              zoom: { value: 1 as any },
+              scrollX: 0,
+              scrollY: 0,
+              zenModeEnabled: false,
+              viewModeEnabled: true,
+            },
+          });
+          
+          // Move to current slide after restoration
+          setTimeout(() => {
+            moveToSlide(currentSlideIndex);
+          }, 100);
+          
+          logger.debug("✅ Elements restored to Excalidraw successfully");
+        } catch (error) {
+          logger.error("❌ Failed to restore elements to Excalidraw:", error);
+        }
+      }
+      return;
+    }
+
     if (excalidrawAPI) {
       if (testMode) {
         // Test mode: use simple test elements
@@ -890,16 +944,31 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
       }
 
       if (slides.length > 0) {
+        // Set loading flag to prevent interference
+        isLoadingElementsRef.current = true;
         logger.debug(
-          "Initializing multi-slide player with POC-style positioning",
+          "🎬 Initializing multi-slide player with POC-style positioning",
           {
             slidesCount: slides.length,
             containerSize,
+            currentElementsCount: accumulatedElements.current.length,
+            allSlidesLoaded,
+            isLoading: isLoadingElementsRef.current
           }
         );
 
         // Load ALL slides at once with proper positioning
         const allElements = loadAllSlides();
+        logger.debug("🔍 loadAllSlides() returned:", { 
+          elementsCount: allElements.length,
+          slidesCount: slides.length,
+          firstElementSample: allElements[0] ? {
+            id: allElements[0].id,
+            type: allElements[0].type,
+            x: allElements[0].x,
+            y: allElements[0].y
+          } : null
+        });
 
         if (allElements.length === 0) {
           logger.warn(
@@ -986,6 +1055,12 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
           });
         });
 
+        // Store elements BEFORE updating canvas to prevent race conditions
+        accumulatedElements.current = cleanedAllElements;
+        logger.debug("🔒 Elements stored in ref:", { 
+          elementsCount: accumulatedElements.current.length 
+        });
+
         // Load all elements to canvas at once
         try {
           excalidrawAPI.updateScene({
@@ -999,15 +1074,20 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
               viewModeEnabled: true,
             },
           });
-          logger.debug("All slides loaded to canvas successfully");
+          logger.debug("✅ All slides loaded to canvas successfully");
 
           // Validate all elements before marking as loaded
           if (validateElementsLoaded()) {
             setAllSlidesLoaded(true);
-            logger.debug("All slides marked as loaded after validation");
+            isLoadingElementsRef.current = false; // Clear loading flag on success
+            logger.debug("✅ All slides marked as loaded after validation", {
+              elementsCount: accumulatedElements.current.length,
+              isLoading: isLoadingElementsRef.current
+            });
           } else {
-            logger.error("Main loading: element validation failed");
+            logger.error("❌ Main loading: element validation failed");
             setAllSlidesLoaded(false);
+            isLoadingElementsRef.current = false; // Clear loading flag on failure
             return; // Don't proceed with view initialization if validation failed
           }
 
@@ -1036,7 +1116,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
 
         setCurrentSlideIndex(0);
 
-        // Auto-start if requested
+        // Auto-start if requested (using current prop values)
         if (autoPlay) {
           setTimeout(() => {
             setIsPlaying(true);
@@ -1047,16 +1127,11 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     }
   }, [
     excalidrawAPI,
-    slides,
-    autoPlay,
-    regenerateIndices,
-    onPlaybackStart,
-    testMode,
-    createTestElements,
-    loadAllSlides,
-    moveToSlide,
-    validateElementsLoaded,
-    // Remove containerSize dependency to prevent slide reloading on resize
+    slides, // Essential: need to re-run when slides data changes
+    testMode, // Essential: affects which code path to take
+    // Removed volatile callbacks that cause unnecessary re-runs:
+    // - autoPlay, onPlaybackStart (can be handled inside effect)
+    // - regenerateIndices, createTestElements, loadAllSlides, moveToSlide, validateElementsLoaded (useCallback deps)
   ]);
 
   // No complex progression state sync needed - using simple state management
