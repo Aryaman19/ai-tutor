@@ -132,6 +132,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   const slideProgressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isLoadingElementsRef = useRef<boolean>(false); // Prevent clearing during loading
+  const apiRef = useRef<any>(null); // Store API reference for interceptor
 
   // Simple audio state management (replacing complex useMultiSlideAudio)
   const [audioReady, setAudioReady] = useState(false);
@@ -284,22 +285,12 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     return true;
   }, []);
 
-  // Load all slides at once with proper positioning (like POC)
+  // Load all slides at once with proper positioning (simplified)
   const loadAllSlides = useCallback(() => {
-    // Protect against concurrent loading attempts
-    if (isLoadingElementsRef.current) {
-      logger.debug(
-        "🔒 Loading already in progress, skipping concurrent attempt"
-      );
-      return accumulatedElements.current; // Return existing elements
-    }
-
-    logger.debug("Loading all slides with positioning...");
+    logger.debug("Loading all slides with positioning (simplified)...");
 
     const allElements: any[] = [];
-    // Use a fixed base width for slide positioning to prevent repositioning on resize
     const baseWidth = 800; // Fixed base width for slide spacing
-    let currentOffset = 0;
 
     slides.forEach((slide, slideIndex) => {
       const slideElements = slide.elements || [];
@@ -309,62 +300,53 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
         return;
       }
 
+      logger.debug(`Processing slide ${slideIndex} with ${slideElements.length} elements`);
+
       // Fix elements format
       const fixedElements = inspectAndFixElements(slideElements);
 
-      // Apply positioning offset to each element (use fixed base width for consistent spacing)
-      const slideOffset = slideIndex * (baseWidth * 2); // Much larger spacing between slides
+      // Apply positioning offset to each element
+      const slideOffset = slideIndex * (baseWidth * 2); 
       const positionedElements = fixedElements.map((el, elementIndex) => {
         const newX = el.x + slideOffset;
-        logger.debug(
-          `Positioning element ${elementIndex} in slide ${slideIndex}:`,
-          {
-            originalX: el.x,
-            slideOffset,
-            newX,
-            elementType: el.type,
-            elementId: el.id,
-          }
-        );
-
         const uniqueId = `${el.id}_slide_${slideIndex}`;
-        logger.debug(`Creating unique ID for element: ${el.id} → ${uniqueId}`);
 
-        return {
+        const elementWithMetadata = {
           ...el,
           x: newX,
-          // Make element ID unique per slide to prevent Excalidraw overwrites
           id: uniqueId,
-          // Add slide metadata to elements
+          // ALWAYS add slide metadata - this is critical
           customData: {
             ...el.customData,
-            slideIndex,
+            slideIndex, // This is the key field for filtering
             slideOffset,
             originalX: el.x,
             originalY: el.y,
-            originalId: el.id, // Keep original ID for reference
+            originalId: el.id,
           },
         };
+
+        logger.debug(`Element ${elementIndex} in slide ${slideIndex}:`, {
+          id: uniqueId,
+          slideIndex: elementWithMetadata.customData.slideIndex,
+          originalX: el.x,
+          newX,
+        });
+
+        return elementWithMetadata;
       });
 
       allElements.push(...positionedElements);
+    });
 
-      // Calculate offset for next slide (use fixed base width for consistent spacing)
-      currentOffset = slideIndex * (baseWidth + 100);
-
-      logger.debug(
-        `Slide ${slideIndex + 1} positioned at offset ${
-          currentOffset - (baseWidth + 100)
-        }`,
-        {
-          elementsCount: positionedElements.length,
-          slideOffset: currentOffset - (baseWidth + 100),
-        }
-      );
+    logger.debug(`loadAllSlides completed with ${allElements.length} total elements`, {
+      elementsPerSlide: slides.map((_, idx) => 
+        allElements.filter(el => el.customData?.slideIndex === idx).length
+      ),
     });
 
     return allElements;
-  }, [slides, inspectAndFixElements, validateElementsLoaded]); // Remove containerSize.width dependency
+  }, [slides, inspectAndFixElements]);
 
   // Move camera to specific slide position (like POC's scrollToContent)
   const moveToSlide = useCallback(
@@ -388,6 +370,47 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
       );
 
       try {
+        // Debug: Log what's actually in accumulatedElements
+        logger.debug("🔍 Current accumulated elements:", {
+          totalElements: accumulatedElements.current.length,
+          elements: accumulatedElements.current.map((el, idx) => ({
+            index: idx,
+            id: el.id,
+            x: el.x,
+            y: el.y,
+            slideIndex: el.customData?.slideIndex,
+            type: el.type,
+            hasCustomData: !!el.customData,
+            fullCustomData: el.customData,
+          })),
+        });
+
+        // SAFETY CHECK: If elements are missing slideIndex, assign them to slide 0
+        const elementsWithSlideIndex = accumulatedElements.current.map((el, idx) => {
+          if (el.customData?.slideIndex === undefined) {
+            logger.warn(`Element ${idx} missing slideIndex, assigning to slide 0:`, {
+              id: el.id,
+              type: el.type,
+            });
+            return {
+              ...el,
+              customData: {
+                ...el.customData,
+                slideIndex: 0, // Default to slide 0
+              },
+            };
+          }
+          return el;
+        });
+
+        // Update accumulatedElements if we made changes
+        if (elementsWithSlideIndex.some((el, idx) => 
+          el.customData?.slideIndex !== accumulatedElements.current[idx]?.customData?.slideIndex
+        )) {
+          logger.debug("Updated elements with missing slideIndex");
+          accumulatedElements.current = elementsWithSlideIndex;
+        }
+
         // Find elements for this slide
         const slideElements = accumulatedElements.current.filter(
           (el) => el.customData?.slideIndex === slideIndex
@@ -398,6 +421,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
             slideIndex + 1
           } (slideIndex: ${slideIndex})`,
           {
+            targetSlideIndex: slideIndex,
             slideElements: slideElements.map((el) => ({
               id: el.id,
               x: el.x,
@@ -424,6 +448,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
             }`
           );
           excalidrawAPI.updateScene({
+            elements: accumulatedElements.current, // PRESERVE ELEMENTS!
             appState: {
               scrollX: -slideOffset,
               scrollY: 0,
@@ -615,18 +640,35 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     ];
   }, []);
 
-  // Function to regenerate fractional indices for elements (from POC)
+  // Function to regenerate fractional indices for elements (preserve slideIndex)
   const regenerateIndices = useCallback((elements: any[]) => {
-    return elements.map((element, index) => ({
-      ...element,
-      // Generate new clean fractional indices
-      index: `a${(index + 1).toString(36).padStart(4, "0")}`,
-      // Keep the unique slide-based ID we created earlier
-      // Only regenerate ID if it doesn't already have slide suffix
-      id: element.id.includes("_slide_")
-        ? element.id
-        : `${element.id}_${Date.now()}_${index}`,
-    }));
+    return elements.map((element, index) => {
+      const regenerated = {
+        ...element,
+        // Generate new clean fractional indices
+        index: `a${(index + 1).toString(36).padStart(4, "0")}`,
+        // Keep the unique slide-based ID we created earlier
+        // Only regenerate ID if it doesn't already have slide suffix
+        id: element.id.includes("_slide_")
+          ? element.id
+          : `${element.id}_${Date.now()}_${index}`,
+        // PRESERVE customData including slideIndex
+        customData: {
+          ...element.customData,
+          // Ensure slideIndex is preserved
+          slideIndex: element.customData?.slideIndex ?? 0, // Default to slide 0 if missing
+        },
+      };
+
+      logger.debug(`Regenerated indices for element ${index}:`, {
+        originalId: element.id,
+        newId: regenerated.id,
+        slideIndex: regenerated.customData.slideIndex,
+        preservedCustomData: !!element.customData,
+      });
+
+      return regenerated;
+    });
   }, []);
 
   // Debounced scene update function with index regeneration (adapted from POC)
@@ -842,41 +884,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
 
   // Removed complex audio initialization - using simple audio player instead
 
-  // Separate canvas initialization - always load canvas elements regardless of audio
-  useEffect(() => {
-    // ALWAYS log this to see what's happening
-    logger.debug("Canvas initialization useEffect running", {
-      slidesCount: slides.length,
-      hasExcalidrawAPI: !!excalidrawAPI,
-      allSlidesLoaded,
-      shouldLoadCanvas: slides.length > 0 && excalidrawAPI && !allSlidesLoaded,
-    });
-
-    if (slides.length > 0 && excalidrawAPI && !allSlidesLoaded) {
-      logger.debug("Loading canvas elements independently of audio", {
-        slidesCount: slides.length,
-        hasExcalidrawAPI: !!excalidrawAPI,
-        allSlidesLoaded,
-      });
-
-      const allElements = loadAllSlides();
-      if (allElements && allElements.length > 0) {
-        excalidrawAPI.updateScene({
-          elements: allElements,
-          appState: {
-            viewBackgroundColor: "#ffffff",
-            zoom: { value: scaleFactor },
-          },
-        });
-
-        setAllSlidesLoaded(true);
-        accumulatedElements.current = allElements;
-        logger.debug("Canvas elements loaded successfully", {
-          elementCount: allElements.length,
-        });
-      }
-    }
-  }, [slides, excalidrawAPI, allSlidesLoaded, loadAllSlides, scaleFactor]);
+  // Removed duplicate canvas initialization - handled in useLayoutEffect only
 
   // Notify when audio is ready
   useEffect(() => {
@@ -899,39 +907,18 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
 
   // Initialize slides when component mounts (using useLayoutEffect for synchronous loading)
   useLayoutEffect(() => {
-    // Guard: Don't re-run if slides are already successfully loaded
+    // Guard: Skip if slides are already loaded to prevent re-initialization
     if (allSlidesLoaded && accumulatedElements.current.length > 0) {
-      logger.debug("🔒 Slides already loaded, skipping re-initialization", {
+      logger.debug("🔒 Slides already loaded, skipping initialization", {
         elementsCount: accumulatedElements.current.length,
         allSlidesLoaded,
       });
+      return;
+    }
 
-      // But we still need to restore elements to Excalidraw if the API is available
-      if (excalidrawAPI && accumulatedElements.current.length > 0) {
-        logger.debug("🔄 Restoring elements to Excalidraw after refresh");
-        try {
-          excalidrawAPI.updateScene({
-            elements: accumulatedElements.current,
-            appState: {
-              viewBackgroundColor: "#fafafa",
-              zoom: { value: 1 as any },
-              scrollX: 0,
-              scrollY: 0,
-              zenModeEnabled: false,
-              viewModeEnabled: true,
-            },
-          });
-
-          // Move to current slide after restoration
-          setTimeout(() => {
-            moveToSlide(currentSlideIndex);
-          }, 100);
-
-          logger.debug("✅ Elements restored to Excalidraw successfully");
-        } catch (error) {
-          logger.error("❌ Failed to restore elements to Excalidraw:", error);
-        }
-      }
+    // Guard: Skip if no excalidrawAPI yet - will be handled when API becomes available
+    if (!excalidrawAPI) {
+      logger.debug("⏳ No ExcalidrawAPI yet, waiting for API to become available");
       return;
     }
 
@@ -971,16 +958,12 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
       }
 
       if (slides.length > 0) {
-        // Set loading flag to prevent interference
-        isLoadingElementsRef.current = true;
         logger.debug(
-          "🎬 Initializing multi-slide player with POC-style positioning",
+          "🎬 Initializing multi-slide player (simplified)",
           {
             slidesCount: slides.length,
-            containerSize,
             currentElementsCount: accumulatedElements.current.length,
             allSlidesLoaded,
-            isLoading: isLoadingElementsRef.current,
           }
         );
 
@@ -1004,12 +987,46 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
             "No elements found in any slides! Falling back to first slide only..."
           );
 
-          // Fallback: load just first slide
+          // Fallback: load just first slide with explicit slideIndex
           const firstSlide = slides[0];
           if (firstSlide.elements && firstSlide.elements.length > 0) {
+            logger.debug("Fallback: processing first slide elements", {
+              elementsCount: firstSlide.elements.length,
+            });
+
             const fixedElements = inspectAndFixElements(firstSlide.elements);
-            const cleanedFirstSlide = regenerateIndices(fixedElements);
+            
+            // CRITICAL: Add slideIndex metadata to fallback elements
+            const elementsWithSlideIndex = fixedElements.map((el, idx) => {
+              const elementWithSlideData = {
+                ...el,
+                id: `${el.id}_slide_0`, // Ensure unique ID
+                customData: {
+                  ...el.customData,
+                  slideIndex: 0, // EXPLICITLY set to slide 0
+                  slideOffset: 0,
+                  originalX: el.x,
+                  originalY: el.y,
+                  originalId: el.id,
+                },
+              };
+
+              logger.debug(`Fallback element ${idx}:`, {
+                id: elementWithSlideData.id,
+                slideIndex: elementWithSlideData.customData.slideIndex,
+                type: el.type,
+              });
+
+              return elementWithSlideData;
+            });
+
+            const cleanedFirstSlide = regenerateIndices(elementsWithSlideIndex);
             accumulatedElements.current = cleanedFirstSlide;
+
+            logger.debug("Fallback elements stored:", {
+              elementsCount: cleanedFirstSlide.length,
+              slideIndexes: cleanedFirstSlide.map(el => el.customData?.slideIndex),
+            });
 
             try {
               excalidrawAPI.updateScene({
@@ -1102,23 +1119,36 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
               scrollX: 0,
               scrollY: 0,
               zenModeEnabled: false, // Keep zen mode disabled for controls visibility
-              viewModeEnabled: true,
+              viewModeEnabled: false, // CHANGED: Disable view mode to allow element interaction
             },
           });
           logger.debug("✅ All slides loaded to canvas successfully");
+          
+          // Debug: Check what Excalidraw actually received
+          setTimeout(() => {
+            const currentScene = excalidrawAPI.getSceneElements();
+            logger.debug("🔍 Excalidraw scene verification:", {
+              elementsInScene: currentScene.length,
+              firstElement: currentScene[0] ? {
+                id: currentScene[0].id,
+                type: currentScene[0].type,
+                x: currentScene[0].x,
+                y: currentScene[0].y,
+                opacity: currentScene[0].opacity,
+                isDeleted: currentScene[0].isDeleted,
+              } : null,
+            });
+          }, 100);
 
           // Validate all elements before marking as loaded
           if (validateElementsLoaded()) {
             setAllSlidesLoaded(true);
-            isLoadingElementsRef.current = false; // Clear loading flag on success
             logger.debug("✅ All slides marked as loaded after validation", {
               elementsCount: accumulatedElements.current.length,
-              isLoading: isLoadingElementsRef.current,
             });
           } else {
             logger.error("❌ Main loading: element validation failed");
             setAllSlidesLoaded(false);
-            isLoadingElementsRef.current = false; // Clear loading flag on failure
             return; // Don't proceed with view initialization if validation failed
           }
 
@@ -1127,7 +1157,9 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
             logger.debug("Initializing view - moving to first slide");
 
             // First, reset the view to origin and zoom out to see all content
+            // CRITICAL: Must preserve elements when updating appState only
             excalidrawAPI.updateScene({
+              elements: accumulatedElements.current, // PRESERVE ELEMENTS!
               appState: {
                 scrollX: 0,
                 scrollY: 0,
@@ -1166,6 +1198,139 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   ]);
 
   // No complex progression state sync needed - using simple state management
+
+  // Set up API reference when available with interceptor
+  useLayoutEffect(() => {
+    if (!excalidrawAPI) {
+      logger.debug("🔧 API not yet available, waiting...");
+      return;
+    }
+
+    logger.debug("🔧 Excalidraw API available, setting up interceptor...", {
+      hasExistingElements: accumulatedElements.current.length > 0,
+      currentSlide: currentSlideIndex,
+      apiMethods: Object.keys(excalidrawAPI),
+    });
+
+    // Store the API reference
+    apiRef.current = excalidrawAPI;
+
+    // Create interceptor for updateScene to track ALL calls with stack traces
+    const originalUpdateScene = excalidrawAPI.updateScene;
+    const interceptedUpdateScene = (sceneData: any) => {
+      const elementsCount = sceneData?.elements?.length || 0;
+      const stackTrace = new Error().stack?.split('\n').slice(1, 8).map(line => line.trim()).join('\n') || 'No stack trace';
+      
+      logger.debug("📝 updateScene INTERCEPTED", {
+        elementsCount,
+        elementsPreview: sceneData?.elements?.slice(0, 3).map((el: any) => ({
+          id: el.id?.substring(0, 12),
+          type: el.type,
+          slideIndex: el.customData?.slideIndex,
+          x: el.x,
+          y: el.y
+        })) || [],
+        appState: sceneData?.appState ? {
+          viewBackgroundColor: sceneData.appState.viewBackgroundColor,
+          scrollX: sceneData.appState.scrollX,
+          scrollY: sceneData.appState.scrollY,
+          zoom: sceneData.appState.zoom?.value,
+          viewModeEnabled: sceneData.appState.viewModeEnabled,
+          zenModeEnabled: sceneData.appState.zenModeEnabled
+        } : null,
+        stackTrace
+      });
+
+      // Special warning for empty scene updates
+      if (elementsCount === 0) {
+        logger.warn("⚠️ SCENE CLEARING DETECTED!", {
+          timestamp: new Date().toISOString(),
+          currentAccumulatedElements: accumulatedElements.current.length,
+          currentSlideIndex,
+          allSlidesLoaded,
+          stackTrace,
+          sceneDataKeys: Object.keys(sceneData || {}),
+          appStateKeys: sceneData?.appState ? Object.keys(sceneData.appState) : null
+        });
+      }
+
+      // Track element count changes
+      const currentSceneElements = apiRef.current?.getSceneElements() || [];
+      if (currentSceneElements.length > 0 && elementsCount === 0) {
+        logger.error("🚨 CRITICAL: Non-empty scene being cleared!", {
+          beforeCount: currentSceneElements.length,
+          afterCount: elementsCount,
+          stackTrace
+        });
+      }
+
+      return originalUpdateScene(sceneData);
+    };
+
+    // Replace the updateScene method
+    excalidrawAPI.updateScene = interceptedUpdateScene;
+
+    // If we have elements loaded but canvas is empty, restore them
+    if (accumulatedElements.current.length > 0) {
+      const currentScene = excalidrawAPI.getSceneElements();
+      if (currentScene.length === 0) {
+        logger.debug("🔄 Canvas empty but we have elements, restoring...", {
+          totalElements: accumulatedElements.current.length,
+          currentSlide: currentSlideIndex,
+        });
+        
+        // Use our intercepted method to restore
+        interceptedUpdateScene({
+          elements: accumulatedElements.current,
+          appState: {
+            viewBackgroundColor: "#fafafa",
+            viewModeEnabled: true,
+          },
+        });
+      }
+    }
+
+    // Cleanup function to restore original method
+    return () => {
+      if (excalidrawAPI && originalUpdateScene) {
+        excalidrawAPI.updateScene = originalUpdateScene;
+        logger.debug("🔧 updateScene interceptor removed");
+      }
+    };
+  }, [excalidrawAPI, currentSlideIndex]);
+
+  // Handle excalidrawAPI changes - ONLY restore if elements exist and slides are loaded
+  useEffect(() => {
+    // Only restore if we have both the API and elements AND slides are marked as loaded
+    // AND we're not currently in the middle of initialization
+    if (excalidrawAPI && accumulatedElements.current.length > 0 && allSlidesLoaded) {
+      logger.debug("🔧 ExcalidrawAPI restoration (slides already loaded)", {
+        elementsCount: accumulatedElements.current.length,
+        allSlidesLoaded,
+      });
+      
+      try {
+        // Simple restoration without changing view state
+        excalidrawAPI.updateScene({
+          elements: accumulatedElements.current,
+          appState: {
+            viewBackgroundColor: "#fafafa",
+            viewModeEnabled: true,
+          },
+        });
+
+        logger.debug("✅ Elements restored via excalidrawAPI effect");
+      } catch (error) {
+        logger.error("❌ Failed to restore elements via excalidrawAPI effect:", error);
+      }
+    } else {
+      logger.debug("⏳ ExcalidrawAPI effect skipped", {
+        hasAPI: !!excalidrawAPI,
+        hasElements: accumulatedElements.current.length > 0,
+        slidesLoaded: allSlidesLoaded,
+      });
+    }
+  }, [excalidrawAPI, allSlidesLoaded]); // Depend on both API and slides loaded state
 
   // Handle camera movement when slide index changes
   useEffect(() => {
@@ -1329,10 +1494,10 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                   opacity: 0 !important;
                 }
                 .excalidraw-container .excalidraw {
-                  pointer-events: none !important;
+                  pointer-events: auto !important;
                 }
                 .excalidraw-container canvas {
-                  pointer-events: none !important;
+                  pointer-events: auto !important;
                 }
               `}
             </style>
@@ -1343,9 +1508,9 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                 appState: {
                   viewBackgroundColor: "#fafafa",
                   currentItemFontFamily: 1,
-                  zenModeEnabled: true, // Enable zen mode to hide all UI chrome
+                  zenModeEnabled: false, // CHANGED: Disable zen mode initially
                   gridModeEnabled: false,
-                  viewModeEnabled: true,
+                  viewModeEnabled: false, // CHANGED: Disable view mode initially
                   zoom: { value: 1 as any },
                   scrollX: 0,
                   scrollY: 0,
@@ -1353,7 +1518,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                   theme: "light",
                 },
               }}
-              viewModeEnabled={true}
+              viewModeEnabled={false} // CHANGED: Allow editing mode
               theme="light"
               UIOptions={{
                 canvasActions: {
