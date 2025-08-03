@@ -209,7 +209,10 @@ class TemplateFiller:
                 )
                 
                 # Generate content with LLM
-                generated_content = await self._call_llm(prompt, element_constraints)
+                raw_content = await self._call_llm(prompt, element_constraints)
+                
+                # Sanitize the LLM output immediately to remove markdown formatting
+                generated_content = self._sanitize_llm_output(raw_content)
                 filled_content[placeholder_key] = generated_content
                 
                 logger.debug(f"Generated content for {placeholder_key}: {generated_content[:100]}...")
@@ -333,8 +336,8 @@ class TemplateFiller:
         # Add strict topic adherence instruction to prevent off-topic content
         enhanced_prompt += " IMPORTANT: Stay strictly on the given topic. Do not include unrelated examples, analogies, or information from other subjects."
         
-        # Add formatting instruction to prevent markdown
-        enhanced_prompt += " Use plain text only - no markdown formatting, asterisks, or special symbols."
+        # Add strong formatting instruction to prevent markdown
+        enhanced_prompt += " CRITICAL: Respond with plain text only. Do not use markdown formatting, asterisks (*), underscores (_), hash symbols (#), or any special formatting symbols. Do not include character counts or word counts in your response."
         
         # Add format instructions
         format_type = constraints.get("format", "text")
@@ -344,15 +347,21 @@ class TemplateFiller:
         return enhanced_prompt
     
     def _sanitize_llm_output(self, content: str) -> str:
-        """Sanitize LLM output by removing markdown formatting immediately after generation"""
+        """Sanitize LLM output by removing markdown formatting and metadata immediately after generation"""
         if not content:
             return content
+        
+        # Remove character count annotations like "(116 characters)", "(XXX words)", etc.
+        content = re.sub(r'\(\d+\s*(characters?|words?|chars?)\)', '', content, flags=re.IGNORECASE)
         
         # Remove markdown bold formatting
         content = re.sub(r'\*\*(.*?)\*\*', r'\1', content)
         
-        # Remove markdown italic formatting
+        # Remove markdown italic formatting (single asterisks)
         content = re.sub(r'\*(.*?)\*', r'\1', content)
+        
+        # Remove any remaining standalone asterisks
+        content = re.sub(r'\*+', '', content)
         
         # Remove markdown underscores
         content = re.sub(r'__(.*?)__', r'\1', content)
@@ -361,12 +370,33 @@ class TemplateFiller:
         # Remove markdown headers
         content = re.sub(r'^#+\s*', '', content, flags=re.MULTILINE)
         
-        # Clean up colons followed by formatting
+        # Remove markdown code blocks
+        content = re.sub(r'```[^`]*```', '', content, flags=re.DOTALL)
+        content = re.sub(r'`([^`]*)`', r'\1', content)
+        
+        # Remove markdown links but keep the text
+        content = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', content)
+        
+        # Clean up colons followed by formatting artifacts
         content = re.sub(r':\s*\*\*', ': ', content)
         content = re.sub(r':\s*\*', ': ', content)
+        content = re.sub(r':\s*#+', ': ', content)
+        
+        # Remove any remaining formatting artifacts
+        content = re.sub(r'[\*_#`~\[\]]+', '', content)
+        
+        # Clean up multiple colons
+        content = re.sub(r':{2,}', ':', content)
+        
+        # Remove "Option X" style prefixes that often come with formatting
+        content = re.sub(r'^(Option\s+\d+\s*[:\-\(]*\s*(Concise|Brief|Short|Long|Detailed)?\s*[:\-\)]*\s*)', '', content, flags=re.IGNORECASE)
         
         # Normalize whitespace
         content = re.sub(r'\s+', ' ', content)
+        
+        # Remove leading/trailing punctuation artifacts
+        content = re.sub(r'^[:\-\*\s]+', '', content)
+        content = re.sub(r'[:\-\*\s]+$', '', content)
         
         return content.strip()
     

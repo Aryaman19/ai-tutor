@@ -1,5 +1,44 @@
 import { nanoid } from "nanoid";
 
+// Frontend text sanitization function (safety net)
+function sanitizeTextForDisplay(text: string): string {
+  if (!text) return text;
+  
+  // Remove character count annotations like "(116 characters)", "(XXX words)", etc.
+  text = text.replace(/\(\d+\s*(characters?|words?|chars?)\)/gi, '');
+  
+  // Remove markdown bold formatting
+  text = text.replace(/\*\*(.*?)\*\*/g, '$1');
+  
+  // Remove markdown italic formatting (single asterisks)
+  text = text.replace(/\*(.*?)\*/g, '$1');
+  
+  // Remove any remaining standalone asterisks
+  text = text.replace(/\*+/g, '');
+  
+  // Remove markdown underscores
+  text = text.replace(/__(.*?)__/g, '$1');
+  text = text.replace(/_(.*?)_/g, '$1');
+  
+  // Remove markdown headers
+  text = text.replace(/^#+\s*/gm, '');
+  
+  // Remove "Option X" style prefixes that often come with formatting
+  text = text.replace(/^(Option\s+\d+\s*[:\-\(]*\s*(Concise|Brief|Short|Long|Detailed)?\s*[:\-\)]*\s*)/i, '');
+  
+  // Remove any remaining formatting artifacts
+  text = text.replace(/[*_#`~\[\]]+/g, '');
+  
+  // Clean up multiple spaces
+  text = text.replace(/\s+/g, ' ');
+  
+  // Remove leading/trailing punctuation artifacts
+  text = text.replace(/^[:\-*\s]+/, '');
+  text = text.replace(/[:\-*\s]+$/, '');
+  
+  return text.trim();
+}
+
 export interface ExcalidrawElement {
   id: string;
   type: string;
@@ -222,13 +261,13 @@ export function makeText(
     // POC style: makeText({ x, y, text, ... })
     finalX = xOrOptions.x;
     finalY = xOrOptions.y;
-    finalText = xOrOptions.text;
+    finalText = sanitizeTextForDisplay(xOrOptions.text); // Apply frontend sanitization
     finalOptions = xOrOptions;
   } else {
     // Legacy style: makeText(x, y, text, options)
     finalX = xOrOptions;
     finalY = y!;
-    finalText = text!;
+    finalText = sanitizeTextForDisplay(text!); // Apply frontend sanitization
     finalOptions = options;
   }
   
