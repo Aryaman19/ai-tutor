@@ -8,6 +8,8 @@ export interface NarrationSegment {
   text: string;
   startTime: number;
   duration: number;
+  slideNumber?: number;
+  contentType?: string;
   metadata?: {
     chunkId?: string;
     eventId?: string;
@@ -399,10 +401,8 @@ export class AudioEngine {
           text: slide.narration.trim(),
           startTime: currentTime,
           duration,
-          metadata: {
-            slideNumber: slide.slideNumber || index + 1,
-            contentType: 'slide-narration'
-          }
+          slideNumber: slide.slideNumber || index + 1,
+          contentType: 'slide-narration'
         });
         
         // Add separator pause (which will be replaced by crossfade)
@@ -432,7 +432,7 @@ export class AudioEngine {
     
     for (const segment of this.segments) {
       try {
-        logger.debug(`Generating audio for slide ${segment.metadata?.slideNumber}`, {
+        logger.debug(`Generating audio for slide ${segment.slideNumber}`, {
           textLength: segment.text.length,
           textPreview: segment.text.substring(0, 50) + '...'
         });
@@ -443,11 +443,11 @@ export class AudioEngine {
         });
         
         if (!response.audio_url || !response.audio_id) {
-          throw new Error(`TTS API failed for slide ${segment.metadata?.slideNumber}`);
+          throw new Error(`TTS API failed for slide ${segment.slideNumber}`);
         }
         
         audioFiles.push({
-          slideNumber: segment.metadata?.slideNumber || 0,
+          slideNumber: segment.slideNumber || 0,
           audioId: response.audio_id,
           audioUrl: response.audio_url,
           duration: segment.duration,
@@ -455,10 +455,10 @@ export class AudioEngine {
         });
         
       } catch (error) {
-        logger.error(`Failed to generate audio for slide ${segment.metadata?.slideNumber}:`, error);
+        logger.error(`Failed to generate audio for slide ${segment.slideNumber}:`, error);
         // Continue with other slides, but mark this as failed
         audioFiles.push({
-          slideNumber: segment.metadata?.slideNumber || 0,
+          slideNumber: segment.slideNumber || 0,
           audioId: '',
           audioUrl: '',
           duration: segment.duration,
@@ -503,7 +503,7 @@ export class AudioEngine {
     });
     
     // Calculate timing with crossfades
-    const segments = [];
+    const segments: any[] = [];
     let currentTime = 0;
     
     audioFiles.forEach((audioFile, index) => {

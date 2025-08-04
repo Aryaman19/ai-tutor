@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Excalidraw } from '@excalidraw/excalidraw';
-import { createComponentLogger } from '@ai-tutor/utils';
+import { createComponentLogger, getApiUrl } from '@ai-tutor/utils';
 import TemplateSelector from '../components/templates/TemplateSelector';
 
 const logger = createComponentLogger('TemplateTest');
@@ -69,7 +69,7 @@ const TemplateTest: React.FC = () => {
   const { data: templatesData, isLoading: templatesLoading } = useQuery({
     queryKey: ['templates'],
     queryFn: async () => {
-      const response = await fetch('/api/templates/');
+      const response = await fetch(getApiUrl('/api/templates/'));
       if (!response.ok) {
         throw new Error('Failed to fetch templates');
       }
@@ -85,7 +85,7 @@ const TemplateTest: React.FC = () => {
         throw new Error('No template selected');
       }
 
-      const response = await fetch(`/api/templates/${selectedTemplateId}/render`, {
+      const response = await fetch(getApiUrl(`/api/templates/${selectedTemplateId}/render`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -219,7 +219,14 @@ const TemplateTest: React.FC = () => {
       verticalAlign: 'top' as const,
       versionNonce: Math.floor(Math.random() * 1000000),
       isDeleted: false,
-      customData: null
+      customData: undefined,
+      version: 1,
+      index: `${index}` as any,
+      frameId: null,
+      containerId: null,
+      originalText: element.text,
+      autoResize: true,
+      lineHeight: 1.25 as any
     }));
   }, [scaleFactor]);
 
@@ -389,9 +396,8 @@ const TemplateTest: React.FC = () => {
                         appState: {
                           viewBackgroundColor: '#ffffff',
                           zenModeEnabled: true,
-                          gridSize: null,
                           viewModeEnabled: true,
-                          zoom: { value: 1 },
+                          zoom: { value: 1 as any },
                           scrollX: 0,
                           scrollY: 0,
                         },
@@ -449,9 +455,8 @@ const TemplateTest: React.FC = () => {
                     appState: {
                       viewBackgroundColor: '#ffffff',
                       zenModeEnabled: true,
-                      gridSize: null,
                       viewModeEnabled: true,
-                      zoom: { value: 1 },
+                      zoom: { value: 1 as any },
                       scrollX: 0,
                       scrollY: 0,
                     },

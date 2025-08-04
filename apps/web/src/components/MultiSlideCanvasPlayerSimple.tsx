@@ -281,12 +281,11 @@ export const MultiSlideCanvasPlayerSimple: React.FC<MultiSlideCanvasPlayerSimple
       <div className="flex-1 relative min-h-0">
         <div className="absolute inset-0">
           <Excalidraw
-            ref={(api) => setExcalidrawAPI(api)}
+            excalidrawAPI={(api: any) => setExcalidrawAPI(api)}
             initialData={{
               elements: [],
               appState: {
                 viewBackgroundColor: "#fafafa",
-                gridSize: null,
                 zenModeEnabled: false,
                 isLoading: false,
               },

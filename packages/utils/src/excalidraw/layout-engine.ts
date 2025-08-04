@@ -1408,20 +1408,6 @@ export class LayoutEngine {
     return states;
   }
   
-  /**
-   * Update container size for responsive multi-slide layout
-   */
-  updateContainerSize(containerSize: { width: number; height: number }): void {
-    this.options.canvasWidth = containerSize.width;
-    this.options.canvasHeight = containerSize.height;
-    
-    // Update current viewBox
-    this.currentViewBox.width = containerSize.width;
-    this.currentViewBox.height = containerSize.height;
-    
-    // Recalculate responsive font size
-    this.options.fontSize = this.calculateResponsiveFontSize(containerSize.width);
-  }
   
   /**
    * Calculate responsive font size based on container width
@@ -1441,30 +1427,6 @@ export class LayoutEngine {
   /**
    * Get canvas state at specific time with multi-slide support
    */
-  getStateAtTime(timeMs: number): CanvasState | null {
-    if (this.canvasStates.length === 0) {
-      return null;
-    }
-    
-    // Find the state that should be active at the given time
-    for (const state of this.canvasStates) {
-      const stateStartTime = state.timestamp;
-      const stateEndTime = state.timestamp + state.duration;
-      
-      if (timeMs >= stateStartTime && timeMs < stateEndTime) {
-        return state;
-      }
-    }
-    
-    // If no exact match, return the last state if time is beyond all states
-    const lastState = this.canvasStates[this.canvasStates.length - 1];
-    if (timeMs >= lastState.timestamp) {
-      return lastState;
-    }
-    
-    // If time is before all states, return the first state
-    return this.canvasStates[0];
-  }
   
   /**
    * Get all canvas states (for external access)

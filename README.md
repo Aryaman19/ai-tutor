@@ -36,7 +36,12 @@ git clone
 cd ai-tutor-gemma3n
 
 # Start everything with Docker Compose
-docker-compose up --build
+sudo docker-compose build --no-cache
+sudo docker-compose up
+
+ai-tutor-app      |   Frontend: tail -f /tmp/frontend.log
+ai-tutor-app      |   Backend: tail -f /tmp/backend.log
+
 ```
 
 ### 📱 Access the Application

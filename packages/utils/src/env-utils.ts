@@ -40,9 +40,19 @@ export const getEnvironmentVariable = (
  */
 export const getApiBaseUrl = (): string => {
   return (
-    getEnvironmentVariable("VITE_API_URL", "http://localhost:8000") ||
-    "http://localhost:8000"
+    getEnvironmentVariable("VITE_API_URL") ||
+    "" // Use relative URLs by default for local dev with proxy
   );
+};
+
+/**
+ * Helper function to construct API URLs
+ * @param path - API path (e.g., '/api/lesson/123')
+ * @returns Full API URL
+ */
+export const getApiUrl = (path: string): string => {
+  const baseUrl = getApiBaseUrl();
+  return `${baseUrl}${path}`;
 };
 
 /**

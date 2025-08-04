@@ -5,6 +5,8 @@ export interface LLMSettings {
   apiKey?: string;
   timing: 'short' | 'medium' | 'long';
   difficulty: 'easy' | 'intermediate' | 'advanced';
+  temperature?: number;
+  maxTokens?: number;
 }
 
 export interface TTSSettings {

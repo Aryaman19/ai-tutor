@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@ai-tutor/ui";
 import { Card, CardHeader, CardTitle, CardContent } from "@ai-tutor/ui";
-import { cn, createComponentLogger } from "@ai-tutor/utils";
+import { cn, createComponentLogger, getApiUrl } from "@ai-tutor/utils";
 import { lessonsApi } from "@ai-tutor/api-client";
 import type { Lesson, GenerationStatus } from "@ai-tutor/types";
 import { EditableTitle } from "../components/EditableTitle";
@@ -55,7 +55,7 @@ const Lesson: React.FC = () => {
   const generateContentMutation = useMutation({
     mutationKey: ["generateContent", id], // Add lesson-specific mutation key
     mutationFn: (lessonId: string) =>
-      fetch(`/api/lesson/${lessonId}/generate`, { method: "POST" }).then(
+      fetch(getApiUrl(`/api/lesson/${lessonId}/generate`), { method: "POST" }).then(
         (res) => {
           if (!res.ok) throw new Error("Failed to generate lesson content");
           return res.json();
@@ -76,7 +76,7 @@ const Lesson: React.FC = () => {
   const generateScriptMutation = useMutation({
     mutationKey: ["generateScript", id], // Add lesson-specific mutation key
     mutationFn: (lessonId: string) =>
-      fetch(`/api/lesson/${lessonId}/generate-script`, { method: "POST" }).then(
+      fetch(getApiUrl(`/api/lesson/${lessonId}/generate-script`), { method: "POST" }).then(
         (res) => {
           if (!res.ok) throw new Error("Failed to generate script");
           return res.json();

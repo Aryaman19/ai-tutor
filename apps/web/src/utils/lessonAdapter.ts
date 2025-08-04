@@ -7,7 +7,7 @@ import {
   estimateStepDuration 
 } from '@ai-tutor/types';
 import type { ExcalidrawElement } from './excalidraw';
-import { createUtilLogger } from '@ai-tutor/utils';
+import { createUtilLogger, getApiUrl } from '@ai-tutor/utils';
 
 // POC format interface
 export interface LessonSlide {
@@ -94,7 +94,7 @@ const logger = createUtilLogger('LessonAdapter');
  */
 export async function fetchApiLesson(lessonId: string): Promise<LessonSlide[]> {
   try {
-    const response = await fetch(`/api/lesson/${lessonId}`);
+    const response = await fetch(getApiUrl(`/api/lesson/${lessonId}`));
     if (!response.ok) {
       throw new Error(`Failed to fetch lesson: ${response.statusText}`);
     }
@@ -112,7 +112,7 @@ export async function fetchApiLesson(lessonId: string): Promise<LessonSlide[]> {
  */
 export async function fetchApiLessonScript(lessonId: string): Promise<LessonSlide[]> {
   try {
-    const response = await fetch(`/api/lesson/${lessonId}/script`);
+    const response = await fetch(getApiUrl(`/api/lesson/${lessonId}/script`));
     if (!response.ok) {
       throw new Error(`Failed to fetch lesson script: ${response.statusText}`);
     }

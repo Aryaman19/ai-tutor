@@ -84,7 +84,7 @@ export const AITutorPlayer: React.FC<AITutorPlayerProps> = ({
 
   // Refs
   const accumulatedElements = useRef<any[]>([]);
-  const debounceTimerRef = useRef<number>();
+  const debounceTimerRef = useRef<NodeJS.Timeout | number>();
   const pendingUpdateRef = useRef<any>(null);
   const onPlaybackStartRef = useRef(onPlaybackStart);
   const onPlaybackEndRef = useRef(onPlaybackEnd);
@@ -273,7 +273,7 @@ export const AITutorPlayer: React.FC<AITutorPlayerProps> = ({
                       );
                       return cleanEl || origEl;
                     }
-                  ).filter(el => el); // Remove any null elements
+                  ).filter((el: any) => el); // Remove any null elements
 
                   if (scrollElements.length > 0) {
                     excalidrawAPI.scrollToContent(scrollElements, {
@@ -700,7 +700,7 @@ export const AITutorPlayer: React.FC<AITutorPlayerProps> = ({
     
     // For multi-slide playback, show accumulated elements up to current slide
     if (isPlaying && currentSlideIndex > 0) {
-      const allElements = [];
+      const allElements: any[] = [];
       for (let i = 0; i <= currentSlideIndex; i++) {
         if (slides[i] && slides[i].elements) {
           slides[i].elements.forEach((element: any, elementIndex: number) => {
@@ -797,8 +797,7 @@ export const AITutorPlayer: React.FC<AITutorPlayerProps> = ({
                 viewBackgroundColor: "#ffffff",
                 zenModeEnabled: true,
                 viewModeEnabled: true,
-                gridSize: null,
-                zoom: { value: 1 },
+                zoom: { value: 1 as any },
                 scrollX: 0,
                 scrollY: 0,
               },

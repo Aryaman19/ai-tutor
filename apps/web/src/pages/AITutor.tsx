@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@ai-tutor/ui';
 import MultiSlideCanvasPlayer from '../components/MultiSlideCanvasPlayer';
 import { lessonsApi, ttsApi } from '@ai-tutor/api-client';
-import { createComponentLogger } from '@ai-tutor/utils';
+import { createComponentLogger, getApiUrl } from '@ai-tutor/utils';
 import { AudioEngine } from '@ai-tutor/utils/src/audio/unified-audio-engine';
 import { LayoutEngine } from '@ai-tutor/utils/src/excalidraw/layout-engine';
 import type { TimelineEvent, StreamingTimelineChunk } from '@ai-tutor/types';
@@ -505,7 +505,7 @@ function AITutorContent() {
     try {
       setGenerationProgress('Using streaming approach with unified processing...');
       
-      const streamResponse = await fetch('/api/lesson/chunked/stream', {
+      const streamResponse = await fetch(getApiUrl('/api/lesson/chunked/stream'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -661,7 +661,7 @@ function AITutorContent() {
       logger.debug('Starting AI tutor lesson generation', { topic, difficulty, targetDuration });
 
       // Call the AI tutor API
-      const response = await fetch('/api/ai-tutor/generate', {
+      const response = await fetch(getApiUrl('/api/ai-tutor/generate'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -724,7 +724,7 @@ function AITutorContent() {
       logger.debug('Starting dummy template lesson generation');
 
       // Call the dummy template API
-      const response = await fetch('/api/templates/dummy-lesson', {
+      const response = await fetch(getApiUrl('/api/templates/dummy-lesson'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

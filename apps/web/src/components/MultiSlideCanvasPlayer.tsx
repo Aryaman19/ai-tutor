@@ -41,7 +41,7 @@ import React, {
   useMemo,
 } from "react";
 import { Excalidraw } from "@excalidraw/excalidraw";
-import { createComponentLogger } from "@ai-tutor/utils";
+import { createComponentLogger, getApiUrl } from "@ai-tutor/utils";
 // Removed complex useSlideProgression - using simple audio player instead
 import { SimpleAudioPlayer, type AudioSegment } from "./SimpleAudioPlayer";
 
@@ -1514,7 +1514,6 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                   zoom: { value: 1 as any },
                   scrollX: 0,
                   scrollY: 0,
-                  allowFullscreen: false,
                   theme: "light",
                 },
               }}
@@ -1532,35 +1531,12 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                 },
                 tools: {
                   image: false,
-                  text: false,
-                  selection: false,
-                  rectangle: false,
-                  diamond: false,
-                  ellipse: false,
-                  arrow: false,
-                  line: false,
-                  freedraw: false,
-                  eraser: false,
                 },
                 welcomeScreen: false,
                 dockedSidebarBreakpoint: 0,
-                showToolbar: false,
-                showZoomAndPanButtons: false,
-                showMenuButton: false,
-                showStatsDialog: false,
-                showUsernameAvatar: false,
-                showUserList: false,
-                showHelpDialog: false,
-                showViewModeButton: false,
-                showZoomReset: false,
-                showShortcutsDialog: false,
-                showWelcomeScreen: false,
-                showZoomUI: false,
-                showExitZenModeBtn: false,
               }}
               isCollaborating={false}
               renderTopRightUI={() => null}
-              renderFooter={() => null}
               detectScroll={false}
               handleKeyboardGlobally={false}
             />
@@ -1573,7 +1549,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-50 pointer-events-auto">
                   <div className="px-4 py-3">
                     <SimpleAudioPlayer
-                      audioUrl={mergedAudioUrl}
+                      audioUrl={mergedAudioUrl ? getApiUrl(mergedAudioUrl) : ''}
                       audioSegments={audioSegments}
                       onSlideChange={handleAudioSlideChange}
                       onPlaybackStart={onPlaybackStart}
