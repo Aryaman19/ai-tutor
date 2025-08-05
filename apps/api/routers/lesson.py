@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any, AsyncGenerator
 import logging
 import time
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from bson import ObjectId
@@ -644,8 +644,11 @@ async def generate_lesson_merged_audio(lesson_id: str, user_id: str = "default")
                 continue
             
             try:
+                # Sanitize narration text before generating TTS audio (additional safety net)
+                sanitized_narration = piper_tts_service._sanitize_text_for_tts(slide.narration.strip())
+                
                 # Generate TTS audio for slide
-                audio_id = await piper_tts_service.generate_audio(slide.narration.strip(), effective_voice)
+                audio_id = await piper_tts_service.generate_audio(sanitized_narration, effective_voice)
                 
                 if audio_id:
                     audio_url = piper_tts_service._get_audio_url(audio_id)
@@ -743,8 +746,42 @@ async def generate_lesson_merged_audio(lesson_id: str, user_id: str = "default")
                         use_silence_padding=True  # Use silence padding instead of crossfade
                     )
                     
-                    # Update segments with new timing information
-                    audio_segments = updated_segments
+                    # Update segments with new timing information while preserving ALL segments
+                    logger.info(f"Updating timing: original segments={len(audio_segments)}, updated segments={len(updated_segments)}")
+                    
+                    # Create a mapping of slide_number to updated segment
+                    updated_segments_map = {seg.get("slide_number"): seg for seg in updated_segments}
+                    
+                    # Update timing for all segments (including those without audio)
+                    for i, segment in enumerate(audio_segments):
+                        slide_num = segment.get("slide_number")
+                        if slide_num in updated_segments_map:
+                            # This segment has audio - use the updated timing from merger
+                            updated_seg = updated_segments_map[slide_num]
+                            segment.update({
+                                "start_time": updated_seg.get("start_time"),
+                                "duration": updated_seg.get("duration"), 
+                                "end_time": updated_seg.get("end_time")
+                            })
+                            logger.debug(f"Updated timing for slide {slide_num}: {segment['start_time']:.2f}s -> {segment['end_time']:.2f}s")
+                        else:
+                            # This segment has no audio - need to recalculate its position
+                            # based on the new timeline created by segments with audio
+                            
+                            # Find the last segment with updated timing before this one
+                            last_audio_end_time = 0.0
+                            for j in range(i - 1, -1, -1):
+                                prev_segment = audio_segments[j]
+                                if prev_segment.get("audio_id"):  # Has audio
+                                    last_audio_end_time = prev_segment.get("end_time", 0.0)
+                                    break
+                            
+                            # Update timing for segment without audio
+                            segment.update({
+                                "start_time": last_audio_end_time,
+                                "end_time": last_audio_end_time + segment.get("duration", 0.0)
+                            })
+                            logger.debug(f"Recalculated timing for silent slide {slide_num}: {segment['start_time']:.2f}s -> {segment['end_time']:.2f}s")
                     
                     # Clean up individual audio files after successful merge
                     merger.cleanup_individual_files(audio_file_paths)
@@ -768,6 +805,17 @@ async def generate_lesson_merged_audio(lesson_id: str, user_id: str = "default")
             # No individual audio files, use estimated duration
             total_duration = current_time
             merged_audio_url = None
+        
+        # Debug: Log final timing calculations for seekbar debugging
+        logger.info(f"Final audio timing for lesson {lesson_id}:")
+        for segment in audio_segments:
+            slide_num = segment.get("slide_number")
+            start_time = segment.get("start_time", 0.0)
+            end_time = segment.get("end_time", 0.0)
+            duration = segment.get("duration", 0.0)
+            has_audio = "✓" if segment.get("audio_id") else "✗"
+            logger.info(f"  Slide {slide_num}: {start_time:.2f}s -> {end_time:.2f}s ({duration:.2f}s) Audio:{has_audio}")
+        logger.info(f"Total audio duration: {total_duration:.2f}s")
         
         # Mark the lesson as having generated audio
         await lesson.update({"$set": {
@@ -809,11 +857,12 @@ async def generate_lesson_merged_audio(lesson_id: str, user_id: str = "default")
 
 
 @router.get("/lesson/{lesson_id}/merged-audio")
-async def get_lesson_merged_audio(lesson_id: str):
-    """Serve the merged audio file for a lesson"""
+async def get_lesson_merged_audio(lesson_id: str, request: Request):
+    """Serve the merged audio file for a lesson with range request support for seeking"""
     try:
-        from fastapi.responses import FileResponse
+        from fastapi.responses import StreamingResponse, Response
         from pathlib import Path
+        import re
         
         if not ObjectId.is_valid(lesson_id):
             raise HTTPException(status_code=400, detail="Invalid lesson ID")
@@ -828,17 +877,69 @@ async def get_lesson_merged_audio(lesson_id: str):
         # Construct file path with absolute path
         import os
         base_dir = os.path.dirname(os.path.dirname(__file__))  # Go up to api/ directory
-        merged_audio_dir = Path(base_dir) / "static" / "audio" / "merged"
+        merged_audio_dir = Path(base_dir) / "static" / "audio" / "merged"  
         merged_filename = f"lesson_{lesson_id}_merged.wav"
         merged_audio_path = merged_audio_dir / merged_filename
         
         if not merged_audio_path.exists():
             raise HTTPException(status_code=404, detail="Merged audio file not found")
         
-        return FileResponse(
-            str(merged_audio_path),
+        # Get file stats
+        file_size = merged_audio_path.stat().st_size
+        
+        # Parse range header
+        range_header = request.headers.get('Range')
+        if range_header:
+            # Parse range header (format: "bytes=start-end")
+            range_match = re.match(r'bytes=(\d+)-(\d*)', range_header)
+            if range_match:
+                start = int(range_match.group(1))
+                end = int(range_match.group(2)) if range_match.group(2) else file_size - 1
+                
+                # Ensure valid range
+                start = max(0, min(start, file_size - 1))
+                end = max(start, min(end, file_size - 1))
+                content_length = end - start + 1
+                
+                def iter_file_range(file_path: Path, start: int, end: int, chunk_size: int = 8192):
+                    with open(file_path, 'rb') as file:
+                        file.seek(start)
+                        remaining = end - start + 1
+                        while remaining > 0:
+                            chunk_size = min(chunk_size, remaining)
+                            chunk = file.read(chunk_size)
+                            if not chunk:
+                                break
+                            remaining -= len(chunk)
+                            yield chunk
+                
+                return StreamingResponse(
+                    iter_file_range(merged_audio_path, start, end),
+                    status_code=206,  # Partial Content
+                    media_type="audio/wav",
+                    headers={
+                        "Accept-Ranges": "bytes",
+                        "Content-Range": f"bytes {start}-{end}/{file_size}",
+                        "Content-Length": str(content_length),
+                        "Content-Disposition": f'inline; filename="lesson_{lesson.topic.replace(" ", "_")}_audio.wav"'
+                    }
+                )
+        
+        # No range request - serve complete file
+        def iterfile(file_path: Path, chunk_size: int = 8192):
+            with open(file_path, 'rb') as file:
+                while chunk := file.read(chunk_size):
+                    yield chunk
+        
+        return StreamingResponse(
+            iterfile(merged_audio_path),
+            status_code=200,
             media_type="audio/wav",
-            filename=f"lesson_{lesson.topic.replace(' ', '_')}_audio.wav"
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size),
+                "Content-Disposition": f'inline; filename="lesson_{lesson.topic.replace(" ", "_")}_audio.wav"'
+            }
         )
         
     except HTTPException:
@@ -940,8 +1041,11 @@ async def generate_lesson_tts(
                 continue
             
             try:
+                # Sanitize narration text before generating TTS audio (additional safety net)
+                sanitized_narration = piper_tts_service._sanitize_text_for_tts(step.narration)
+                
                 # Generate TTS audio
-                audio_id = await piper_tts_service.generate_audio(step.narration, effective_voice)
+                audio_id = await piper_tts_service.generate_audio(sanitized_narration, effective_voice)
                 
                 if audio_id:
                     # Update step with TTS metadata

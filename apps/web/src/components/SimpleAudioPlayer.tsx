@@ -61,7 +61,7 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
     if (!audioSegments.length) return 0;
     
     const slideIndex = audioSegments.findIndex(segment => 
-      time >= segment.start_time && time < segment.end_time
+      time >= segment.start_time && time <= segment.end_time
     );
     
     return slideIndex >= 0 ? slideIndex : audioSegments.length - 1;
@@ -104,7 +104,6 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
     const handleTimeUpdate = () => {
       const currentTime = audio.currentTime;
       const slideIndex = getCurrentSlideIndex(currentTime);
-      
       
       setState(prev => {
         const newState = { ...prev, currentTime };
@@ -214,7 +213,14 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
   const seekTo = useCallback((time: number) => {
     if (!audioRef.current || !state.isReady) return;
     
-    audioRef.current.currentTime = Math.max(0, Math.min(time, state.duration));
+    const clampedTime = Math.max(0, Math.min(time, state.duration));
+    
+    try {
+      audioRef.current.currentTime = clampedTime;
+    } catch (error) {
+      console.error('Seek failed:', error);
+      setState(prev => ({ ...prev, error: 'Seek operation failed' }));
+    }
   }, [state.isReady, state.duration]);
 
   // Seek to specific slide

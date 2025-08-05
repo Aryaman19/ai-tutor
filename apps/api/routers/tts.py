@@ -159,9 +159,12 @@ async def generate_tts_audio(request: TTSGenerateRequest):
         )
         
         if not is_cached:
+            # Sanitize text before generating audio (additional safety net)
+            sanitized_text = piper_tts_service._sanitize_text_for_tts(request.text)
+            
             # Generate new audio
             audio_id = await piper_tts_service.generate_audio(
-                request.text, request.voice
+                sanitized_text, request.voice
             )
             
             if not audio_id:
@@ -468,12 +471,15 @@ async def generate_batch_tts(request: dict):
                 continue
             
             try:
+                # Sanitize text before processing (additional safety net)
+                sanitized_text = piper_tts_service._sanitize_text_for_tts(text)
+                
                 # Check if audio is already cached
-                is_cached, audio_id = await piper_tts_service.is_audio_cached(text, voice)
+                is_cached, audio_id = await piper_tts_service.is_audio_cached(sanitized_text, voice)
                 
                 if not is_cached:
                     # Generate new audio
-                    audio_id = await piper_tts_service.generate_audio(text, voice)
+                    audio_id = await piper_tts_service.generate_audio(sanitized_text, voice)
                     
                     if not audio_id:
                         results.append({
@@ -745,8 +751,11 @@ async def calibrate_voice(voice_id: str, request: VoiceCalibrationRequest):
                 continue
             
             try:
+                # Sanitize text before processing (additional safety net)
+                sanitized_text = piper_tts_service._sanitize_text_for_tts(text)
+                
                 # Generate audio and measure duration
-                audio_id = await piper_tts_service.generate_audio(text, voice_id)
+                audio_id = await piper_tts_service.generate_audio(sanitized_text, voice_id)
                 
                 if not audio_id:
                     logger.warning(f"Failed to generate audio for sample: {text[:50]}...")
@@ -968,11 +977,14 @@ async def test_timing_fix():
         
         for i, text in enumerate(test_samples):
             try:
+                # Sanitize text before processing (additional safety net)
+                sanitized_text = piper_tts_service._sanitize_text_for_tts(text)
+                
                 # Get estimated duration
-                estimated_duration = piper_tts_service.estimate_duration_with_calibration(text)
+                estimated_duration = piper_tts_service.estimate_duration_with_calibration(sanitized_text)
                 
                 # Generate actual TTS audio
-                audio_id = await piper_tts_service.generate_audio(text)
+                audio_id = await piper_tts_service.generate_audio(sanitized_text)
                 
                 if not audio_id:
                     results.append({

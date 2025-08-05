@@ -373,6 +373,29 @@ class PiperTTSService:
         """Check if the TTS service is available"""
         return await self._check_piper_availability()
     
+    def _sanitize_text_for_tts(self, text: str) -> str:
+        """Sanitize text for TTS by removing emojis and problematic characters"""
+        if not text:
+            return text
+        
+        # Remove emojis and other Unicode symbols that TTS may read aloud
+        text = re.sub(r'[\U0001F600-\U0001F64F]', '', text)  # Emoticons
+        text = re.sub(r'[\U0001F300-\U0001F5FF]', '', text)  # Symbols & pictographs
+        text = re.sub(r'[\U0001F680-\U0001F6FF]', '', text)  # Transport & map symbols
+        text = re.sub(r'[\U0001F1E0-\U0001F1FF]', '', text)  # Flags (iOS)
+        text = re.sub(r'[\U00002702-\U000027B0]', '', text)  # Dingbats
+        text = re.sub(r'[\U000024C2-\U0001F251]', '', text)  # Enclosed characters
+        
+        # Remove common problematic prefixes that TTS reads aloud
+        text = re.sub(r'^(NARRATION|Narration):\s*', '', text, flags=re.IGNORECASE | re.MULTILINE)
+        text = re.sub(r'^(EXPLANATION|Explanation):\s*', '', text, flags=re.IGNORECASE | re.MULTILINE)
+        text = re.sub(r'^Step\s+\d+:\s*', '', text, flags=re.IGNORECASE | re.MULTILINE)
+        
+        # Clean up multiple spaces and normalize whitespace
+        text = re.sub(r'\s+', ' ', text)
+        
+        return text.strip()
+    
     def _generate_audio_id(self, text: str, voice: str = None) -> str:
         """Generate a unique ID for audio based on text and voice"""
         voice = voice or self.default_voice
@@ -400,6 +423,12 @@ class PiperTTSService:
         """
         if not text.strip():
             logger.warning("Empty text provided for TTS generation")
+            return None
+        
+        # Sanitize text for TTS before processing
+        text = self._sanitize_text_for_tts(text)
+        if not text.strip():
+            logger.warning("Text became empty after sanitization")
             return None
         
         # Check if Piper TTS is available
@@ -774,6 +803,12 @@ class PiperTTSService:
         """
         if not text.strip():
             logger.warning("Empty text provided for streaming TTS generation")
+            return
+        
+        # Sanitize text for TTS before processing
+        text = self._sanitize_text_for_tts(text)
+        if not text.strip():
+            logger.warning("Text became empty after sanitization for streaming TTS")
             return
         
         # Check if Piper TTS is available

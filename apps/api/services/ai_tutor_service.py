@@ -495,6 +495,20 @@ class AITutorService:
         if not text:
             return text
         
+        # Remove emojis and other Unicode symbols that TTS may read aloud
+        # This pattern matches most Unicode emoji characters
+        text = re.sub(r'[\U0001F600-\U0001F64F]', '', text)  # Emoticons
+        text = re.sub(r'[\U0001F300-\U0001F5FF]', '', text)  # Symbols & pictographs
+        text = re.sub(r'[\U0001F680-\U0001F6FF]', '', text)  # Transport & map symbols
+        text = re.sub(r'[\U0001F1E0-\U0001F1FF]', '', text)  # Flags (iOS)
+        text = re.sub(r'[\U00002702-\U000027B0]', '', text)  # Dingbats
+        text = re.sub(r'[\U000024C2-\U0001F251]', '', text)  # Enclosed characters
+        
+        # Remove common problematic prefixes that TTS reads aloud
+        text = re.sub(r'^(NARRATION|Narration):\s*', '', text, flags=re.IGNORECASE | re.MULTILINE)
+        text = re.sub(r'^(EXPLANATION|Explanation):\s*', '', text, flags=re.IGNORECASE | re.MULTILINE)
+        text = re.sub(r'^Step\s+\d+:\s*', '', text, flags=re.IGNORECASE | re.MULTILINE)
+        
         # Remove markdown bold formatting
         text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
         
