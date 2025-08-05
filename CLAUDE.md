@@ -67,16 +67,19 @@ This is a monorepo containing an AI-powered tutoring system with the following s
 ### Shared Packages
 - **packages/types/**: TypeScript type definitions shared across applications
 - **packages/ui/**: Reusable React components with Tailwind CSS
-- **packages/utils/**: Shared utility functions
+- **packages/utils/**: Shared utility functions and audio processing
 - **packages/api-client/**: HTTP client for API interactions
-- **packages/hooks/**: Custom React hooks
-- **packages/config/**: Shared configuration (Tailwind, etc.)
+- **packages/hooks/**: Custom React hooks for health monitoring, settings, and TTS
+- **packages/config/**: Shared Tailwind configuration
 
 ### Key Technology Stack
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, React Query
-- **Backend**: FastAPI, Python 3.11, Pydantic, Beanie ODM
-- **Database**: MongoDB 
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, TanStack Query (React Query), Framer Motion
+- **Backend**: FastAPI, Python 3.11, Pydantic, Beanie ODM, Motor (async MongoDB driver)
+- **Database**: MongoDB 7
 - **AI Model**: Gemma 3n via Ollama (external dependency)
+- **TTS**: Multiple providers (Piper TTS, Edge TTS, gTTS, browser API)
+- **Audio Processing**: Pydub, Librosa for backend; custom streaming audio processing
+- **Canvas**: Excalidraw integration for interactive visual content
 - **Build System**: Turborepo with pnpm workspaces
 - **Deployment**: Docker Compose with multi-stage builds
 
@@ -110,6 +113,22 @@ This is a monorepo containing an AI-powered tutoring system with the following s
 - **Ollama**: Must be running on host machine (port 11434)
 - **Gemma 3n**: AI model for content generation
 - Docker containers communicate with host Ollama via `host.docker.internal`
+
+## Key Features
+
+### Core Functionality
+- **Interactive Visual Lessons**: Canvas-based lessons with synchronized audio narration
+- **Real-time Q&A**: AI-powered doubt resolution during lessons
+- **Multi-modal Content**: Text, audio, and visual content generation
+- **Offline Capability**: Full functionality without internet after model download
+- **Health Monitoring**: Comprehensive system health checks and diagnostics
+
+### Advanced Features
+- **Streaming Audio**: Real-time TTS with multiple provider support
+- **Voice Calibration**: Custom voice settings and audio processing
+- **Template System**: Structured lesson templates with categorization
+- **Settings Management**: Persistent user preferences and system configuration
+- **Responsive Design**: Mobile-friendly interface with dark/light themes
 
 ## Important Notes
 

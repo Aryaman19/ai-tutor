@@ -1,8 +1,8 @@
 # 🧠 AI Tutor (Gemma 3n Hackathon)
 
-**An intelligent tutoring system powered by Gemma 3n that creates interactive visual lessons and solves student doubts in real-time.**
+**An intelligent tutoring system powered by Gemma 3n that creates interactive visual lessons with synchronized audio narration and real-time Q&A capabilities.**
 
-## 🚀 Quick Start for Judges
+## 🚀 Quick Start
 
 ### Prerequisites
 
@@ -32,16 +32,14 @@
 
 ```bash
 # Clone and start the entire application
-git clone
+git clone <repository-url>
 cd ai-tutor-gemma3n
 
 # Start everything with Docker Compose
-sudo docker-compose build --no-cache
-sudo docker-compose up
+docker-compose up --build
 
-ai-tutor-app      |   Frontend: tail -f /tmp/frontend.log
-ai-tutor-app      |   Backend: tail -f /tmp/backend.log
-
+# Alternative: Clean rebuild if needed
+docker-compose down -v && docker system prune -f && docker-compose up --build
 ```
 
 ### 📱 Access the Application
@@ -53,35 +51,57 @@ Once containers are running:
 - **📊 System Health**: http://localhost:8000/api/health
 - **📚 API Documentation**: http://localhost:8000/docs
 
-## ✨ Key Features to Test
+## ✨ Key Features
 
-### 1. **ELI5 Video Generation**
+### Core Functionality
+- **Interactive Visual Lessons**: Canvas-based lessons with synchronized audio narration
+- **Real-time Q&A**: AI-powered doubt resolution during lessons
+- **Multi-modal Content**: Text, audio, and visual content generation
+- **Offline Capability**: Full functionality without internet after model download
+- **Health Monitoring**: Comprehensive system health checks and diagnostics
 
-- Go to http://localhost:3000
-- Enter any topic (e.g., "How do computers work?")
-- Click "Generate" to create a visual lesson
+### Advanced Features
+- **Streaming Audio**: Real-time TTS with multiple provider support (Piper TTS, Edge TTS, gTTS)
+- **Voice Calibration**: Custom voice settings and audio processing
+- **Template System**: Structured lesson templates with categorization
+- **Settings Management**: Persistent user preferences and system configuration
+- **Responsive Design**: Mobile-friendly interface with dark/light themes
 
-### 2. **Interactive Q&A**
+### Demo Features to Test
 
-- During any lesson, use the "Ask a Question" feature
-- Get instant AI-powered answers with visual explanations
+1. **ELI5 Video Generation**
+   - Go to http://localhost:3000
+   - Enter any topic (e.g., "How does photosynthesis work?")
+   - Watch as the AI generates visual explanations with narration
 
-### 3. **Offline Capability**
+2. **Interactive Canvas**
+   - Use the canvas drawing tools during lessons
+   - See synchronized audio playback with visual elements
 
-- Disconnect internet after loading
-- AI features continue working via local Gemma 3n
-
-### 4. **System Health Monitoring**
-
-- Visit http://localhost:8000/api/health
-- Check all service connections and AI model status
+3. **System Monitoring**
+   - Visit http://localhost:3000/settings/system-status
+   - Monitor real-time health of all services
 
 ## 🏗️ Architecture
+
+This is a monorepo containing:
+
+### Core Applications
+- **apps/api/**: FastAPI backend with AI integration
+- **apps/web/**: React frontend with interactive components
+
+### Shared Packages
+- **packages/types/**: TypeScript definitions
+- **packages/ui/**: Reusable React components
+- **packages/utils/**: Audio processing and utilities
+- **packages/api-client/**: HTTP client for API interactions
+- **packages/hooks/**: Custom React hooks
+- **packages/config/**: Shared Tailwind configuration
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Frontend      │    │   Backend       │    │   Database      │
-│   React + Vite  │────│   FastAPI       │────│   MongoDB       │
+│   React + Vite  │────│   FastAPI       │────│   MongoDB 7     │
 │   Port: 3000    │    │   Port: 8000    │    │   Port: 27017   │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                               │
@@ -94,13 +114,15 @@ Once containers are running:
 
 ## 🛠️ Technology Stack
 
-- **Frontend**: React 18, TypeScript, Tailwind CSS, React Query
-- **Backend**: FastAPI, Python 3.11, Pydantic, Beanie ODM
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, Framer Motion
+- **Backend**: FastAPI, Python 3.11, Pydantic, Beanie ODM, Motor
 - **AI Model**: Gemma 3n via Ollama
-- **Database**: MongoDB
-- **TTS**: Multiple providers (Edge TTS, gTTS, Browser API)
-- **Canvas**: Excalidraw integration for visual explanations
-- **Deployment**: Docker + Docker Compose
+- **Database**: MongoDB 7
+- **TTS**: Multiple providers (Piper TTS, Edge TTS, gTTS, Browser API)
+- **Audio Processing**: Pydub, Librosa, custom streaming processors
+- **Canvas**: Excalidraw integration for interactive visual content
+- **Build System**: Turborepo with pnpm workspaces
+- **Deployment**: Docker Compose with multi-stage builds
 
 ## 🔍 Troubleshooting
 
@@ -132,15 +154,18 @@ Once containers are running:
    # Clean rebuild
    docker-compose down -v
    docker system prune -f
-   docker-compose up --build --force-recreate
+   docker-compose up --build
    ```
 
 ### Development Mode
 
-For development/debugging:
+For local development:
 
 ```bash
-# Start only database
+# Install dependencies
+pnpm install
+
+# Start database only
 docker-compose up mongodb
 
 # Run backend locally
@@ -148,59 +173,89 @@ cd apps/api
 pip install -r requirements.txt
 python main.py
 
-# Run frontend locally
+# Run frontend locally (in another terminal)
 cd apps/web
-pnpm install
 pnpm dev
 
-# Run mongodb database locally
-brew services start mongodb/brew/mongodb-community
-brew services stop mongodb/brew/mongodb-community
+# Or use turborepo for all packages
+pnpm dev
 ```
 
-## 📊 System Health Check
+## 📊 System Health Monitoring
 
-Visit http://localhost:8000/api/health to verify:
+The application includes comprehensive health monitoring:
 
-- ✅ Backend API Status
-- ✅ MongoDB Connection
-- ✅ Ollama/Gemma 3n Status
-- ✅ TTS Providers
-- ✅ System Information
+- **Frontend Health Dashboard**: http://localhost:3000/settings/system-status
+- **Backend Health API**: http://localhost:8000/api/health
+- **Real-time Metrics**: Monitor all service connections, AI model status, and system performance
 
-## 🎬 Demo Flow for Judges
+## 🎬 Development Workflow
 
-1. **Start Application**: `docker-compose up --build`
-2. **Open Frontend**: Navigate to http://localhost:3000
-3. **Create Lesson**: Enter "How does photosynthesis work?" and click Generate
-4. **Test Interactivity**: Ask questions during the lesson
-5. **Check Health**: Visit http://localhost:8000/api/health
-6. **Explore API**: Check http://localhost:8000/docs
+### Using the Monorepo
+
+```bash
+# Install all dependencies
+pnpm install
+
+# Build all packages
+pnpm build
+
+# Start development servers
+pnpm dev
+
+# Clean all build artifacts
+pnpm clean
+
+# Docker shortcuts
+pnpm docker:up-build    # Start with build
+pnpm docker:logs        # View logs
+pnpm docker:health      # Check health
+pnpm docker:rebuild     # Clean rebuild
+```
+
+### Package Dependencies
+
+All packages use workspace references:
+- `@ai-tutor/types` - Shared TypeScript definitions
+- `@ai-tutor/ui` - Reusable components
+- `@ai-tutor/utils` - Utility functions and audio processing
+- `@ai-tutor/api-client` - HTTP client
+- `@ai-tutor/hooks` - Custom React hooks
+- `@ai-tutor/tailwind-config` - Shared styling
 
 ## 📝 Project Highlights
 
-- **🤖 AI-Powered**: Uses Gemma 3n for content generation and Q&A
-- **🎨 Visual Learning**: Canvas-based explanations with narration
-- **📱 Modern UI**: Responsive design with dark/light themes
+- **🤖 AI-Powered**: Uses Gemma 3n for content generation and real-time Q&A
+- **🎨 Visual Learning**: Interactive canvas with synchronized audio narration
+- **📱 Modern Architecture**: Monorepo with TypeScript, React 18, FastAPI
 - **🔒 Privacy-First**: Runs completely offline after model download
-- **⚡ Real-time**: Instant doubt resolution during lessons
-- **🏗️ Scalable**: Monorepo structure with shared packages
+- **⚡ Real-time Features**: Streaming audio, live health monitoring
+- **🏗️ Scalable Design**: Modular packages with shared utilities
 
-## 💡 Innovation Points
+## 💡 Technical Innovation
 
-- **ELI5 Mode**: Converts complex topics into simple visual explanations
-- **Interactive Canvas**: Real-time drawing synchronized with AI narration
-- **Offline AI**: Full functionality without internet connectivity
-- **Multi-modal**: Supports text, audio, and visual content generation
-- **Judge-Ready**: Single-command deployment for easy evaluation
+- **Multi-modal AI Integration**: Seamless text, audio, and visual content generation
+- **Streaming Audio Pipeline**: Real-time TTS with multiple provider fallbacks
+- **Interactive Canvas Sync**: Timeline-based audio-visual coordination
+- **Comprehensive Health System**: Real-time monitoring of all services
+- **Offline-First Architecture**: Full functionality without internet connectivity
 
 ---
 
-**Built for the Gemma 3n Hackathon** | **Prize Category**: Building for Impact
+**Built for the Gemma 3n Hackathon** | **Educational AI Platform**
 
-For questions or issues, check the logs:
+### Quick Commands Reference
 
 ```bash
-docker-compose logs ai-tutor
-docker-compose logs mongodb
+# Start everything
+docker-compose up --build
+
+# Development mode
+pnpm dev
+
+# Check system health
+curl http://localhost:8000/api/health
+
+# View logs
+docker-compose logs -f ai-tutor
 ```
