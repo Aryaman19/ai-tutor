@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@ai-tutor/ui";
 import { Card, CardHeader, CardTitle, CardContent } from "@ai-tutor/ui";
-import { cn, createComponentLogger, getApiUrl } from "@ai-tutor/utils";
+import { cn, getApiUrl } from "@ai-tutor/utils";
 import { lessonsApi } from "@ai-tutor/api-client";
 import type { Lesson, GenerationStatus } from "@ai-tutor/types";
 import { EditableTitle } from "../components/EditableTitle";
@@ -20,7 +20,6 @@ import { MultiSlideCanvasPlayer } from "../components/MultiSlideCanvasPlayer";
 
 type ViewMode = "video" | "notes" | "mindmap" | "quiz";
 
-const logger = createComponentLogger("Lesson");
 
 const Lesson: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -116,28 +115,19 @@ const Lesson: React.FC = () => {
 
     // Only poll if current lesson is generating AND this component is active
     if (lesson?.generation_status === "generating" && id === lesson.id) {
-      logger.debug(
-        `[${instanceId}] Starting polling for generating lesson ${id}`
-      );
 
       pollInterval = setInterval(async () => {
         try {
           const result = await refetchLesson();
-          logger.debug(
-            `[${instanceId}] Polled lesson ${id} - status: ${result.data?.generation_status}`
-          );
 
           // Stop polling if lesson is no longer generating
           if (result.data?.generation_status !== "generating") {
             if (pollInterval) {
               clearInterval(pollInterval);
-              logger.debug(
-                `[${instanceId}] Lesson ${id} completed generation, stopping poll`
-              );
             }
           }
         } catch (error) {
-          logger.error(
+          console.error(
             `[${instanceId}] Polling error for lesson ${id}:`,
             error
           );
@@ -148,7 +138,6 @@ const Lesson: React.FC = () => {
     // Cleanup function
     return () => {
       if (pollInterval) {
-        logger.debug(`[${instanceId}] Stopping polling for lesson ${id}`);
         clearInterval(pollInterval);
       }
     };
@@ -167,28 +156,6 @@ const Lesson: React.FC = () => {
 
   // Debug logging to understand lesson state
   useEffect(() => {
-    logger.debug(`[${instanceId}] 🎯 Lesson Component Loaded:`, {
-      lessonId: id,
-      instanceId,
-      lessonExists: !!lesson,
-      generationStatus: lesson?.generation_status,
-      generationError: lesson?.generation_error,
-      slidesCount: lesson?.slides?.length || 0,
-      hasNarrationContent,
-      isGeneratingContent,
-      hasGenerationError,
-      isContentReady,
-      audioGenerated: lesson?.audio_generated,
-      mergedAudioUrl: lesson?.merged_audio_url,
-      audioSegments: lesson?.audio_segments?.length || 0,
-      firstSlideStructure: lesson?.slides?.[0]
-        ? {
-            hasNarration: !!lesson.slides[0].narration,
-            hasElements: !!lesson.slides[0].elements?.length || 0,
-            templateId: lesson.slides[0].template_id,
-          }
-        : null,
-    });
   }, [
     lesson,
     hasNarrationContent,
@@ -204,9 +171,6 @@ const Lesson: React.FC = () => {
     return () => {
       // Cancel any pending queries for this lesson to prevent stale updates
       queryClient.cancelQueries({ queryKey: ["lesson", id] });
-      logger.debug(
-        `[${instanceId}] Cleaned up queries for lesson ${id} on unmount`
-      );
     };
   }, [id, queryClient, instanceId]);
 
@@ -451,19 +415,6 @@ const Lesson: React.FC = () => {
                           </CardHeader>
                           <CardContent className="">
                             <div className="h-[700px] relative">
-                              {(() => {
-                                logger.debug(
-                                  "Passing props to MultiSlideCanvasPlayer",
-                                  {
-                                    slidesCount: lesson.slides?.length || 0,
-                                    audioSegmentsCount:
-                                      lesson.audio_segments?.length || 0,
-                                    mergedAudioUrl: lesson.merged_audio_url,
-                                    audioGenerated: lesson.audio_generated,
-                                  }
-                                );
-                                return null;
-                              })()}
                               <MultiSlideCanvasPlayer
                                 key={`lesson-${lesson.id}-${
                                   lesson.slides?.length || 0
@@ -475,19 +426,16 @@ const Lesson: React.FC = () => {
                                 showControls={true}
                                 enableAudio={true}
                                 onSlideChange={(slideIndex: number) => {
-                                  logger.debug(
-                                    "Lesson slide changed:",
-                                    slideIndex
-                                  );
+                                  // Slide changed
                                 }}
                                 onPlaybackStart={() => {
-                                  logger.debug("Lesson playback started");
+                                  // Playback started
                                 }}
                                 onPlaybackEnd={() => {
-                                  logger.info("Lesson completed!");
+                                  // Lesson completed
                                 }}
                                 onError={(error: Error) => {
-                                  logger.error("Lesson player error:", error);
+                                  console.error("Lesson player error:", error);
                                 }}
                                 className="w-full h-full"
                                 testMode={false}
@@ -569,69 +517,81 @@ const Lesson: React.FC = () => {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="flex-1 overflow-y-auto">
-                        {isGeneratingContent ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2Icon className="h-6 w-6 animate-spin text-primary mr-2" />
-                            <span>Generating notes...</span>
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                          <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-6">
+                            <BookOpenIcon className="h-10 w-10 text-muted-foreground" />
                           </div>
-                        ) : lesson?.slides && lesson.slides.length > 0 ? (
-                          <div className="space-y-6">
-                            {lesson?.slides?.map((slide, index) => (
-                              <div
-                                key={index}
-                                className="border-b pb-4 last:border-b-0"
-                              >
-                                <h4 className="font-semibold mb-3 text-lg">
-                                  Slide {slide.slide_number}:{" "}
-                                  {slide.content_type}
-                                </h4>
-                                <p className="text-muted-foreground leading-relaxed">
-                                  {slide.narration || "No content available"}
-                                </p>
-                                <div className="text-xs text-muted-foreground mt-2">
-                                  Template: {slide.template_name} | Duration:{" "}
-                                  {slide.estimated_duration}s
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-muted-foreground font-body">
-                            No notes available yet.
+                          <h3 className="text-xl font-semibold text-foreground mb-3">
+                            Coming in Future
+                          </h3>
+                          <p className="text-muted-foreground max-w-md leading-relaxed">
+                            We're working on enhanced note-taking features with AI-powered summaries, 
+                            key concepts extraction, and interactive study materials.
                           </p>
-                        )}
+                          <div className="mt-6 px-4 py-2 bg-primary/10 rounded-lg border border-primary/20">
+                            <p className="text-primary text-sm font-medium">
+                              🚀 Stay tuned for updates!
+                            </p>
+                          </div>
+                        </div>
                       </CardContent>
                     </Card>
                   )}
 
                   {viewMode === "mindmap" && !isLessonNotFound && (
-                    <Card className="bg-card border-border">
-                      <CardHeader>
+                    <Card className="bg-card border-border h-full flex flex-col">
+                      <CardHeader className="flex-shrink-0">
                         <CardTitle className="text-card-foreground font-heading">
                           Concept Mindmap
                         </CardTitle>
                       </CardHeader>
-                      <CardContent>
-                        <p className="text-muted-foreground font-body">
-                          Mindmap feature coming soon! This will show concept
-                          relationships visually.
-                        </p>
+                      <CardContent className="flex-1 overflow-y-auto">
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                          <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-6">
+                            <MapIcon className="h-10 w-10 text-muted-foreground" />
+                          </div>
+                          <h3 className="text-xl font-semibold text-foreground mb-3">
+                            Coming in Future
+                          </h3>
+                          <p className="text-muted-foreground max-w-md leading-relaxed">
+                            We're developing intelligent mindmaps that will visualize concept relationships, 
+                            dependencies, and knowledge connections for better understanding.
+                          </p>
+                          <div className="mt-6 px-4 py-2 bg-primary/10 rounded-lg border border-primary/20">
+                            <p className="text-primary text-sm font-medium">
+                              🧠 Interactive visual learning coming soon!
+                            </p>
+                          </div>
+                        </div>
                       </CardContent>
                     </Card>
                   )}
 
                   {viewMode === "quiz" && !isLessonNotFound && (
-                    <Card className="bg-card border-border">
-                      <CardHeader>
+                    <Card className="bg-card border-border h-full flex flex-col">
+                      <CardHeader className="flex-shrink-0">
                         <CardTitle className="text-card-foreground font-heading">
                           Practice Quiz
                         </CardTitle>
                       </CardHeader>
-                      <CardContent>
-                        <p className="text-muted-foreground font-body">
-                          Quiz feature coming soon! Test your understanding with
-                          interactive questions.
-                        </p>
+                      <CardContent className="flex-1 overflow-y-auto">
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                          <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-6">
+                            <FileQuestion className="h-10 w-10 text-muted-foreground" />
+                          </div>
+                          <h3 className="text-xl font-semibold text-foreground mb-3">
+                            Coming in Future
+                          </h3>
+                          <p className="text-muted-foreground max-w-md leading-relaxed">
+                            We're building adaptive quizzes with multiple question types, 
+                            instant feedback, and personalized difficulty adjustment based on your progress.
+                          </p>
+                          <div className="mt-6 px-4 py-2 bg-primary/10 rounded-lg border border-primary/20">
+                            <p className="text-primary text-sm font-medium">
+                              📝 Smart assessments coming soon!
+                            </p>
+                          </div>
+                        </div>
                       </CardContent>
                     </Card>
                   )}

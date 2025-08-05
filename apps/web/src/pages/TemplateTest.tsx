@@ -8,10 +8,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Excalidraw } from '@excalidraw/excalidraw';
-import { createComponentLogger, getApiUrl } from '@ai-tutor/utils';
+import { getApiUrl } from '@ai-tutor/utils';
 import TemplateSelector from '../components/templates/TemplateSelector';
 
-const logger = createComponentLogger('TemplateTest');
 
 interface TemplateElement {
   id: string;

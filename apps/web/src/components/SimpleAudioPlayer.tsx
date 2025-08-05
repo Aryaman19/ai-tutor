@@ -1,8 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { PlayIcon, PauseIcon, VolumeIcon, Volume2Icon, SkipBackIcon, SkipForwardIcon } from 'lucide-react';
-import { createComponentLogger } from '@ai-tutor/utils';
-
-const logger = createComponentLogger('SimpleAudioPlayer');
 
 export interface AudioSegment {
   slide_number: number;
@@ -74,16 +71,6 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
 
     const audio = audioRef.current;
     
-    logger.debug('Initializing simple audio player', { 
-      audioUrl, 
-      segmentCount: audioSegments.length,
-      segments: audioSegments.map(s => ({
-        slide: s.slide_number,
-        start: s.start_time,
-        end: s.end_time,
-        text: s.text.substring(0, 50) + '...'
-      }))
-    });
     
     setState(prev => ({ ...prev, isLoading: true, error: null }));
 
@@ -93,12 +80,10 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
     audio.crossOrigin = 'anonymous';
 
     const handleLoadStart = () => {
-      logger.debug('Audio load started');
       setState(prev => ({ ...prev, isLoading: true }));
     };
 
     const handleCanPlay = () => {
-      logger.debug('Audio can play');
       setState(prev => ({ 
         ...prev, 
         isLoading: false, 
@@ -108,7 +93,7 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
       
       if (autoPlay) {
         audio.play().catch(err => {
-          logger.error('Auto-play failed:', err);
+          console.error('Auto-play failed:', err);
           setState(prev => ({ ...prev, error: 'Auto-play failed' }));
         });
       }
@@ -118,32 +103,12 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
       const currentTime = audio.currentTime;
       const slideIndex = getCurrentSlideIndex(currentTime);
       
-      // Debug logging around slide transitions
-      const isNearTransition = Math.abs(currentTime - 13.059) < 0.5 || Math.abs(currentTime - 26.617) < 0.5;
-      
-      if (Math.floor(currentTime) % 2 === 0 || isNearTransition) {
-        logger.debug('🎵 Audio time update', { 
-          currentTime: currentTime.toFixed(2), 
-          slideIndex, 
-          totalSegments: audioSegments.length,
-          currentSegment: audioSegments[slideIndex],
-          audioPaused: audio.paused,
-          audioEnded: audio.ended,
-          isNearTransition
-        });
-      }
       
       setState(prev => {
         const newState = { ...prev, currentTime };
         
         // Only update slide index if it changed
         if (slideIndex !== prev.currentSlideIndex) {
-          logger.debug('Slide change detected', { 
-            from: prev.currentSlideIndex, 
-            to: slideIndex, 
-            currentTime: currentTime.toFixed(2),
-            segment: audioSegments[slideIndex]
-          });
           newState.currentSlideIndex = slideIndex;
           
           // Defer the callback to avoid state update during render
@@ -155,26 +120,15 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
     };
 
     const handlePlay = () => {
-      logger.debug('Audio play started');
       setState(prev => ({ ...prev, isPlaying: true }));
       onPlaybackStart?.();
     };
 
     const handlePause = () => {
-      logger.warn('🔴 Audio paused - check if this was expected!', { 
-        currentTime: audio.currentTime,
-        duration: audio.duration,
-        ended: audio.ended,
-        paused: audio.paused 
-      });
       setState(prev => ({ ...prev, isPlaying: false }));
     };
 
     const handleEnded = () => {
-      logger.debug('✅ Audio ended naturally', { 
-        currentTime: audio.currentTime,
-        duration: audio.duration 
-      });
       setState(prev => ({ 
         ...prev, 
         isPlaying: false,
@@ -185,13 +139,7 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
 
     const handleError = (e: Event) => {
       const error = new Error(`Audio loading failed: ${(e as any).message || 'Unknown error'}`);
-      logger.error('❌ Audio error:', error, {
-        currentTime: audio.currentTime,
-        duration: audio.duration,
-        networkState: audio.networkState,
-        readyState: audio.readyState,
-        error: audio.error
-      });
+      console.error('Audio error:', error);
       setState(prev => ({ 
         ...prev, 
         isLoading: false, 
@@ -244,27 +192,17 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
   // Play/pause toggle
   const togglePlayPause = useCallback(async () => {
     if (!audioRef.current || !state.isReady) {
-      logger.warn('Cannot play: audio not ready', { 
-        audioExists: !!audioRef.current, 
-        isReady: state.isReady 
-      });
       return;
     }
 
     try {
       if (state.isPlaying) {
-        logger.debug('▶️ Pausing audio manually');
         audioRef.current.pause();
       } else {
-        logger.debug('▶️ Starting audio playback', {
-          currentTime: audioRef.current.currentTime,
-          duration: audioRef.current.duration,
-          src: audioRef.current.src
-        });
         await audioRef.current.play();
       }
     } catch (error) {
-      logger.error('❌ Play/pause error:', error);
+      console.error('Play/pause error:', error);
       setState(prev => ({ ...prev, error: 'Playback failed' }));
     }
   }, [state.isPlaying, state.isReady]);

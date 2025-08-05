@@ -122,7 +122,7 @@ export const useTTSTest = () => {
         // Simplified - just use empty array for now
         setPiperVoices([]);
       } catch (error) {
-        console.error('Failed to load Piper voices:', error);
+        // Failed to load Piper voices
       }
     };
 

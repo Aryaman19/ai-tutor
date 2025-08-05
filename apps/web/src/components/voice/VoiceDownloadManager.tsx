@@ -3,9 +3,6 @@ import { Button, Card, Badge, ScrollArea, Select, SelectContent, SelectItem, Sel
 import { ttsApi } from '@ai-tutor/api-client';
 import type { VoiceMetadata } from '@ai-tutor/types';
 import { useQueryClient } from '@tanstack/react-query';
-import { createComponentLogger } from '@ai-tutor/utils';
-
-const logger = createComponentLogger('VoiceDownloadManager');
 
 interface VoiceDownloadManagerProps {
   onVoiceDownloaded?: (voiceId: string) => void;
@@ -33,7 +30,6 @@ export function VoiceDownloadManager({ onVoiceDownloaded, onVoiceDeleted, classN
       setError(null);
       setSuccessMessage(null);
       
-      logger.debug('Fetching voices from API...', forceRefresh ? '(forced refresh)' : '');
       
       // Use force_refresh parameter for backend cache invalidation
       const url = forceRefresh ? 
@@ -46,11 +42,10 @@ export function VoiceDownloadManager({ onVoiceDownloaded, onVoiceDeleted, classN
       }
       
       const availableVoices = await response.json();
-      logger.debug('Received voices:', availableVoices.length, 'voices');
       
       setVoices(availableVoices);
     } catch (err) {
-      logger.error('Error fetching voices:', err);
+      console.error('Error fetching voices:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch voices from API');
     } finally {
       setLoading(false);
@@ -105,7 +100,7 @@ export function VoiceDownloadManager({ onVoiceDownloaded, onVoiceDeleted, classN
         throw new Error(response.message);
       }
     } catch (err) {
-      logger.error('Download error:', err);
+      console.error('Download error:', err);
       setError(err instanceof Error ? err.message : 'Failed to download voice');
       setDownloadingVoices(prev => {
         const newSet = new Set(prev);

@@ -6,7 +6,7 @@ import { PlusIcon, MenuIcon, SettingsIcon, ArrowLeftIcon, Trash2Icon, BrainIcon 
 import { Button, ConfirmationModal } from "@ai-tutor/ui";
 import { ScrollArea } from "@ai-tutor/ui";
 import { SimpleThemeToggle } from "@ai-tutor/ui";
-import { cn, createComponentLogger } from "@ai-tutor/utils";
+import { cn } from "@ai-tutor/utils";
 import { lessonsApi } from "@ai-tutor/api-client";
 import { ASSET_IMAGES } from "@/assets/asset";
 import type { Lesson } from "@ai-tutor/types";
@@ -15,7 +15,6 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-const logger = createComponentLogger('Layout');
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -62,7 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       setLessonToDelete(null);
     },
     onError: (error) => {
-      logger.error("Error deleting lesson:", error);
+      console.error("Error deleting lesson:", error);
     },
   });
 
