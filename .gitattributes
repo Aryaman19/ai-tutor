@@ -1,0 +1,12 @@
+# Ensure shell scripts always have LF line endings
+*.sh text eol=lf
+start.sh text eol=lf
+
+# Handle other text files appropriately
+*.js text
+*.ts text
+*.json text
+*.md text
+*.py text
+*.yml text
+*.yaml text
