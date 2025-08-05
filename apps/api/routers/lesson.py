@@ -59,6 +59,52 @@ async def get_user_tts_voice(user_id: str = "default") -> Optional[str]:
         return None
 
 
+async def get_user_lesson_preferences(user_id: str = "default") -> Dict[str, Any]:
+    """Get user's lesson preferences from settings with sensible defaults"""
+    try:
+        # Handle empty or None user_id
+        if not user_id or user_id.strip() == "":
+            user_id = "default"
+            
+        user_settings = await UserSettings.find_one(UserSettings.user_id == user_id)
+        
+        # Default preferences
+        preferences = {
+            "difficulty_level": "intermediate",
+            "target_duration": 135.0,  # Medium timing → 6 slides
+            "timing_preference": "medium"
+        }
+        
+        if user_settings and user_settings.llm:
+            # Use user's difficulty preference
+            if user_settings.llm.difficulty:
+                preferences["difficulty_level"] = user_settings.llm.difficulty
+            
+            # Map timing setting to target duration (aligned with slide generation thresholds)
+            if user_settings.llm.timing:
+                timing_to_duration = {
+                    "short": 75.0,      # < 90s → 4 slides
+                    "medium": 135.0,    # 90-180s → 6 slides
+                    "long": 240.0       # 180s+ → 9 slides
+                }
+                preferences["target_duration"] = timing_to_duration.get(
+                    user_settings.llm.timing, 135.0
+                )
+                preferences["timing_preference"] = user_settings.llm.timing
+        
+        logger.debug(f"User lesson preferences for {user_id}: {preferences}")
+        return preferences
+        
+    except Exception as e:
+        logger.error(f"Error retrieving user lesson preferences for user {user_id}: {e}")
+        # Return safe defaults on error
+        return {
+            "difficulty_level": "intermediate",
+            "target_duration": 135.0,
+            "timing_preference": "medium"
+        }
+
+
 # ============ Phase 2: Chunked Generation Models ============
 
 class ChunkedGenerationRequest(BaseModel):
@@ -211,7 +257,7 @@ async def create_lesson(request: CreateLessonRequest):
 
 
 @router.post("/lesson/{lesson_id}/generate", response_model=LessonResponse)
-async def generate_lesson_content(lesson_id: str):
+async def generate_lesson_content(lesson_id: str, user_id: str = "default"):
     """Generate content for an existing lesson using AI tutor service"""
     try:
         if not ObjectId.is_valid(lesson_id):
@@ -223,20 +269,29 @@ async def generate_lesson_content(lesson_id: str):
         
         logger.info(f"Starting AI tutor lesson generation for lesson: {lesson_id}")
         
+        # Get user lesson preferences
+        user_preferences = await get_user_lesson_preferences(user_id)
+        
         # Update status to generating
         await lesson.update({"$set": {
             "generation_status": "generating",
             "updated_at": datetime.utcnow()
         }})
         
-        # Generate lesson slides using AI tutor service
+        # Generate lesson slides using AI tutor service with user preferences
         slides = []
         total_duration = 0.0
         
+        # Use lesson's difficulty if set, otherwise use user preference
+        effective_difficulty = lesson.difficulty_level if lesson.difficulty_level else user_preferences["difficulty_level"]
+        effective_duration = user_preferences["target_duration"]
+        
+        logger.info(f"Using difficulty: {effective_difficulty}, duration: {effective_duration}s for user: {user_id}")
+        
         async for progress_update, slide_result in ai_tutor_service.generate_ai_tutor_lesson(
             topic=lesson.topic,
-            difficulty_level=lesson.difficulty_level,
-            target_duration=120.0,  # Default 2 minutes
+            difficulty_level=effective_difficulty,
+            target_duration=effective_duration,
             container_size=ContainerSize(width=1200, height=800)
         ):
             if slide_result:
@@ -1579,9 +1634,10 @@ class ContainerSizeRequest(BaseModel):
 class AITutorGenerationRequest(BaseModel):
     """Request for AI tutor lesson generation"""
     topic: str = Field(..., min_length=3, max_length=200, description="Educational topic")
-    difficulty_level: str = Field("beginner", description="Difficulty level: beginner, intermediate, advanced")
-    target_duration: float = Field(120.0, ge=30.0, le=600.0, description="Target duration in seconds")
+    difficulty_level: Optional[str] = Field(None, description="Difficulty level: beginner, intermediate, advanced (uses user settings if not provided)")
+    target_duration: Optional[float] = Field(None, ge=30.0, le=600.0, description="Target duration in seconds (uses user settings if not provided)")
     container_size: Optional[ContainerSizeRequest] = Field(default=None, description="Container size for responsive rendering")
+    user_id: str = Field("default", description="User ID for personalized settings")
 
 class AITutorSlideResponse(BaseModel):
     """Response model for individual slide"""
@@ -1629,6 +1685,15 @@ async def generate_ai_tutor_lesson(request: AITutorGenerationRequest):
     try:
         logger.info(f"Starting AI tutor lesson generation: {request.topic}")
         
+        # Get user lesson preferences for defaults
+        user_preferences = await get_user_lesson_preferences(request.user_id)
+        
+        # Use request parameters if provided, otherwise use user preferences
+        effective_difficulty = request.difficulty_level if request.difficulty_level else user_preferences["difficulty_level"]
+        effective_duration = request.target_duration if request.target_duration else user_preferences["target_duration"]
+        
+        logger.info(f"Using difficulty: {effective_difficulty}, duration: {effective_duration}s for user: {request.user_id}")
+        
         # Convert container size
         container_size = None
         if request.container_size:
@@ -1643,8 +1708,8 @@ async def generate_ai_tutor_lesson(request: AITutorGenerationRequest):
         
         async for progress_update, slide_result in ai_tutor_service.generate_ai_tutor_lesson(
             topic=request.topic,
-            difficulty_level=request.difficulty_level,
-            target_duration=request.target_duration,
+            difficulty_level=effective_difficulty,
+            target_duration=effective_duration,
             container_size=container_size
         ):
             final_progress = progress_update
@@ -1710,8 +1775,8 @@ async def generate_ai_tutor_lesson(request: AITutorGenerationRequest):
         
         return AITutorLessonResponse(
             topic=request.topic,
-            difficulty_level=request.difficulty_level,
-            target_duration=request.target_duration,
+            difficulty_level=effective_difficulty,
+            target_duration=effective_duration,
             total_slides=len(slides),
             estimated_total_duration=total_duration,
             slides=slides,
@@ -1743,6 +1808,13 @@ async def stream_ai_tutor_generation(request: AITutorGenerationRequest):
         try:
             import json
             
+            # Get user lesson preferences for defaults
+            user_preferences = await get_user_lesson_preferences(request.user_id)
+            
+            # Use request parameters if provided, otherwise use user preferences
+            effective_difficulty = request.difficulty_level if request.difficulty_level else user_preferences["difficulty_level"]
+            effective_duration = request.target_duration if request.target_duration else user_preferences["target_duration"]
+            
             # Convert container size
             container_size = None
             if request.container_size:
@@ -1753,8 +1825,8 @@ async def stream_ai_tutor_generation(request: AITutorGenerationRequest):
             
             async for progress_update, slide_result in ai_tutor_service.generate_ai_tutor_lesson(
                 topic=request.topic,
-                difficulty_level=request.difficulty_level,
-                target_duration=request.target_duration,
+                difficulty_level=effective_difficulty,
+                target_duration=effective_duration,
                 container_size=container_size
             ):
                 # Send progress update

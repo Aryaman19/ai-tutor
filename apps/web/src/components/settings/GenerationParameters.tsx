@@ -8,9 +8,9 @@ interface GenerationParametersProps {
 }
 
 const timingOptions = [
-  { value: 'short', label: 'Short (3-5 minutes)', duration: '3-5 minutes' },
-  { value: 'medium', label: 'Medium (5-10 minutes)', duration: '5-10 minutes' },
-  { value: 'long', label: 'Long (15-20 minutes)', duration: '15-20 minutes' }
+  { value: 'short', label: 'Short (4 slides)', description: 'Quick essentials: title, definition, examples, recap' },
+  { value: 'medium', label: 'Medium (6 slides)', description: 'Comprehensive: adds context & common mistakes' },
+  { value: 'long', label: 'Long (9 slides)', description: 'Full lesson: complete structure with deep coverage' }
 ] as const;
 
 const difficultyOptions = [
@@ -32,7 +32,7 @@ export const GenerationParameters: React.FC<GenerationParametersProps> = ({
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium mb-2">
-            Video Timing
+            Lesson Length
           </label>
           <Select
             value={selectedTiming}
@@ -46,14 +46,14 @@ export const GenerationParameters: React.FC<GenerationParametersProps> = ({
                 <SelectItem key={option.value} value={option.value}>
                   <div>
                     <div className="font-medium">{option.label}</div>
-                    <div className="text-xs text-muted-foreground">{option.duration}</div>
+                    <div className="text-xs text-muted-foreground">{option.description}</div>
                   </div>
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground mt-1">
-            Controls the length of generated educational content
+            Controls the number of slides and depth of lesson content
           </p>
         </div>
         <div>
