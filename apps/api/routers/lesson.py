@@ -724,18 +724,23 @@ async def generate_lesson_merged_audio(lesson_id: str, user_id: str = "default")
                             segments_with_audio.append(segment)
                 
                 if audio_file_paths:
-                    # Initialize audio merger
-                    merger = AudioMerger(crossfade_duration_ms=1500, output_format="wav")
+                    # Initialize audio merger with silence padding option
+                    merger = AudioMerger(
+                        crossfade_duration_ms=1500, 
+                        pause_duration_ms=500,  # 500ms pause between segments
+                        output_format="wav"
+                    )
                     
                     # Create output path for merged audio
                     merged_filename = f"lesson_{lesson_id}_merged.wav"
                     merged_audio_path = merged_audio_dir / merged_filename
                     
-                    # Merge audio files
+                    # Merge audio files with silence padding to eliminate static noise
                     output_path, total_duration, updated_segments = merger.merge_audio_files(
                         audio_file_paths, 
                         str(merged_audio_path),
-                        segments_with_audio
+                        segments_with_audio,
+                        use_silence_padding=True  # Use silence padding instead of crossfade
                     )
                     
                     # Update segments with new timing information
