@@ -13,7 +13,6 @@ import Layout from "./components/Layout";
 import Home from "./pages/Home";
 import Lesson from "./pages/Lesson";
 import Settings from "./pages/Settings";
-import AITutor from "./pages/AITutor";
 import TemplateTest from "./pages/TemplateTest";
 import NotFound from "./pages/NotFound";
 
@@ -36,10 +35,9 @@ function App() {
               {/* Routes with layout */}
               <Route path="/" element={<AppLayout />}>
                 <Route index element={<Home />} />
-                <Route path="ai-tutor" element={<AITutor />} />
                 <Route path="lesson/:id" element={<Lesson />} />
                 <Route path="settings" element={<Settings />} />
-                <Route path="templates" element={<TemplateTest />} />
+                {/* <Route path="templates" element={<TemplateTest />} /> */}
                 <Route path="*" element={<NotFound />} />
               </Route>
             </Routes>

@@ -9,12 +9,8 @@ from models.settings import UserSettings
 logger = logging.getLogger(__name__)
 
 # Import chunked generation components - moved after logger definition
+# Note: chunked_content_generator moved to unused-code/
 try:
-    from services.chunked_content_generator import (
-        ChunkedContentGenerator,
-        GenerationProgress,
-        ChunkGenerationResult
-    )
     from templates.timeline_prompts import ContentType, DifficultyLevel
     CHUNKED_GENERATION_AVAILABLE = True
 except ImportError as e:
@@ -30,11 +26,9 @@ class OllamaService:
         self.model = "gemma3n:latest"  # Use the available model
         self.timeout = 60.0
         
-        # Initialize chunked content generator if available
-        if CHUNKED_GENERATION_AVAILABLE:
-            self.chunked_generator = ChunkedContentGenerator(self)
-        else:
-            self.chunked_generator = None
+        # Chunked content generator moved to unused-code during refactoring
+        # Chunked generation functionality disabled for now
+        self.chunked_generator = None
         
     async def _make_request(self, prompt: str, user_id: str = "default") -> Optional[str]:
         """Make a request to Ollama API with user settings"""
@@ -1155,31 +1149,10 @@ Focus on topics that can be effectively visualized through simple drawings. Make
             return []
         
         try:
-            # Convert dict results back to ChunkGenerationResult objects
-            chunk_objects = []
-            for chunk_dict in chunk_results:
-                if chunk_dict.get("status") == "completed":
-                    # Create a mock ChunkGenerationResult for compatibility
-                    from services.chunked_content_generator import ChunkGenerationResult, GenerationStatus
-                    
-                    chunk_obj = ChunkGenerationResult(
-                        chunk_id=chunk_dict["chunk_id"],
-                        chunk_number=chunk_dict["chunk_number"],
-                        timeline_events=chunk_dict["timeline_events"],
-                        chunk_summary=chunk_dict["chunk_summary"],
-                        next_chunk_hint=chunk_dict["next_chunk_hint"],
-                        concepts_introduced=chunk_dict["concepts_introduced"],
-                        visual_elements_created=chunk_dict["visual_elements_created"],
-                        generation_time=chunk_dict["generation_time"],
-                        token_count=chunk_dict["token_count"],
-                        status=GenerationStatus.COMPLETED
-                    )
-                    chunk_objects.append(chunk_obj)
-            
-            # Convert to canvas steps
-            return await self.chunked_generator.convert_chunks_to_canvas_steps(
-                chunk_objects, topic
-            )
+            # Note: Chunked generation functionality moved to unused-code/
+            # This advanced feature is not used in the current simplified flow
+            logger.info("Chunked generation requested but feature moved to unused-code/")
+            return []
             
         except Exception as e:
             logger.error(f"Error converting chunks to canvas steps: {e}")

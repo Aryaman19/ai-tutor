@@ -123,13 +123,23 @@ The Docker setup uses `host.docker.internal` to allow containers to communicate 
 All packages use workspace references (e.g., `"@ai-tutor/types": "workspace:*"`). Changes to shared packages require rebuilding dependent applications.
 
 ### Environment Variables Management
-The application uses environment-specific configuration files:
-- `.env` - Default/local development variables
-- `.env.local` - Local development specific overrides
-- `.env.docker` - Docker deployment configuration
-- `.env.example` - Template for new setups
+The application uses environment-specific configuration files with separate configs for frontend and backend:
 
-**Key Environment Variables:**
+**Frontend Environment Files:**
+- `.env` - Default variables (used for Docker/production builds)
+- `.env.local` - Local development (enables Vite proxy, overrides .env)
+- `.env.docker` - Docker-specific frontend configuration
+- `.env.example` - Template for frontend variables
+
+**Backend Environment Files:**
+- `apps/api/.env.docker` - Backend Docker configuration
+
+**Key Frontend Variables:**
+- `VITE_API_URL`: API base URL (empty for local dev proxy, full URL for Docker)
+- `NODE_ENV`: Environment mode
+- `DEV`: Development features flag
+
+**Key Backend Variables:**
 - `MONGODB_URL`: Database connection string
 - `OLLAMA_HOST`: Ollama service endpoint
 - `OLLAMA_URL`: Complete Ollama service URL
@@ -137,11 +147,16 @@ The application uses environment-specific configuration files:
 - `DEBUG`: Enable debug logging
 - `CORS_ORIGINS`: Comma-separated list of allowed origins
 
-**Environment Variable Validation:**
-- All variables are validated on startup using Pydantic
-- See `apps/api/ENVIRONMENT_VARIABLES.md` for complete documentation
-- Invalid configurations will prevent application startup with clear error messages
+**Local Development Proxy Setup:**
+- Frontend uses Vite proxy (configured in `vite.config.ts`)
+- `/api` requests from http://localhost:3000 → http://localhost:8000
+- Enabled by empty `VITE_API_URL` in `.env.local`
 
 **Docker Environment Setup:**
-- Docker Compose automatically uses `.env.docker` file
-- No manual environment variable configuration needed for Docker deployment
+- Docker Compose uses both `.env.docker` files
+- Frontend gets direct API URL for container communication
+- No proxy needed in Docker environment
+
+**Environment Variable Validation:**
+- Backend variables validated on startup using Pydantic
+- Invalid configurations prevent application startup with clear error messages

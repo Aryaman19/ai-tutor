@@ -29,6 +29,7 @@ services:
       - "8000:8000" # Backend API
     env_file:
       - ./apps/api/.env.docker
+      - ./apps/web/.env.docker
     depends_on:
       mongodb:
         condition: service_healthy
