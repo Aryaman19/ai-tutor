@@ -6,7 +6,9 @@
 
 ### Prerequisites
 
-1. **Docker & Docker Compose** (required)
+1. **Docker & Docker Compose** (required for Mac only)
+
+   > ⚠️ **Platform Compatibility**: The Docker setup currently only works on Mac. Windows users should use the local development setup instead (see Development Mode section below).
 
    ```bash
    # Install Docker Desktop or Docker Engine
@@ -55,7 +57,6 @@ Once containers are running:
 
 ### Core Functionality
 - **Interactive Visual Lessons**: Canvas-based lessons with synchronized audio narration
-- **Real-time Q&A**: AI-powered doubt resolution during lessons
 - **Multi-modal Content**: Text, audio, and visual content generation
 - **Offline Capability**: Full functionality without internet after model download
 - **Health Monitoring**: Comprehensive system health checks and diagnostics
@@ -69,7 +70,7 @@ Once containers are running:
 
 ### Demo Features to Test
 
-1. **ELI5 Video Generation**
+1. **Video Generation**
    - Go to http://localhost:3000
    - Enter any topic (e.g., "How does photosynthesis work?")
    - Watch as the AI generates visual explanations with narration
@@ -159,16 +160,20 @@ This is a monorepo containing:
 
 ### Development Mode
 
-For local development:
+For local development (recommended for Windows users):
 
 ```bash
 # Install dependencies
 pnpm install
 
-# Start database only
-docker-compose up mongodb
+# Start MongoDB locally (required for local development)
+# Install MongoDB Community Edition if not already installed
+# macOS: brew install mongodb-community
+# Linux: follow MongoDB installation guide
+# Windows: download MongoDB installer
+mongod --dbpath /path/to/your/db/directory
 
-# Run backend locally
+# Run backend locally (in another terminal)
 cd apps/api
 pip install -r requirements.txt
 python main.py
@@ -177,9 +182,11 @@ python main.py
 cd apps/web
 pnpm dev
 
-# Or use turborepo for all packages
+# Or use turborepo for all packages (in another terminal)
 pnpm dev
 ```
+
+> **Note**: For local development, MongoDB must be running locally on your machine, not in Docker. The Docker setup is only for the full-stack containerized deployment.
 
 ## 📊 System Health Monitoring
 
@@ -225,24 +232,12 @@ All packages use workspace references:
 
 ## 📝 Project Highlights
 
-- **🤖 AI-Powered**: Uses Gemma 3n for content generation and real-time Q&A
+- **🤖 AI-Powered**: Uses Gemma 3n for content generation
 - **🎨 Visual Learning**: Interactive canvas with synchronized audio narration
 - **📱 Modern Architecture**: Monorepo with TypeScript, React 18, FastAPI
 - **🔒 Privacy-First**: Runs completely offline after model download
 - **⚡ Real-time Features**: Streaming audio, live health monitoring
 - **🏗️ Scalable Design**: Modular packages with shared utilities
-
-## 💡 Technical Innovation
-
-- **Multi-modal AI Integration**: Seamless text, audio, and visual content generation
-- **Streaming Audio Pipeline**: Real-time TTS with multiple provider fallbacks
-- **Interactive Canvas Sync**: Timeline-based audio-visual coordination
-- **Comprehensive Health System**: Real-time monitoring of all services
-- **Offline-First Architecture**: Full functionality without internet connectivity
-
----
-
-**Built for the Gemma 3n Hackathon** | **Educational AI Platform**
 
 ### Quick Commands Reference
 
