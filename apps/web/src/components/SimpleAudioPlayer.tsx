@@ -14,6 +14,7 @@ export interface SimpleAudioPlayerProps {
   onSlideChange?: (slideIndex: number) => void;
   onPlaybackStart?: () => void;
   onPlaybackEnd?: () => void;
+  onPlaybackPause?: () => void;
   onError?: (error: Error) => void;
   autoPlay?: boolean;
   className?: string;
@@ -37,6 +38,7 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
   onSlideChange,
   onPlaybackStart,
   onPlaybackEnd,
+  onPlaybackPause,
   onError,
   autoPlay = false,
   className = ''
@@ -126,6 +128,7 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
 
     const handlePause = () => {
       setState(prev => ({ ...prev, isPlaying: false }));
+      onPlaybackPause?.();
     };
 
     const handleEnded = () => {
@@ -187,7 +190,7 @@ export const SimpleAudioPlayer: React.FC<SimpleAudioPlayerProps> = ({
       audio.removeEventListener('durationchange', handleDurationChange);
       audio.removeEventListener('volumechange', handleVolumeChange);
     };
-  }, [audioUrl, autoPlay, getCurrentSlideIndex, onSlideChange, onPlaybackStart, onPlaybackEnd, onError, audioSegments.length]);
+  }, [audioUrl, autoPlay, getCurrentSlideIndex, onSlideChange, onPlaybackStart, onPlaybackEnd, onPlaybackPause, onError, audioSegments.length]);
 
   // Play/pause toggle
   const togglePlayPause = useCallback(async () => {

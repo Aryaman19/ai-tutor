@@ -122,6 +122,10 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   // Audio playback state
   const [currentAudioTime, setCurrentAudioTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
+  
+  // Auto-hiding controls state
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
 
   // Refs for POC-style management
   const accumulatedElements = useRef<any[]>([]);
@@ -131,9 +135,76 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const isLoadingElementsRef = useRef<boolean>(false); // Prevent clearing during loading
   const apiRef = useRef<any>(null); // Store API reference for interceptor
+  
+  // Auto-hiding controls refs
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const mouseMoveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Simple audio state management (replacing complex useMultiSlideAudio)
   const [audioReady, setAudioReady] = useState(false);
+
+  // Auto-hide controls functionality
+  const showAudioControls = useCallback(() => {
+    setControlsVisible(true);
+    
+    // Clear existing timeout
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+      controlsTimeoutRef.current = null;
+    }
+    
+    // Set new timeout to hide controls (only if audio is playing)
+    if (isAudioPlaying) {
+      controlsTimeoutRef.current = setTimeout(() => {
+        setControlsVisible(false);
+      }, 3000); // Hide after 3 seconds
+    }
+  }, [isAudioPlaying]);
+
+  const hideAudioControls = useCallback(() => {
+    // Only hide if audio is playing (always show when paused)
+    if (isAudioPlaying) {
+      setControlsVisible(false);
+    }
+  }, [isAudioPlaying]);
+
+  // Handle mouse interaction with canvas
+  const handleCanvasMouseEnter = useCallback(() => {
+    showAudioControls();
+  }, [showAudioControls]);
+
+  const handleCanvasMouseMove = useCallback(() => {
+    showAudioControls();
+    
+    // Debounce mouse movement - only start hide timer after mouse stops moving
+    if (mouseMoveTimeoutRef.current) {
+      clearTimeout(mouseMoveTimeoutRef.current);
+    }
+    
+    mouseMoveTimeoutRef.current = setTimeout(() => {
+      // Start hide timer only if audio is playing
+      if (isAudioPlaying) {
+        controlsTimeoutRef.current = setTimeout(() => {
+          setControlsVisible(false);
+        }, 3000);
+      }
+    }, 150); // Wait 150ms after mouse stops moving
+  }, [showAudioControls, isAudioPlaying]);
+
+  const handleCanvasMouseLeave = useCallback(() => {
+    // Clear mouse move timeout
+    if (mouseMoveTimeoutRef.current) {
+      clearTimeout(mouseMoveTimeoutRef.current);
+      mouseMoveTimeoutRef.current = null;
+    }
+    
+    // Start immediate hide timer with slight delay when leaving canvas
+    if (isAudioPlaying) {
+      controlsTimeoutRef.current = setTimeout(() => {
+        setControlsVisible(false);
+      }, 1000); // 1 second delay when leaving canvas
+    }
+  }, [isAudioPlaying]);
 
   // Convert existingAudioSegments to SimpleAudioPlayer format (memoized to prevent re-renders)
   const audioSegments: AudioSegment[] = useMemo(() => {
@@ -738,6 +809,43 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
     [moveToSlide, onSlideChange]
   );
 
+  // Handle audio playback state changes
+  const handleAudioPlaybackStart = useCallback(() => {
+    setIsAudioPlaying(true);
+    setControlsVisible(true); // Show controls when starting
+    
+    // Start hide timer
+    controlsTimeoutRef.current = setTimeout(() => {
+      setControlsVisible(false);
+    }, 3000);
+    
+    onPlaybackStart?.();
+  }, [onPlaybackStart]);
+
+  const handleAudioPlaybackEnd = useCallback(() => {
+    setIsAudioPlaying(false);
+    setControlsVisible(true); // Always show controls when paused/stopped
+    
+    // Clear hide timer
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+      controlsTimeoutRef.current = null;
+    }
+    
+    onPlaybackEnd?.();
+  }, [onPlaybackEnd]);
+
+  const handleAudioPlaybackPause = useCallback(() => {
+    setIsAudioPlaying(false);
+    setControlsVisible(true); // Always show controls when paused
+    
+    // Clear hide timer
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+      controlsTimeoutRef.current = null;
+    }
+  }, []);
+
   // Initialize audio - either from existing segments or generate new
   const slidesRef = useRef<typeof slides>([]);
   const hasInitializedRef = useRef(false);
@@ -903,7 +1011,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
               scrollX: 0,
               scrollY: 0,
               zenModeEnabled: false, // Keep zen mode disabled for controls visibility
-              viewModeEnabled: false, // CHANGED: Disable view mode to allow element interaction
+              viewModeEnabled: true, // Enable view mode to disable interactions
             },
           });
 
@@ -1111,8 +1219,27 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+      if (mouseMoveTimeoutRef.current) {
+        clearTimeout(mouseMoveTimeoutRef.current);
+      }
     };
   }, []);
+
+  // Effect to show controls when audio state changes to paused
+  useEffect(() => {
+    if (!isAudioPlaying) {
+      setControlsVisible(true);
+      
+      // Clear any hide timers when audio is paused
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+        controlsTimeoutRef.current = null;
+      }
+    }
+  }, [isAudioPlaying]);
 
   // Get play button text with simple audio and canvas status
   const getPlayButtonText = () => {
@@ -1163,6 +1290,9 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
       <div
         ref={containerRef}
         className={`relative ${className} overflow-hidden`}
+        onMouseEnter={handleCanvasMouseEnter}
+        onMouseMove={handleCanvasMouseMove}
+        onMouseLeave={handleCanvasMouseLeave}
       >
         {/* Canvas Container */}
         <div className="w-full h-full flex items-start pt-4 justify-center">
@@ -1203,7 +1333,7 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                   pointer-events: auto !important;
                 }
                 .excalidraw-container canvas {
-                  pointer-events: auto !important;
+                  pointer-events: none !important;
                 }
               `}
             </style>
@@ -1216,14 +1346,14 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
                   currentItemFontFamily: 1,
                   zenModeEnabled: false, // CHANGED: Disable zen mode initially
                   gridModeEnabled: false,
-                  viewModeEnabled: false, // CHANGED: Disable view mode initially
+                  viewModeEnabled: true, // Enable view mode to disable interactions
                   zoom: { value: 1 as any },
                   scrollX: 0,
                   scrollY: 0,
                   theme: "light",
                 },
               }}
-              viewModeEnabled={false} // CHANGED: Allow editing mode
+              viewModeEnabled={true} // Enable view-only mode to disable interactions
               theme="light"
               UIOptions={{
                 canvasActions: {
@@ -1247,19 +1377,26 @@ export const MultiSlideCanvasPlayer: React.FC<MultiSlideCanvasPlayerProps> = ({
               handleKeyboardGlobally={false}
             />
 
-            {/* Audio Player Controls - Overlaid on canvas bottom */}
+            {/* Audio Player Controls - Overlaid on canvas bottom with auto-hide */}
             {showControls &&
               enableAudio &&
               mergedAudioUrl &&
               audioSegments.length > 0 && (
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-50 pointer-events-auto">
+                <div 
+                  className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent z-50 pointer-events-auto transition-all duration-300 ease-in-out ${
+                    controlsVisible 
+                      ? 'opacity-100 translate-y-0' 
+                      : 'opacity-0 translate-y-2 pointer-events-none'
+                  }`}
+                >
                   <div className="px-4 py-3">
                     <SimpleAudioPlayer
                       audioUrl={mergedAudioUrl ? getApiUrl(mergedAudioUrl) : ''}
                       audioSegments={audioSegments}
                       onSlideChange={handleAudioSlideChange}
-                      onPlaybackStart={onPlaybackStart}
-                      onPlaybackEnd={onPlaybackEnd}
+                      onPlaybackStart={handleAudioPlaybackStart}
+                      onPlaybackEnd={handleAudioPlaybackEnd}
+                      onPlaybackPause={handleAudioPlaybackPause}
                       onError={onError}
                       autoPlay={autoPlay}
                       className="w-full"

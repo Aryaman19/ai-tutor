@@ -16,6 +16,8 @@ from services.ollama_service import ollama_service
 from utils.error_handler import ErrorHandler
 from services.ai_tutor_service import ai_tutor_service
 from services.template_service import ContainerSize
+from services.settings_service import SettingsService
+from models.settings import UserSettings
 
 # Optional TTS service import
 try:
@@ -29,6 +31,32 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ============ Helper Functions ============
+
+async def get_user_tts_voice(user_id: str = "default") -> Optional[str]:
+    """Get user's preferred TTS voice from settings"""
+    try:
+        # Handle empty or None user_id
+        if not user_id or user_id.strip() == "":
+            user_id = "default"
+            
+        user_settings = await UserSettings.find_one(UserSettings.user_id == user_id)
+        if user_settings and user_settings.tts and user_settings.tts.voice:
+            # Don't use 'default' or 'browser' voices for Piper TTS
+            # Also check if voice is not empty string
+            voice = user_settings.tts.voice.strip()
+            if voice and voice not in ['default', 'browser']:
+                logger.info(f"Using user's preferred TTS voice: {voice} for user {user_id}")
+                return voice
+        
+        logger.debug(f"No valid TTS voice found in user settings for user {user_id}, using default")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error retrieving user TTS settings for user {user_id}: {e}")
+        return None
 
 
 # ============ Phase 2: Chunked Generation Models ============
@@ -494,7 +522,7 @@ async def generate_lesson_script(lesson_id: str):
 
 
 @router.post("/lesson/{lesson_id}/generate-merged-audio", response_model=LessonResponse)
-async def generate_lesson_merged_audio(lesson_id: str):
+async def generate_lesson_merged_audio(lesson_id: str, user_id: str = "default"):
     """Generate and merge audio for all lesson slides, store result in lesson"""
     try:
         if not TTS_AVAILABLE:
@@ -507,6 +535,15 @@ async def generate_lesson_merged_audio(lesson_id: str):
         lesson = await Lesson.get(lesson_obj_id)
         if not lesson:
             raise ErrorHandler.handle_not_found("Lesson", lesson_id)
+        
+        # Get user's preferred voice
+        try:
+            user_voice = await get_user_tts_voice(user_id)
+            effective_voice = user_voice or piper_tts_service.default_voice
+            logger.info(f"Generating merged audio for lesson {lesson_id} using voice: {effective_voice}")
+        except Exception as e:
+            logger.warning(f"Error getting user voice preference, using default: {e}")
+            effective_voice = piper_tts_service.default_voice
         
         # Check if audio is already generated
         if lesson.audio_generated and lesson.merged_audio_url:
@@ -553,7 +590,7 @@ async def generate_lesson_merged_audio(lesson_id: str):
             
             try:
                 # Generate TTS audio for slide
-                audio_id = await piper_tts_service.generate_audio(slide.narration.strip())
+                audio_id = await piper_tts_service.generate_audio(slide.narration.strip(), effective_voice)
                 
                 if audio_id:
                     audio_url = piper_tts_service._get_audio_url(audio_id)
@@ -797,7 +834,11 @@ async def get_lesson_script(lesson_id: str):
 
 
 @router.post("/lesson/{lesson_id}/generate-tts", response_model=LessonResponse)
-async def generate_lesson_tts(lesson_id: str, voice: Optional[str] = None):
+async def generate_lesson_tts(
+    lesson_id: str, 
+    voice: Optional[str] = None, 
+    user_id: str = "default"
+):
     """Generate TTS audio for all steps in a lesson"""
     try:
         if not TTS_AVAILABLE:
@@ -816,6 +857,20 @@ async def generate_lesson_tts(lesson_id: str, voice: Optional[str] = None):
         if not lesson.steps:
             raise HTTPException(status_code=400, detail="Lesson has no steps to generate TTS for")
         
+        # Determine which voice to use - priority order:
+        # 1. Explicitly provided voice parameter
+        # 2. User's saved voice preference
+        # 3. Default voice
+        try:
+            if not voice:
+                voice = await get_user_tts_voice(user_id)
+            
+            effective_voice = voice or piper_tts_service.default_voice
+            logger.info(f"Generating TTS for lesson {lesson_id} using voice: {effective_voice}")
+        except Exception as e:
+            logger.warning(f"Error getting user voice preference, using default: {e}")
+            effective_voice = piper_tts_service.default_voice
+        
         # Generate TTS for each step
         updated_steps = []
         for step in lesson.steps:
@@ -826,7 +881,7 @@ async def generate_lesson_tts(lesson_id: str, voice: Optional[str] = None):
             
             try:
                 # Generate TTS audio
-                audio_id = await piper_tts_service.generate_audio(step.narration, voice)
+                audio_id = await piper_tts_service.generate_audio(step.narration, effective_voice)
                 
                 if audio_id:
                     # Update step with TTS metadata
@@ -834,7 +889,7 @@ async def generate_lesson_tts(lesson_id: str, voice: Optional[str] = None):
                     updated_step = step.copy(update={
                         "audio_id": audio_id,
                         "audio_url": audio_url,
-                        "tts_voice": voice or piper_tts_service.default_voice,
+                        "tts_voice": effective_voice,
                         "tts_generated": True,
                         "tts_error": None
                     })
