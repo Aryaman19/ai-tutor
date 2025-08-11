@@ -1,4 +1,4 @@
-# 🧠 AI Tutor (Gemma 3n Hackathon)
+# 🧠 AI Tutor
 
 **An intelligent tutoring system powered by Gemma 3n that creates interactive visual lessons with synchronized audio narration and real-time Q&A capabilities.**
 
